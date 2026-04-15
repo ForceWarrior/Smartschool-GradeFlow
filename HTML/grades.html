@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="nl" style="background:#0d0d0d;">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GradeFlow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="../CSS/grades.css" />
+</head>
+<body style="position: relative; background:#0d0d0d;">
+
+  <!-- Help overlay -->
+  <div id="gf-help-overlay" aria-hidden="true">
+    <div id="gf-help-panel" role="dialog" aria-labelledby="gf-help-title">
+      <div id="gf-help-header">
+        <div id="gf-help-header-left">
+          <div id="gf-help-logo-icon">?</div>
+          <span id="gf-help-title">Over GradeFlow</span>
+        </div>
+        <button id="gf-help-close" aria-label="Sluiten">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div id="gf-help-body"></div>
+    </div>
+  </div>
+
+  <!-- Settings overlay -->
+  <div id="gf-settings-overlay" aria-hidden="true">
+    <div id="gf-settings-panel" role="dialog" aria-labelledby="gf-settings-title">
+      <div id="gf-settings-header">
+        <div id="gf-settings-header-left">
+          <div id="gf-settings-logo-icon">GF</div>
+          <span id="gf-settings-title">Instellingen</span>
+        </div>
+        <button id="gf-settings-close" aria-label="Sluiten">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div id="gf-settings-body"></div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="gf-sidebar">
+    <div id="gf-logo">
+      <div id="gf-logo-row">
+        <div id="gf-logo-icon">GF</div>
+        <span id="gf-logo-text">GradeFlow</span>
+        <span id="gf-logo-badge">BETA</span>
+      </div>
+      <div id="gf-logo-actions">
+        <button id="gf-settings-btn" aria-label="Instellingen">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+        <button id="gf-help-btn" aria-label="Help">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </button>
+        <button id="gf-github-btn" aria-label="GitHub">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6.1-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.6.3 2.8.2 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.2.9 2.4v3.5c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/>
+          </svg>
+        </button>
+        <button id="gf-cws-btn" aria-label="Chrome Web Store">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="gf-sidebar-scroll"></div>
+
+    <div id="gf-sidebar-footer">
+      <button id="gf-refresh-btn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+          <path d="M8 16H3v5"/>
+        </svg>
+        <span id="gf-refresh-label">Opnieuw laden</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="gf-main">
+    <div id="gf-topbar">
+      <div>
+        <div id="gf-topbar-title">Resultaten</div>
+        <div id="gf-topbar-subtitle">KAN AFWIJKEN VAN OFFICIEEL RAPPORT</div>
+      </div>
+    </div>
+
+    <div id="gf-formula-note"></div>
+
+    <div id="gf-table-outer">
+      <button id="gf-scroll-recent-btn" aria-label="Ga naar recente resultaten">-> recente</button>
+      <div id="gf-table-wrap">
+        <div id="gf-state">
+          <div class="gf-spinner"></div>
+          <span>Punten laden…</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="gf-bottom-bar">
+      <div id="gf-bb-left">
+        <span id="gf-bb-pct">–</span>
+        <span id="gf-bb-label">TOTAAL</span>
+      </div>
+
+      <div id="gf-bb-center">
+        <div id="gf-bb-bar-wrap">
+          <div id="gf-bb-bar-track">
+            <div id="gf-bb-bar-fill"></div>
+            <div class="gf-bb-tick" style="left:50%;" title="50%">
+              <span class="gf-bb-tick-label">50%</span>
+            </div>
+            <div class="gf-bb-tick" style="left:70%;" title="70%">
+              <span class="gf-bb-tick-label">70%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="gf-bb-right">
+        <div id="gf-bb-score">–</div>
+        <div id="gf-bb-meta">–</div>
+      </div>
+
+      <div id="gf-bb-best">
+        <div id="gf-bb-best-icon">🏆</div>
+        <div id="gf-bb-best-body">
+          <div id="gf-bb-best-header">
+            <span id="gf-bb-best-label-text">BESTE VAK</span>
+          </div>
+          <div id="gf-bb-best-name">–</div>
+          <div id="gf-bb-best-stat">–</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="gf-tooltip"></div>
+  <script src="../JS/interact.min.js"></script>
+  <script src="../JS/translations.js"></script>
+  <script src="../JS/grades.js"></script>
+</body>
+</html>

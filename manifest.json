@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "GradeFlow",
+  "version": "1.0.0",
+  "description": "Supercharge SmartSchool: see all your grades at a glance with weighted averages, period filters, and hour-based calculations.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://*.smartschool.be/*"],
+  "action": {
+    "default_popup": "HTML/popup.html",
+    "default_icon": { "128": "Assets/icon.png" }
+  },
+  "background": {
+    "service_worker": "JS/background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["*://smartschool.be/*", "*://*.smartschool.be/*"],
+      "js": ["JS/translations.js", "JS/content.js", "JS/tetris.js", "JS/snake.js", "JS/grade2048.js", "JS/gradesweeper.js", "JS/gradememory.js", "JS/gradeshooter.js", "JS/game-menu.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "Assets/icon.png",
+        "HTML/grades.html",
+        "JS/grades.js",
+        "CSS/grades.css",
+        "CSS/smartschool-theme.css"
+      ],
+      "matches": ["*://smartschool.be/*", "*://*.smartschool.be/*"]
+    }
+    
+  ]
+}

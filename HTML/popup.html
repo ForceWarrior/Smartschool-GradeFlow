@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GradeFlow</title>
+  <link rel="stylesheet" href="../CSS/popup.css">
+</head>
+<body>
+  <div id="popup-window">
+    <div id="header">
+      <img src="../Assets/icon.png" width="20" height="20" alt="GradeFlow">
+      <span id="title">GradeFlow</span>
+      <span id="version"></span>
+      <div id="header-actions">
+        <button id="theme-toggle" title="Toggle theme" aria-label="Toggle theme"></button>
+      </div>
+    </div>
+
+    <div id="status" class="inactive" data-i18n="popup_loading">Laden...</div>
+
+    <div id="body-scroll">
+
+      <div class="section-header">
+        <span class="section-label" data-i18n="popup_personalization">Aangepast</span>
+      </div>
+
+      <!-- Name changer -->
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name" data-i18n="popup_name_changer">Naam wijzigen</span>
+          <span class="setting-desc" data-i18n="popup_name_desc">Pas je weergavenaam aan</span>
+        </div>
+        <label class="gf-toggle" aria-label="Naam wijzigen aan/uit">
+          <input type="checkbox" id="name-changer-toggle">
+          <span class="gf-toggle-track"></span>
+        </label>
+      </div>
+      <div id="name-section" class="setting-sub hidden">
+        <input type="text" id="custom-name" class="gf-input" data-i18n-placeholder="popup_name_placeholder" placeholder="Jouw weergavenaam..." maxlength="64" autocomplete="off" spellcheck="false">
+      </div>
+
+      <!-- Profile picture changer -->
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name" data-i18n="popup_pfp_changer">Profielfoto wijzigen</span>
+          <span class="setting-desc" data-i18n="popup_pfp_desc">Vervang je profielfoto</span>
+        </div>
+        <label class="gf-toggle" aria-label="Profielfoto aan/uit">
+          <input type="checkbox" id="pfp-changer-toggle">
+          <span class="gf-toggle-track"></span>
+        </label>
+      </div>
+      <div id="pfp-changer-section" class="setting-sub hidden">
+        <div id="pfp-drop-zone">
+          <img id="pfpPreview" class="pfp-preview hidden" alt="">
+          <span id="pfpPlaceholder" data-i18n="popup_pfp_drop">Sleep of klik om te kiezen</span>
+          <input type="file" id="pfpFileInput" accept="image/*" hidden>
+        </div>
+        <span id="pfpFileName" class="pfp-filename" data-i18n="popup_pfp_none">Geen bestand gekozen</span>
+      </div>
+
+      <!-- Fake message counter -->
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name" data-i18n="popup_msg_counter">Nep berichtenteller</span>
+          <span class="setting-desc" data-i18n="popup_msg_desc">Toont een aangepast aantal berichten</span>
+        </div>
+        <label class="gf-toggle" aria-label="Nep berichtenteller aan/uit">
+          <input type="checkbox" id="fake-msg-counter-toggle">
+          <span class="gf-toggle-track"></span>
+        </label>
+      </div>
+      <div id="fake-msg-counter-section" class="setting-sub hidden">
+        <input type="number" id="msg-counter-value" class="gf-input" min="0" max="9999" value="0">
+      </div>
+
+      <!-- Fake notification (bell) counter -->
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name" data-i18n="popup_notif_counter">Nep meldingenteller</span>
+          <span class="setting-desc" data-i18n="popup_notif_desc">Toont een aangepast aantal meldingen op het belpictogram</span>
+        </div>
+        <label class="gf-toggle" aria-label="Nep meldingenteller aan/uit">
+          <input type="checkbox" id="fake-notif-counter-toggle">
+          <span class="gf-toggle-track"></span>
+        </label>
+      </div>
+      <div id="fake-notif-counter-section" class="setting-sub hidden">
+        <input type="number" id="notif-counter-value" class="gf-input" min="0" max="9999" value="0">
+      </div>
+
+      <!-- Fake counter -->
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name" data-i18n="popup_news_counter">Nep nieuwsteller</span>
+          <span class="setting-desc" data-i18n="popup_news_desc">Toont een aangepast aantal nieuwsberichten</span>
+        </div>
+        <label class="gf-toggle" aria-label="Nep nieuwsteller aan/uit">
+          <input type="checkbox" id="fake-news-counter-toggle">
+          <span class="gf-toggle-track"></span>
+        </label>
+      </div>
+      <div id="fake-news-counter-section" class="setting-sub hidden">
+        <input type="number" id="news-counter-value" class="gf-input" min="0" max="9999" value="0">
+      </div>
+
+      <div id="status-message" class="status-message hidden"></div>
+
+      <div id="action-btns">
+        <button id="save-settings" class="gf-btn gf-btn-primary" data-i18n="popup_save">Opslaan & toepassen</button>
+        <button id="reset-settings" class="gf-btn gf-btn-danger" data-i18n="popup_reset">Reset</button>
+      </div>
+
+    </div>
+
+    <!-- Confirm modal -->
+    <div id="confirm-modal" class="gf-modal hidden">
+      <div class="gf-modal-box">
+        <p id="confirm-message"></p>
+        <div class="gf-modal-btns">
+          <button id="confirm-cancel" class="gf-btn gf-btn-secondary" data-i18n="popup_cancel">Annuleren</button>
+          <button id="confirm-confirm" class="gf-btn gf-btn-danger" data-i18n="popup_confirm">Bevestigen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="../JS/translations.js"></script>
+  <script src="../JS/popup.js"></script>
+</body>
+</html>
