@@ -74,4 +74,4 @@ Available on the [Chrome Web Store](https://chromewebstore.google.com).
 
 ## License
 
-All rights reserved.
+Source available. You can use, modify, and share the code, but you can't publish it on any browser extension store. See [LICENSE](LICENSE) for details.
