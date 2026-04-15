@@ -681,8 +681,8 @@ function CloseSettings() {
 }
 
 // Help modal
-const GF_GITHUB_URL = 'https://github.com/USER/gradeflow';
-const GF_CWS_URL    = 'https://chromewebstore.google.com/detail/gradeflow/EXTENSION_ID';
+const GF_GITHUB_URL = 'https://github.com/ForceWarrior/Smartschool-GradeFlow';
+const GF_CWS_URL    = 'https://chromewebstore.google.com/detail/gradeflow/mhcppcdlhnopfnkicmdmjakibpkbilkm';
 
 function OpenHelp() {
   const overlay = document.getElementById('gf-help-overlay');
