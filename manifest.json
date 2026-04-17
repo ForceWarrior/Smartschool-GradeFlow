@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GradeFlow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Supercharge SmartSchool: see all your grades at a glance with weighted averages, period filters, and hour-based calculations.",
   "permissions": ["storage", "tabs"],
   "host_permissions": ["https://*.smartschool.be/*"],

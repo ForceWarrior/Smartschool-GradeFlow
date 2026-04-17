@@ -897,7 +897,7 @@ document.addEventListener('click', e => {
   const rect = host.getBoundingClientRect();
   if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) return;
   if (e.target.closest('#gradeflow-tab-wrapper, #gradeflow-tab')) return;
-  if (e.target.closest('header, nav, [class*="topbar"], [class*="top-bar"], [role="banner"], [class*="topnav"], [class*="TopBar"]')) return;
+  if (e.target.closest('header, nav, [class*="topbar"], [class*="top-bar"], [role="banner"], [class*="topnav"], [class*="TopBar"], [class*="sidebar"], [role="toolbar"]')) return;
   const GAME_IDS = ['gf-tetris','gf-snake','gf-2048','gf-sweep','gf-memory','gf-shooter','gf-arcade'];
   if (GAME_IDS.some(id => document.getElementById(id)?.contains(e.target))) return;
   const activeGame = GAME_IDS.slice(0,-1).some(id => {
@@ -990,7 +990,10 @@ function SetupButton() {
     }, true);
   }
 
-  const sample = wrapper.querySelector('[class*="optionWrapper"]')
+  const sample = wrapper.querySelector('[class*="optionWrapper"]:not(:has(button[aria-current]))')
+    || wrapper.querySelector('li[class]:not(:has(button[aria-current]))')
+    || wrapper.querySelector('li:not(:has(button[aria-current]))')
+    || wrapper.querySelector('[class*="optionWrapper"]')
     || wrapper.querySelector('li[class]')
     || wrapper.querySelector('li')
     || wrapper.querySelector('[role="listitem"]');
@@ -1021,7 +1024,10 @@ function SetupButton() {
   if (icon) icon.innerHTML = `<img src="${GetIconUrl()}" width="24" height="24" style="display:block;border-radius:4px;">`;
 
   const label = btn.querySelector('[data-type="label"]')
-    || [...btn.querySelectorAll('span')].find(s => !s.querySelector('*') && !s.closest('[data-type="icon"]'));
+    || btn.querySelector('[class*="label"]')
+    || [...btn.querySelectorAll('*')].find(el =>
+        !el.querySelector('*') && el.textContent.trim() &&
+        !el.closest('[data-type="icon"]') && !el.closest('svg'));
   if (label) label.textContent = 'GradeFlow';
 
   btn.addEventListener('click', e => {
@@ -1032,6 +1038,18 @@ function SetupButton() {
   }, true);
 
   wrapper.appendChild(clone);
+
+  if (label) {
+    const siblingLabel = wrapper.querySelector('[class*="label"]:not(#gradeflow-tab [class*="label"])');
+    if (siblingLabel) {
+      const syncHidden = () => {
+        const h = siblingLabel.getAttribute('aria-hidden');
+        if (h !== null) label.setAttribute('aria-hidden', h);
+      };
+      syncHidden();
+      new MutationObserver(syncHidden).observe(siblingLabel, { attributes: true, attributeFilter: ['aria-hidden'] });
+    }
+  }
 }
 
 function InitObserver() {
