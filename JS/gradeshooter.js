@@ -185,7 +185,7 @@
 
   /* SHOOTING */
   function Shoot() {
-    if (!GS || GameState.proj || GameState.status !== 'playing') return;
+    if (!GameState || GameState.proj || GameState.status !== 'playing') return;
     const a = GameState.aimAngle;
     const clampedA = (Math.sin(a) > -0.1)
       ? (Math.cos(a) < 0 ? -Math.PI + 0.12 : -0.12)
@@ -448,7 +448,7 @@
 
   /* AIM INPUT */
   function UpdateAim(mx, my) {
-    if (!GS || GameState.status !== 'playing') return;
+    if (!GameState || GameState.status !== 'playing') return;
     const dx = mx - GameState.cannonX, dy = my - GameState.cannonY;
     let a = Math.atan2(dy, dx);
     if (Math.sin(a) > -0.08) a = Math.cos(a) < 0 ? -(Math.PI - 0.12) : -0.12;
@@ -673,6 +673,7 @@
 
   /* OPEN / CLOSE */
   function _Esc(e) {
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
     if (e.key === 'Escape') { e.preventDefault(); CloseGradeShooter(); }
   }
 

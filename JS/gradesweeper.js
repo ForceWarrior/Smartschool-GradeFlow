@@ -331,6 +331,7 @@
   let _kh = null;
   function OnKey(e) {
     if (!document.getElementById('gf-sweep') || document.getElementById('gf-sweep').style.display === 'none') return;
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); CloseGradeSweeper(); }
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); NewGame(); }
   }

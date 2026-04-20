@@ -541,6 +541,7 @@
     if (!GS || !document.getElementById('gf-snake')) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); GS.status === 'playing' || GS.status === 'paused' ? DoPause() : CloseGradeSnake(); return; }
     if (e.key === 'p' || e.key === 'P') { DoPause(); return; }
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
     if (GS.status !== 'playing') {
       if (e.key === 'Enter' || e.key === ' ') { (GS.status === 'start' || GS.status === 'gameover') ? DoStart() : GS.status === 'paused' && DoPause(); e.preventDefault(); }
       return;

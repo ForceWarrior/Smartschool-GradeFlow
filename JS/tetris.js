@@ -508,6 +508,7 @@
       e.preventDefault(); e.stopPropagation(); return;
     }
 
+    if (['ArrowLeft','ArrowRight','ArrowDown','ArrowUp'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
     if (GT.status !== 'playing') {
       if (e.key === 'Enter' || e.key === ' ') {
         if (GT.status === 'start' || GT.status === 'gameover') DoStart();

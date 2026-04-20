@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.2] - 2026-04-20
+
+### Fixed
+- Grade Shooter (BubbleBlaster) now actually works — mouse/trackpad aiming and shooting were silently broken.
+- Arrow keys no longer cause a URL flicker on the GradeFlow panel page or inside any minigame or the game menu.
+- Fixed some input lag in minigames caused by unhandled key events leaking to the page.
+
+### Changed
+- Info dialog now shows Shift+F8 as an alternative shortcut for laptop users.
+
 ## [1.0.1] - 2026-04-17
 
 ### Fixed

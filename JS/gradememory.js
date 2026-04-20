@@ -255,6 +255,7 @@
   function OnKey(e) {
     const el = document.getElementById('gf-memory');
     if (!el || el.style.display === 'none') return;
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); CloseGradeMemory(); }
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); NewGame(); }
   }

@@ -874,6 +874,12 @@ document.addEventListener('keydown', (e) => {
     e.stopPropagation();
     _GfLaunchArcade();
   }
+  if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
+    const panelOpen = document.getElementById('gradeflow-panel-host')?.style.display !== 'none';
+    const GAME_IDS = ['gf-tetris','gf-snake','gf-2048','gf-sweep','gf-memory','gf-shooter','gf-arcade'];
+    const gameOpen = GAME_IDS.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
+    if (panelOpen || gameOpen) { e.preventDefault(); e.stopPropagation(); }
+  }
 }, true);
 
 // URL persistence

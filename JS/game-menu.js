@@ -1050,7 +1050,10 @@
 
   function _AttachKeys() {
     if (_kh) return;
-    _kh = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); CloseGameMenu(); } };
+    _kh = e => {
+      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); CloseGameMenu(); }
+    };
     document.addEventListener('keydown', _kh, true);
   }
 
