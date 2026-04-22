@@ -113,6 +113,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 if (typeof chrome.commands !== 'undefined' && chrome.commands?.onCommand) {
   chrome.commands.onCommand.addListener((cmd) => {
+    if (cmd === 'toggle-gf-chat') {
+      _gfChatForward('toggleOverlay').catch(() => {});
+      return;
+    }
     if (cmd !== 'toggle-grade-tetris') return;
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
       if (tab) chrome.tabs.sendMessage(tab.id, { type: 'toggle-grade-tetris' }, () => {
@@ -121,3 +125,83 @@ if (typeof chrome.commands !== 'undefined' && chrome.commands?.onCommand) {
     });
   });
 }
+
+const _gfChatPorts = new Set();
+let _gfChatLastState = null;
+let _gfChatOffscreenPromise = null;
+const GF_CHAT_OFFSCREEN_URL = 'HTML/chat.html';
+
+async function _gfChatEnsureOffscreen() {
+  if (_gfChatOffscreenPromise) return _gfChatOffscreenPromise;
+  _gfChatOffscreenPromise = (async () => {
+    try {
+      if (typeof chrome.runtime.getContexts === 'function') {
+        const ctxs = await chrome.runtime.getContexts({
+          contextTypes: ['OFFSCREEN_DOCUMENT'],
+          documentUrls: [chrome.runtime.getURL(GF_CHAT_OFFSCREEN_URL)],
+        });
+        if (ctxs && ctxs.length > 0) return;
+      }
+    } catch (_) {}
+    try {
+      await chrome.offscreen.createDocument({
+        url: GF_CHAT_OFFSCREEN_URL,
+        reasons: ['WEB_RTC'],
+        justification: 'Persistent peer-to-peer chat connections across SmartSchool page navigations.',
+      });
+    } catch (e) {
+      const m = String(e?.message || e);
+      if (!/already|exists/i.test(m)) throw e;
+    }
+  })().finally(() => { _gfChatOffscreenPromise = null; });
+  return _gfChatOffscreenPromise;
+}
+
+async function _gfChatForward(cmd, payload) {
+  await _gfChatEnsureOffscreen();
+  return chrome.runtime.sendMessage({ ns: 'gf-chat-cmd-direct', cmd, payload });
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'gf-chat') return;
+  _gfChatPorts.add(port);
+  port.onDisconnect.addListener(() => {
+    _gfChatPorts.delete(port);
+    void chrome.runtime.lastError;
+  });
+  if (_gfChatLastState) {
+    try { port.postMessage({ kind: 'state', state: _gfChatLastState }); } catch (_) {}
+  }
+  _gfChatForward('getState').then((r) => {
+    if (r && r.ok && r.state) {
+      _gfChatLastState = r.state;
+      try { port.postMessage({ kind: 'state', state: r.state }); } catch (_) {}
+    }
+  }).catch(() => {});
+});
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (!msg) return false;
+  if (msg.ns === 'gf-chat-cmd') {
+    (async () => {
+      try {
+        const r = await _gfChatForward(msg.cmd, msg.payload);
+        sendResponse(r);
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
+  }
+  if (msg.ns === 'gf-chat-event') {
+    if (msg.kind === 'state') {
+      _gfChatLastState = msg.state;
+      for (const p of _gfChatPorts) {
+        try { p.postMessage({ kind: 'state', state: msg.state }); } catch (_) {}
+      }
+    }
+    try { sendResponse({ ok: true }); } catch (_) {}
+    return false;
+  }
+  return false;
+});

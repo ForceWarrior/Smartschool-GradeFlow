@@ -717,10 +717,12 @@ function RenderHelp() {
         <li>${Translate('help_feature_icons')}</li>
         <li>${Translate('help_feature_personalization')}</li>
         <li>${Translate('help_feature_arcade')}</li>
+        <li>${Translate('help_feature_chat')}</li>
       </ul>
     </div>
     <div class="gf-help-section">
       <div class="gf-help-section-title">${Translate('help_shortcuts_title')}</div>
+      <div class="gf-help-shortcut">${Translate('help_shortcut_f7')}</div>
       <div class="gf-help-shortcut">${Translate('help_shortcut_f8')}</div>
       <div class="gf-help-shortcut">${Translate('help_shortcut_esc')}</div>
       <div class="gf-help-shortcut">${Translate('help_shortcut_p')}</div>
@@ -1227,6 +1229,7 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { CloseSettings(); CloseHelp(); }
   if (e.key === 'F8') { e.preventDefault(); window.parent.postMessage({ type: 'gf-f8' }, '*'); }
+  if (e.key === 'F7') { e.preventDefault(); window.parent.postMessage({ type: 'gf-chat-f7' }, '*'); }
 });
 
 // Tooltip

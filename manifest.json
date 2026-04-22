@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "GradeFlow",
-  "version": "1.0.2",
-  "description": "Supercharge SmartSchool: see all your grades at a glance with weighted averages, period filters, and hour-based calculations.",
-  "permissions": ["storage", "tabs"],
+  "version": "1.1.0",
+  "description": "Improve SmartSchool: games, chat, and more. See all your grades at a glance with weighted averages, period filters, and hour-based calculations.",
+  "permissions": ["storage", "tabs", "offscreen"],
   "host_permissions": ["https://*.smartschool.be/*"],
   "action": {
     "default_popup": "HTML/popup.html",
@@ -13,11 +13,24 @@
     "service_worker": "JS/background.js"
   },
 
+  "commands": {
+    "toggle-gf-chat": {
+      "description": "Toggle the GradeFlow chat overlay"
+    }
+  },
+
   "content_scripts": [
     {
       "matches": ["*://smartschool.be/*", "*://*.smartschool.be/*"],
-      "js": ["JS/translations.js", "JS/content.js", "JS/tetris.js", "JS/snake.js", "JS/grade2048.js", "JS/gradesweeper.js", "JS/gradememory.js", "JS/gradeshooter.js", "JS/game-menu.js"],
+      "js": ["JS/translations.js", "JS/content.js", "JS/games/tetris.js", "JS/games/snake.js", "JS/games/grade2048.js", "JS/games/gradesweeper.js", "JS/games/gradememory.js", "JS/games/gradeshooter.js", "JS/games/game-menu.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["*://smartschool.be/*", "*://*.smartschool.be/*"],
+      "js": ["JS/chat/chat.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
     }
   ],
   "web_accessible_resources": [
@@ -27,7 +40,8 @@
         "HTML/grades.html",
         "JS/grades.js",
         "CSS/grades.css",
-        "CSS/smartschool-theme.css"
+        "CSS/smartschool-theme.css",
+        "CSS/chat.css"
       ],
       "matches": ["*://smartschool.be/*", "*://*.smartschool.be/*"]
     }

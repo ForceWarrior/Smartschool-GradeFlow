@@ -54,9 +54,21 @@ A browser extension that adds a grade overview panel directly inside SmartSchool
 
 All games track your personal best and have animated previews in the menu.
 
+### Peer-to-peer chat (press F7)
+Optional opt-in overlay for chatting with friends who also use GradeFlow.
+
+- Direct browser-to-browser over WebRTC, **no server**, no account
+- Host generates an invite link per friend (room code is baked in), share each link manually (Discord, etc.); every friend who joins fills an invite slot which the host can kick
+- Rooms cap at 8 people (host + 7). Each invite slot tracks one person and lets the host kick them
+- Survives page navigations on SmartSchool (runs in an offscreen document in the background)
+- Messages are kept in memory only (max 60, wiped when the room closes or the tab is closed). GradeFlow itself never writes chat to disk, but anything another peer sends you ends up in their browser's memory too, and they can copy, screenshot, or save it just like any other message on the internet.
+- Mandatory warning on first use: your LAN/public IP is visible to every peer, there is no moderation, and any peer can pick any nickname and send anything. Only chat with people you actually know.
+- Fully translated (Dutch, English, French)
+
 ### Keyboard shortcuts
 | Key | Action |
 |-----|--------|
+| F7 | Open/close chat overlay |
 | F8 | Open/close arcade |
 | Esc | Close settings, arcade, or current game |
 | P | Pause game |
