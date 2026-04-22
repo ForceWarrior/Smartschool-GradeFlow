@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "GradeFlow",
+  "name": "SmartSchool GradeFlow",
   "version": "1.1.0",
   "description": "Improve SmartSchool: games, chat, and more. See all your grades at a glance with weighted averages, period filters, and hour-based calculations.",
   "permissions": ["storage", "tabs", "offscreen"],
