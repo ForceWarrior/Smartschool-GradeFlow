@@ -240,6 +240,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
     S.attendanceItems = NormalizeAttendanceItems(changes['gradeflow-attendance-items'].newValue);
     if (S.activeView === 'attendance') RenderMainContent(false);
   }
+  if (area === 'local' && changes['gradeflow-attendance-debug']) {
+    S.attendanceDebug = NormalizeAttendanceDebug(changes['gradeflow-attendance-debug'].newValue);
+    if (S.activeView === 'attendance') RenderMainContent(false);
+  }
   if (area === 'local' && changes['gf-profile-picture']) {
     S.profilePicture = changes['gf-profile-picture'].newValue || '';
     if (S.activeView === 'comparison') RenderMainContent(false);
@@ -262,12 +266,13 @@ window.addEventListener('message', e => {
   if (e.data?.type === 'gf-grades-ready') {
     const prevJSON = S.store ? JSON.stringify(S.store) : null;
     const prevStore = S.store ? JSON.parse(JSON.stringify(S.store)) : null;
-    chrome.storage.local.get(['gradeflow-grades', 'gradeflow-planner-items', 'gradeflow-study-sessions', 'gradeflow-attendance-items', 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
+    chrome.storage.local.get(['gradeflow-grades', 'gradeflow-planner-items', 'gradeflow-study-sessions', 'gradeflow-attendance-items', 'gradeflow-attendance-debug', 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
       S.profilePicture = result?.['gf-profile-picture'] || S.profilePicture || '';
       S.detectedProfilePicture = result?.['gf-detected-profile-picture'] || S.detectedProfilePicture || '';
       S.plannerItems = NormalizePlannerItems(result?.['gradeflow-planner-items']);
       S.studySessions = NormalizeStudySessions(result?.['gradeflow-study-sessions']);
       S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
+      S.attendanceDebug = NormalizeAttendanceDebug(result?.['gradeflow-attendance-debug']);
       const raw = result?.['gradeflow-grades'];
       if (!raw || (prevJSON && prevJSON === raw)) return;
       const wasAlreadyLoaded = !!S.store;
@@ -678,6 +683,25 @@ function NormalizeAttendanceItems(raw) {
     }).slice(0, 180);
   } catch (_) { return []; }
 }
+
+function NormalizeAttendanceDebug(raw) {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      at: String(parsed.at || ''),
+      total: Number(parsed.total || 0),
+      attempts: Array.isArray(parsed.attempts) ? parsed.attempts.slice(0, 18).map(item => ({
+        mode: String(item?.mode || ''),
+        url: String(item?.url || ''),
+        status: String(item?.status || ''),
+        count: Number(item?.count || 0),
+        note: String(item?.note || ''),
+      })) : [],
+    };
+  } catch (_) { return null; }
+}
+
 function LoadPlannerItems(done) {
   try {
     chrome.storage.local.get('gradeflow-planner-items', result => {
@@ -691,8 +715,9 @@ function LoadPlannerItems(done) {
 }
 function LoadAttendanceItems(done) {
   try {
-    chrome.storage.local.get('gradeflow-attendance-items', result => {
+    chrome.storage.local.get(['gradeflow-attendance-items', 'gradeflow-attendance-debug'], result => {
       S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
+      S.attendanceDebug = NormalizeAttendanceDebug(result?.['gradeflow-attendance-debug']);
       if (done) done(S.attendanceItems);
     });
   } catch (_) {
@@ -1031,6 +1056,7 @@ const S = {
   detectedProfilePicture: '',
   plannerItems: [],
   attendanceItems: [],
+  attendanceDebug: null,
   studySessions: [],
   studyMonth: CurrentMonthValue(),
   hoursOpen: false,
@@ -1874,6 +1900,7 @@ function RenderAttendanceView() {
   const lateCount = items.filter(item => AttendanceType(item) === 'late').length;
   const absentCount = items.filter(item => AttendanceType(item) === 'absent').length;
   const otherCount = Math.max(0, items.length - lateCount - absentCount);
+  const debugRows = !items.length && S.attendanceDebug?.attempts?.length ? `<div class="gf-att-debug">${S.attendanceDebug.attempts.map(item => `<div>${Esc(item.mode)} ${Esc(item.status)} (${Number(item.count) || 0}) - ${Esc(item.url)}${item.note ? ` · ${Esc(item.note)}` : ''}</div>`).join('')}</div>` : '';
   const rows = items.length ? items.map(item => {
     const type = AttendanceType(item);
     const label = type === 'late' ? Translate('attendance_late') : type === 'absent' ? Translate('attendance_absent') : Translate('attendance_other');
@@ -1882,7 +1909,7 @@ function RenderAttendanceView() {
       <div class="gf-att-main"><div class="gf-att-title">${Esc(item.title || label)}</div><div class="gf-att-meta">${Esc(item.date || Translate('planner_no_date'))}${item.moment ? ` · ${Esc(item.moment)}` : ''}${item.detail ? ` · ${Esc(item.detail)}` : ''}</div></div>
       <div class="gf-att-type">${Esc(label)}</div>
     </div>`;
-  }).join('') : `<div id="gf-state"><span>${Translate('attendance_empty')}</span></div>`;
+  }).join('') : `<div id="gf-state"><span>${Translate('attendance_empty')}</span></div>${debugRows}`;
   wrap.innerHTML = `<div class="gf-tool-view">
     <div class="gf-tool-head"><div><div class="gf-tool-title">${Translate('attendance_title')}</div><div class="gf-tool-sub">${Translate('attendance_desc')}</div></div><div class="gf-tool-actions"><button class="gf-tool-btn" id="gf-attendance-refresh">${Translate('attendance_refresh')}</button></div></div>
     <div class="gf-att-summary">
