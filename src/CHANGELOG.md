@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.2.0] - 2026-05-01
+
+### Added
+- New dashboard tabs for overview, trends, planner, class comparison, attendance, decision help, and export.
+- Study/work planner with local reminders, plus SmartSchool planner and attendance loading when SmartSchool exposes the data.
+- Class comparison through SSCOMP codes with profile pictures, privacy names, duplicate updates, and a faster comparison table.
+- What-if scores, editable coefficients, excluded grades, subject risk thresholds, trend graphs, CSV export, and print-friendly PDF export.
+- Native SmartSchool homepage summary with average, weakest subject, subject count, risk subjects, and a shortcut to GradeFlow.
+- New arcade games and upgrades: GradeBreakout, GradePong, GradeFlappy, GradeRunner, GradeTower, improved pause behavior, delete controls, animated previews, and a scrollable game menu.
+- Smartschool++ compatibility across the page theme, homepage summary, GradeFlow panel, popup, chat, games, and update modal. When Smartschool++ is active, its theme, glass mode, and layout are treated as the visual source of truth.
+- Release update modal for version 1.2.0 with translated release notes.
+
+### Changed
+- Improved laptop support, including Shift+F8 as an arcade shortcut and better layouts on narrower screens.
+- Popup theme handling now follows the active Smartschool++ theme on the current SmartSchool tab and disables GradeFlow's local theme toggle while Smartschool++ controls the page.
+- GradeFlow dark/light mode has better anti-flash behavior and no longer fights Smartschool++ themes.
+- The homepage summary now stays in Smartschool++'s main news area instead of being moved into a side widget.
+- Chat, game overlays, and the update modal now inherit Smartschool++ colors and glass styling when available.
+
+### Fixed
+- Reduced lag and layout shifts across the panel, game menu, homepage summary, and overlays.
+- Improved toast feedback, score display clarity, and spacing throughout the extension.
+- Fixed several Smartschool++ timing issues where GradeFlow overlays could render before Smartschool++ theme variables were ready.
+
 ## [1.1.0] - 2026-04-22
 
 ### Added

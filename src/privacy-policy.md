@@ -10,9 +10,9 @@ GradeFlow is a Chrome extension built for SmartSchool users. This policy explain
 
 When you open the GradeFlow panel on a SmartSchool page where you are already logged in, the extension calls SmartSchool's own internal API (`/results/api/v1/evaluations`) to retrieve your grade data. This is the same data SmartSchool displays to you natively.
 
-The extension also reads SmartSchool page styles to extract subject icon classes so it can show the same icons inside the panel.
+The extension also reads SmartSchool page styles to extract subject icon classes and visual theme/layout variables, including Smartschool++ variables when that extension is installed, so GradeFlow can show matching icons and follow the active page theme.
 
-No other data is accessed.
+No Smartschool++ account data, settings content, or external profile data is collected. No other data is accessed.
 
 ---
 
@@ -34,6 +34,8 @@ All data is stored locally on your device only:
 | Custom language strings | `localStorage` | User-defined translations |
 
 `chrome.storage.local` and `chrome.storage.sync` are private to the extension and not accessible to websites. `localStorage` entries are scoped to the SmartSchool domain.
+
+Smartschool++ compatibility is visual only. GradeFlow reads CSS variables from the current page at runtime and does not store Smartschool++ theme data.
 
 ---
 

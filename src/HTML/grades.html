@@ -98,6 +98,8 @@
 
   <!-- Main -->
   <div id="gf-main">
+    <div id="gf-view-tabs" role="tablist" aria-label="GradeFlow views"></div>
+
     <div id="gf-topbar">
       <div>
         <div id="gf-topbar-title">Resultaten</div>
@@ -106,6 +108,8 @@
     </div>
 
     <div id="gf-formula-note"></div>
+
+    <div id="gf-insights-panel" hidden></div>
 
     <div id="gf-table-outer">
       <button id="gf-scroll-recent-btn" aria-label="Ga naar recente resultaten">-> recente</button>
@@ -156,6 +160,7 @@
   </div>
 
   <div id="gf-tooltip"></div>
+  <div id="gf-toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="../JS/interact.min.js"></script>
   <script src="../JS/translations.js"></script>
   <script src="../JS/grades.js"></script>

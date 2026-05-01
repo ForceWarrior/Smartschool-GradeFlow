@@ -31,7 +31,7 @@
   const PROJ_SPD    = 10;
   const MATCH_MIN   = 3;
   const CEIL_ROWS   = 7;
-  const DESCEND_EVERY = 12;
+  const DESCEND_EVERY = 18;
 
   function CanvasWidth()  { return R + COLS * DIAM + R; }
   function CanvasHeight()  { return ROWS * ROW_H + R * 3 + 52; }  // +52 for cannon area
@@ -207,8 +207,12 @@
   }
 
   function DescendCeiling() {
-    GameState.grid.unshift(new Array(COLS).fill(null));
-    for (let c = 0; c < GetColsForRow(0); c++) GameState.grid[0][c] = { band: RandomBand() };
+    // Insert 2 rows to preserve even/odd parity of all existing rows
+    const row0 = new Array(COLS).fill(null);
+    const row1 = new Array(COLS).fill(null);
+    for (let c = 0; c < GetColsForRow(0); c++) row0[c] = { band: RandomBand() };
+    for (let c = 0; c < GetColsForRow(1); c++) row1[c] = { band: RandomBand() };
+    GameState.grid.unshift(row0, row1);
     while (GameState.grid.length > ROWS + 4) GameState.grid.pop();
   }
 
@@ -291,7 +295,11 @@
   }
   function StopLoop() { if (_raf) { cancelAnimationFrame(_raf); _raf = null; } }
 
-  function IsDark() { return document.documentElement.getAttribute('data-gf-theme') === 'dark'; }
+  function IsDark() {
+    return typeof window._GfIsEffectiveThemeDark === 'function'
+      ? window._GfIsEffectiveThemeDark()
+      : document.documentElement.getAttribute('data-gf-theme') === 'dark';
+  }
 
   function Draw() {
     const cv = document.getElementById('gf-sh-canvas');
@@ -480,9 +488,12 @@
   }
 
   function SyncTheme(host) {
-    const d = IsDark();
-    host.dataset.theme = d ? 'dark' : 'light';
-    host.style.filter  = d ? 'invert(1) hue-rotate(180deg)' : '';
+    if (typeof window._GfApplyThemeToHost === 'function') window._GfApplyThemeToHost(host);
+    else {
+      const isDark = IsDark();
+      host.dataset.theme = isDark ? 'dark' : 'light';
+      host.style.filter  = isDark ? 'invert(1) hue-rotate(180deg)' : '';
+    }
   }
 
   /* MODE SELECT */
@@ -523,7 +534,7 @@
     document.body.appendChild(host);
 
     const tobs = new MutationObserver(() => SyncTheme(host));
-    tobs.observe(document.documentElement, { attributes:true, attributeFilter:['data-gf-theme'] });
+    tobs.observe(document.documentElement, { attributes:true, attributeFilter:['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'style'] });
     host._tobs = tobs;
 
     host.querySelectorAll('.gf-sh-mode-card').forEach(btn =>
@@ -618,7 +629,7 @@
     document.body.appendChild(host);
 
     const tobs = new MutationObserver(() => SyncTheme(host));
-    tobs.observe(document.documentElement, { attributes:true, attributeFilter:['data-gf-theme'] });
+    tobs.observe(document.documentElement, { attributes:true, attributeFilter:['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'style'] });
     host._tobs = tobs;
 
     const cv = id('gf-sh-canvas');

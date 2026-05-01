@@ -20,51 +20,86 @@ if (window.self !== window.top) {
 
 ;(function _GfEarlyPersonalization() {
   try {
-    if (localStorage.getItem('gf-pers-active') === '1') {
+    if (localStorage.getItem('gf-pers-active') !== '1') return;
+
+    const pfpCache = localStorage.getItem('gf-pfp-cache');
+    const nameCache = localStorage.getItem('gf-name-cache');
+    const realName = localStorage.getItem('gf-realname-cache');
+    const hasPfp = !!pfpCache;
+    const hasName = !!nameCache;
+    if (!hasPfp && !hasName) return;
+
+    // Inject CSS BEFORE any content paints
+    const rules = [];
+
+    if (hasPfp) {
+      // Hide userpicture imgs by default, then content:url() shows our cached PFP.
+      // This prevents any frame of the original avatar from being painted.
+      rules.push(`
+        img[src*="userpicture"], img[data-gf-orig-src] {
+          content: url(${pfpCache}) !important;
+        }
+      `);
+    }
+
+    if (hasName) {
+      // Only hide the actual SmartSchool top bar, NOT broad selectors like
+      // [class*="Header"] which could match content containers.
+      rules.push(`
+        .smsc-top-bar, .smsc-top, #smsc-top, .smsc-header {
+          visibility: hidden !important;
+        }
+      `);
+    }
+
+    if (rules.length) {
       const style = document.createElement('style');
       style.id = 'gf-pers-hide';
-      style.textContent = `
-        header, nav, [class*="topbar"], [class*="top-bar"], [role="banner"],
-        .smsc-top-bar, .smsc-top, #smsc-top, .smsc-header,
-        [class*="TopBar"], [class*="Header"] {
-          visibility: hidden !important;
-        }
-        img[src*="userpicture"] {
-          visibility: hidden !important;
-        }
-      `;
+      style.textContent = rules.join('\n');
       (document.head || document.documentElement).appendChild(style);
       setTimeout(() => document.getElementById('gf-pers-hide')?.remove(), 4000);
     }
-  } catch (_) {}
-  try {
-    chrome.storage.sync.get('gf-personalization', res => {
-      const s = res['gf-personalization'];
-      if (!s) return;
-      const needsHide = (s.nameChanger && s.customName) || s.pfpChanger;
-      if (!needsHide) return;
-      if (!document.getElementById('gf-pers-hide')) {
-        const style = document.createElement('style');
-        style.id = 'gf-pers-hide';
-        style.textContent = `
-          header, nav, [class*="topbar"], [class*="top-bar"], [role="banner"],
-          .smsc-top-bar, .smsc-top, #smsc-top, .smsc-header,
-          [class*="TopBar"], [class*="Header"] {
-            visibility: hidden !important;
-          }
-          img[src*="userpicture"] {
-            visibility: hidden !important;
-          }
-        `;
-        (document.head || document.documentElement).appendChild(style);
-        setTimeout(() => document.getElementById('gf-pers-hide')?.remove(), 4000);
-      }
-    });
+
+    // Intercept img.src assignment so userpicture URLs are swapped to our
+    // cached PFP BEFORE the browser fetches the original. Zero network trip,
+    // zero flicker.
+    if (hasPfp) {
+      try {
+        const proto = HTMLImageElement.prototype;
+        const desc = Object.getOwnPropertyDescriptor(proto, 'src');
+        if (desc && desc.configurable && desc.set) {
+          const origSet = desc.set;
+          const origGet = desc.get;
+          Object.defineProperty(proto, 'src', {
+            configurable: true,
+            enumerable: desc.enumerable,
+            get() { return origGet.call(this); },
+            set(v) {
+              try {
+                if (typeof v === 'string' && /userpicture\d*\.smartschool\.be/i.test(v)) {
+                  if (!this.dataset.gfOrigSrc) this.dataset.gfOrigSrc = v;
+                  origSet.call(this, pfpCache);
+                  return;
+                }
+              } catch (_) {}
+              origSet.call(this, v);
+            },
+          });
+        }
+      } catch (_) {}
+    }
+
+    // Same trick for the real name: stash the cached real name so the
+    // personalization code can find/replace it instantly when DOM is ready.
+    if (hasName && realName) {
+      window._gfDetectedRealName = realName;
+    }
   } catch (_) {}
 })();
 
 // Dark mode flash prevention
 ;(function GfAntiFlashDarkMode() {
+  if (localStorage.getItem('gf-smpp-active-cache') === '1') return;
   if (localStorage.getItem('gf-theme-cache') !== 'dark') return;
   document.documentElement.setAttribute('data-gf-theme', 'dark');
   const s = document.createElement('style');
@@ -92,12 +127,217 @@ if (window.self !== window.top) {
 
 // Theme state
 let _gfCurrentTheme = 'light';
+let _gfEffectiveTheme = 'light';
+let _gfExternalThemeVars = null;
+let _gfExternalThemeSignature = '';
 let _gfSheetRevealed = false;
 let _gfNavObserver = null;
+let _gfThemeApplyTimer = 0;
+let _gfExternalThemeObserver = null;
+let _gfExternalThemePoll = 0;
+let _gfHomeSummaryLayoutObserver = null;
+let _gfHomeSummaryLayoutTimer = 0;
 
 const GF_THEME_SHEETS = [
   { id: 'gf-theme-css', href: 'CSS/smartschool-theme.css' },
 ];
+
+function _GfNormalizeTheme(value) {
+  return value === 'dark' || value === 'smpp' ? value : 'light';
+}
+
+function _GfCssVar(name) {
+  try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (_) { return ''; }
+}
+
+function _GfParseColor(value) {
+  const raw = String(value || '').trim();
+  const hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const v = hex[1].length === 3 ? hex[1].split('').map(ch => ch + ch).join('') : hex[1];
+    return { r: parseInt(v.slice(0, 2), 16), g: parseInt(v.slice(2, 4), 16), b: parseInt(v.slice(4, 6), 16) };
+  }
+  const rgb = raw.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (rgb) return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
+  return null;
+}
+
+function _GfIsDarkColor(value) {
+  const color = _GfParseColor(value);
+  if (!color) return false;
+  return (color.r * 299 + color.g * 587 + color.b * 114) / 1000 < 130;
+}
+
+function _GfReadSmartschoolPlusPlusTheme() {
+  const accent = _GfCssVar('--color-accent');
+  const text = _GfCssVar('--color-text');
+  const bg = _GfCssVar('--color-base00');
+  if (!accent || !text || !bg) return null;
+  const surface = _GfCssVar('--color-base01') || bg;
+  const surface2 = _GfCssVar('--color-base02') || surface;
+  const surface3 = _GfCssVar('--color-base03') || surface2;
+  return {
+    source: 'smpp',
+    accent,
+    text,
+    muted: _GfCssVar('--color-base03') || text,
+    bg,
+    surface,
+    surface2,
+    surface3,
+    border: surface3,
+    overlay: _GfCssVar('--darken-background') || 'rgba(0,0,0,.2)',
+    isDark: _GfIsDarkColor(bg),
+    glass: document.documentElement.classList.contains('glass') || document.body?.classList.contains('glass'),
+  };
+}
+
+try { window._GfReadSmartschoolPlusPlusTheme = _GfReadSmartschoolPlusPlusTheme; } catch (_) {}
+
+function _GfExternalThemeSignature(vars) {
+  if (!vars) return '';
+  return [vars.accent, vars.text, vars.bg, vars.surface, vars.surface2, vars.surface3, vars.border, vars.overlay, vars.isDark ? 'dark' : 'light', vars.glass ? 'glass' : 'flat'].join('|');
+}
+
+function _GfSetExternalThemeVars(vars) {
+  const root = document.documentElement;
+  root.setAttribute('data-gf-theme-source', 'smpp');
+  root.setAttribute('data-gf-external-dark', vars.isDark ? '1' : '0');
+  root.setAttribute('data-gf-external-glass', vars.glass ? '1' : '0');
+  root.style.setProperty('--gf-ext-accent', vars.accent);
+  root.style.setProperty('--gf-ext-text', vars.text);
+  root.style.setProperty('--gf-ext-muted', vars.muted);
+  root.style.setProperty('--gf-ext-bg', vars.bg);
+  root.style.setProperty('--gf-ext-surface', vars.surface);
+  root.style.setProperty('--gf-ext-surface-2', vars.surface2);
+  root.style.setProperty('--gf-ext-surface-3', vars.surface3);
+  root.style.setProperty('--gf-ext-border', vars.border);
+  root.style.setProperty('--gf-ext-overlay', vars.overlay);
+  root.style.setProperty('--gf-ext-shadow-soft', vars.isDark ? '0 8px 32px rgba(0,0,0,.45),0 1px 4px rgba(0,0,0,.28)' : '0 8px 32px rgba(0,0,0,.14),0 1px 4px rgba(0,0,0,.08)');
+  root.style.setProperty('--gf-ext-shadow-strong', vars.isDark ? '0 12px 48px rgba(0,0,0,.62),0 36px 90px rgba(0,0,0,.7)' : '0 10px 42px rgba(0,0,0,.18),0 1px 5px rgba(0,0,0,.1)');
+  root.style.setProperty('--gf-ext-cell', vars.isDark ? vars.surface3 : vars.surface2);
+}
+
+function _GfClearExternalThemeVars() {
+  const root = document.documentElement;
+  root.removeAttribute('data-gf-theme-source');
+  root.removeAttribute('data-gf-external-dark');
+  root.removeAttribute('data-gf-external-glass');
+  ['--gf-ext-accent', '--gf-ext-text', '--gf-ext-muted', '--gf-ext-bg', '--gf-ext-surface', '--gf-ext-surface-2', '--gf-ext-surface-3', '--gf-ext-border', '--gf-ext-overlay', '--gf-ext-shadow-soft', '--gf-ext-shadow-strong', '--gf-ext-cell'].forEach(name => root.style.removeProperty(name));
+}
+
+const GF_HOST_THEME_BASE_VARS = {
+  '--bg': '--gf-ext-surface', '--surf': '--gf-ext-surface-2', '--surf2': '--gf-ext-bg', '--brd': '--gf-ext-border',
+  '--txt': '--gf-ext-text', '--txt2': '--gf-ext-muted', '--txt3': '--gf-ext-muted', '--sh1': '--gf-ext-shadow-soft', '--sh2': '--gf-ext-shadow-strong',
+  '--gf-game-accent': '--gf-ext-accent', '--sh-bg': '--gf-ext-bg', '--sh-surf': '--gf-ext-surface', '--sh-surf2': '--gf-ext-surface-2',
+  '--sh-brd': '--gf-ext-border', '--sh-txt': '--gf-ext-text', '--sh-txt2': '--gf-ext-muted', '--sh-txt3': '--gf-ext-muted', '--sh-acc': '--gf-ext-accent',
+};
+const GF_HOST_THEME_PREFIXES = ['gs', 'g2', 'gm', 'sw', 'bo', 'po', 'fl', 'rn', 'tw'];
+const GF_HOST_THEME_PARTS = {
+  modal: '--gf-ext-surface', hdr: '--gf-ext-surface-2', hud: '--gf-ext-surface-2', bar: '--gf-ext-surface-2', body: '--gf-ext-bg',
+  scr: '--gf-ext-overlay', brd: '--gf-ext-accent', brd2: '--gf-ext-border', 'btn-brd': '--gf-ext-border', btn: '--gf-ext-surface-2',
+  txt: '--gf-ext-text', txt2: '--gf-ext-muted', txt3: '--gf-ext-muted', kbd: '--gf-ext-surface-2', 'kbd-brd': '--gf-ext-border',
+  scroll: '--gf-ext-border', sh: '--gf-ext-shadow-strong', sbox: '--gf-ext-surface-2', cell: '--gf-ext-cell', ovr: '--gf-ext-overlay',
+  back: '--gf-ext-surface-3', 'back-shine': '--gf-ext-overlay', 'back-dot': '--gf-ext-border', 'cell-hidden': '--gf-ext-surface-3',
+  'cell-revealed': '--gf-ext-surface-2', 'cell-hover': '--gf-ext-border', 'lcd-bg': '--gf-ext-surface-2',
+};
+const GF_HOST_THEME_CUSTOM_PROPS = [
+  ...Object.keys(GF_HOST_THEME_BASE_VARS),
+  ...GF_HOST_THEME_PREFIXES.flatMap(prefix => Object.keys(GF_HOST_THEME_PARTS).map(part => `--${prefix}-${part}`)),
+];
+
+function _GfThemeState() {
+  const root = document.documentElement;
+  const source = root.getAttribute('data-gf-theme-source') === 'smpp' ? 'smpp' : 'gradeflow';
+  const isDark = source === 'smpp' ? root.getAttribute('data-gf-external-dark') === '1' : root.getAttribute('data-gf-theme') === 'dark';
+  return { source, isDark };
+}
+
+function _GfApplyThemeToHost(host) {
+  if (!host) return;
+  const themeState = _GfThemeState();
+  host.dataset.theme = themeState.isDark ? 'dark' : 'light';
+  host.dataset.themeSource = themeState.source;
+  host.classList.toggle('is-smpp', themeState.source === 'smpp');
+  host.style.filter = themeState.isDark && themeState.source !== 'smpp' ? 'invert(1) hue-rotate(180deg)' : '';
+  if (themeState.source === 'smpp') {
+    for (const [propertyName, sourceName] of Object.entries(GF_HOST_THEME_BASE_VARS)) host.style.setProperty(propertyName, `var(${sourceName})`);
+    for (const prefix of GF_HOST_THEME_PREFIXES) {
+      for (const [partName, sourceName] of Object.entries(GF_HOST_THEME_PARTS)) host.style.setProperty(`--${prefix}-${partName}`, `var(${sourceName})`);
+    }
+  } else {
+    GF_HOST_THEME_CUSTOM_PROPS.forEach(propertyName => host.style.removeProperty(propertyName));
+  }
+}
+
+function _GfRefreshThemedHosts() {
+  document.querySelectorAll('#gf-arcade,#gf-tetris,#gf-snake,#gf-2048,#gf-sweep,#gf-memory,#gf-shooter,#gf-bo,#gf-po,#gf-fl,#gf-rn,#gf-tw')
+    .forEach(host => _GfApplyThemeToHost(host));
+}
+
+try {
+  window._GfApplyThemeToHost = _GfApplyThemeToHost;
+  window._GfIsEffectiveThemeDark = () => _GfThemeState().isDark;
+} catch (_) {}
+
+function _GfPostThemeToPanel() {
+  document.querySelector('#gradeflow-panel-host iframe')
+    ?.contentWindow?.postMessage({ type: 'gf-theme', theme: _gfEffectiveTheme, vars: _gfExternalThemeVars }, '*');
+}
+
+function _GfUseExternalTheme(vars) {
+  _gfExternalThemeVars = vars;
+  _gfExternalThemeSignature = _GfExternalThemeSignature(vars);
+  _gfEffectiveTheme = 'smpp';
+  localStorage.setItem('gf-smpp-active-cache', '1');
+  document.documentElement.removeAttribute('data-gf-theme');
+  document.getElementById('gf-dark-flash-shield')?.remove();
+  GF_THEME_SHEETS.forEach(({ id }) => document.getElementById(id)?.remove());
+  _GfSetExternalThemeVars(vars);
+  if (document.body) {
+    document.body.style.opacity = '';
+    document.body.style.transition = '';
+  }
+  _GfStopNavWatcher();
+  _gfSheetRevealed = false;
+  _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
+  _GfRefreshThemedHosts();
+  _GfPostThemeToPanel();
+}
+
+function _GfSchedulePageThemeApply(delay = 80) {
+  clearTimeout(_gfThemeApplyTimer);
+  _gfThemeApplyTimer = setTimeout(() => ApplyPageTheme(_gfCurrentTheme), delay);
+}
+
+function _GfSyncSmartschoolPlusPlusTheme(force = false) {
+  const vars = _GfReadSmartschoolPlusPlusTheme();
+  const signature = _GfExternalThemeSignature(vars);
+  if (vars) {
+    if (force || signature !== _gfExternalThemeSignature || _gfEffectiveTheme !== 'smpp') _GfUseExternalTheme(vars);
+    return true;
+  }
+  if (_gfEffectiveTheme === 'smpp') {
+    _gfExternalThemeVars = null;
+    _gfExternalThemeSignature = '';
+    _GfClearExternalThemeVars();
+    localStorage.removeItem('gf-smpp-active-cache');
+    _GfSchedulePageThemeApply(120);
+  }
+  return false;
+}
+
+function _GfStartSmartschoolPlusPlusWatcher() {
+  if (_gfExternalThemePoll) return;
+  const watch = () => _GfSyncSmartschoolPlusPlusTheme(false);
+  _gfExternalThemePoll = setInterval(watch, 600);
+  if (window.MutationObserver) {
+    _gfExternalThemeObserver = new MutationObserver(() => _GfSchedulePageThemeApply(120));
+    _gfExternalThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
+    if (document.body) _gfExternalThemeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  [120, 350, 900, 1800, 3200].forEach(delay => setTimeout(watch, delay));
+}
 
 function _GfEnsureThemeSheets(onDone) {
   let remaining = 0, doneCalled = false;
@@ -124,7 +364,33 @@ function _GfEnsureThemeSheets(onDone) {
 }
 
 function ApplyPageTheme(theme) {
+  theme = _GfNormalizeTheme(theme);
   localStorage.setItem('gf-theme-cache', theme);
+  const smppTheme = _GfReadSmartschoolPlusPlusTheme();
+
+  if (theme === 'smpp' || smppTheme) {
+    if (smppTheme) _GfUseExternalTheme(smppTheme);
+    else {
+      _gfExternalThemeVars = null;
+      _gfExternalThemeSignature = '';
+      _gfEffectiveTheme = 'light';
+      localStorage.setItem('gf-smpp-active-cache', '0');
+      document.documentElement.removeAttribute('data-gf-theme');
+      document.getElementById('gf-dark-flash-shield')?.remove();
+      GF_THEME_SHEETS.forEach(({ id }) => document.getElementById(id)?.remove());
+      _GfClearExternalThemeVars();
+      _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
+      _GfRefreshThemedHosts();
+      _GfPostThemeToPanel();
+    }
+    return;
+  }
+
+  _gfExternalThemeVars = null;
+  _gfExternalThemeSignature = '';
+  _gfEffectiveTheme = theme;
+  localStorage.removeItem('gf-smpp-active-cache');
+  _GfClearExternalThemeVars();
 
   if (theme === 'dark') {
     document.documentElement.setAttribute('data-gf-theme', 'dark');
@@ -141,6 +407,9 @@ function ApplyPageTheme(theme) {
     _GfStopNavWatcher();
     _gfSheetRevealed = false;
   }
+  _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
+  _GfRefreshThemedHosts();
+  _GfPostThemeToPanel();
 }
 
 function _GfRevealPage() {
@@ -155,20 +424,24 @@ function _GfRevealPage() {
 
 // Chrome storage
 chrome.storage.local.get('gradeflow-theme', ({ 'gradeflow-theme': saved }) => {
-  _gfCurrentTheme = saved === 'dark' ? 'dark' : 'light';
+  _gfCurrentTheme = _GfNormalizeTheme(saved);
   _gfSheetRevealed = false;
-  ApplyPageTheme(_gfCurrentTheme);
+  _GfStartSmartschoolPlusPlusWatcher();
+  _GfSchedulePageThemeApply(40);
+  [350, 1200, 2500].forEach(delay => setTimeout(() => _GfSyncSmartschoolPlusPlusTheme(true) || _GfSchedulePageThemeApply(40), delay));
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
 
   if (changes['gradeflow-theme']) {
-    _gfCurrentTheme = changes['gradeflow-theme'].newValue === 'dark' ? 'dark' : 'light';
+    _gfCurrentTheme = _GfNormalizeTheme(changes['gradeflow-theme'].newValue);
     _gfSheetRevealed = false;
-    ApplyPageTheme(_gfCurrentTheme);
-    document.querySelector('#gradeflow-panel-host iframe')
-      ?.contentWindow?.postMessage({ type: 'gf-theme', theme: _gfCurrentTheme }, '*');
+    _GfSchedulePageThemeApply(120);
+  }
+
+  if (changes['gradeflow-grades']) {
+    _GfRenderHomeSummaryFromRaw(changes['gradeflow-grades'].newValue);
   }
 });
 
@@ -249,6 +522,9 @@ const gradeflowCache = {
   apiSucceeded: false
 };
 
+const _GF_PLANNER_KEY = 'gradeflow-planner-items';
+const _GF_ATTENDANCE_KEY = 'gradeflow-attendance-items';
+
 function LoadManualHours() {
   try {
     const r = localStorage.getItem('gradeflow-manual-hours-v1');
@@ -312,6 +588,324 @@ function FormatShortDate(value) {
   const d = new Date(value);
   if (isNaN(d)) return String(value).split('T')[0];
   return d.toLocaleDateString('nl-BE');
+}
+
+function _GfParsePlannerDate(text) {
+  const raw = String(text || '');
+  const lower = raw.toLowerCase();
+  const now = new Date();
+  if (/\b(vandaag|today|aujourd'hui)\b/.test(lower)) return now.toISOString();
+  if (/\b(morgen|tomorrow|demain)\b/.test(lower)) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return d.toISOString();
+  }
+  const match = raw.match(/\b(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?\b/);
+  if (!match) return '';
+  let year = match[3] ? Number(match[3]) : now.getFullYear();
+  if (year < 100) year += 2000;
+  const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
+  if (!match[3] && date.getTime() < now.getTime() - 1000 * 60 * 60 * 24 * 120) date.setFullYear(date.getFullYear() + 1);
+  return isNaN(date) ? '' : date.toISOString();
+}
+
+function _GfPlannerDisplayDate(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  return isNaN(date) ? String(iso) : date.toLocaleDateString('nl-BE');
+}
+
+function _GfPlannerSubjects() {
+  const subjects = new Set();
+  const all = BuildAllPeriodData(gradeflowCache.gradesStore || {});
+  Object.keys(all || {}).forEach(subject => subjects.add(subject));
+  return [...subjects];
+}
+
+function _GfGuessPlannerSubject(text) {
+  const lower = String(text || '').toLowerCase();
+  return _GfPlannerSubjects().find(subject => lower.includes(subject.toLowerCase())) || '';
+}
+
+function _GfCleanPlannerTitle(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\b/g, '')
+    .trim()
+    .slice(0, 140);
+}
+
+function _GfExtractPlannerItemsFromDom() {
+  if (!document.body) return [];
+  const pathHint = /(planner|planning|agenda|task|tasks|taken|opdracht|calendar)/i.test(location.pathname + ' ' + location.hash);
+  const keyword = /(taak|taken|opdracht|deadline|agenda|planner|planning|toets|test|huiswerk|assignment|task|calendar|due|planned|devoir|travail)/i;
+  const candidates = [...document.querySelectorAll('a, li, tr, article, [role="listitem"], [class]')]
+    .filter(el => !el.closest('#gradeflow-panel-host, #gradeflow-tab-wrapper'))
+    .slice(0, 1200);
+  const seen = new Set();
+  const items = [];
+  for (const el of candidates) {
+    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text.length < 8 || text.length > 420) continue;
+    const meta = `${el.className || ''} ${el.id || ''} ${el.getAttribute('href') || ''}`;
+    const dueIso = _GfParsePlannerDate(text);
+    if (!dueIso && !pathHint && !keyword.test(text + ' ' + meta)) continue;
+    if (!dueIso && !keyword.test(text + ' ' + meta)) continue;
+    const title = _GfCleanPlannerTitle(text);
+    if (!title || title.length < 3) continue;
+    const href = el.closest('a')?.href || el.querySelector?.('a[href]')?.href || '';
+    const item = {
+      title,
+      subject: _GfGuessPlannerSubject(text),
+      dueDate: _GfPlannerDisplayDate(dueIso),
+      dueIso,
+      type: keyword.exec(text + ' ' + meta)?.[0] || '',
+      url: href,
+      source: location.pathname,
+    };
+    const key = [item.title, item.subject, item.dueDate].join('\u0001').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(item);
+    if (items.length >= 80) break;
+  }
+  return items.sort((a, b) => String(a.dueIso || '').localeCompare(String(b.dueIso || '')));
+}
+
+function _GfStorePlannerItems(items) {
+  chrome.storage.local.set({ [_GF_PLANNER_KEY]: JSON.stringify(items || []) }, () => {
+    _GfGetPanelIframe()?.contentWindow?.postMessage({ type: 'gf-planner-ready' }, '*');
+  });
+}
+
+function _GfRefreshPlannerItems() {
+  const items = _GfExtractPlannerItemsFromDom();
+  if (items.length) _GfStorePlannerItems(items);
+  return items;
+}
+
+function _GfAttendanceDateFromText(text) {
+  const raw = String(text || '');
+  const numeric = raw.match(/\b(?:ma|di|wo|do|vr|za|zo)?\s*(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?\b/i);
+  if (numeric) {
+    let year = numeric[3] ? Number(numeric[3]) : new Date().getFullYear();
+    if (year < 100) year += 2000;
+    return { text: numeric[0], value: `${numeric[1]}/${numeric[2]}/${year}`, day: Number(numeric[1]), month: Number(numeric[2]), year };
+  }
+  const monthMap = {
+    jan: 1, januari: 1, feb: 2, februari: 2, maa: 3, maart: 3, mrt: 3, apr: 4, april: 4,
+    mei: 5, jun: 6, juni: 6, jul: 7, juli: 7, aug: 8, augustus: 8, sep: 9, sept: 9, september: 9,
+    okt: 10, oktober: 10, nov: 11, november: 11, dec: 12, december: 12,
+  };
+  const word = raw.match(/\b(?:ma|di|wo|do|vr|za|zo)?\s*(\d{1,2})\s+(jan(?:uari)?|feb(?:ruari)?|maa(?:rt)?|mrt|apr(?:il)?|mei|jun(?:i)?|jul(?:i)?|aug(?:ustus)?|sep(?:t|tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{4})\b/i);
+  if (!word) return { text: '', value: '' };
+  const month = monthMap[word[2].toLowerCase()];
+  return month ? { text: word[0], value: `${word[1]}/${month}/${word[3]}`, day: Number(word[1]), month, year: Number(word[3]) } : { text: '', value: '' };
+}
+
+function _GfAttendanceDateIsRelevant(foundDate) {
+  const day = Number(foundDate?.day), month = Number(foundDate?.month), year = Number(foundDate?.year);
+  if (!day || !month || !year || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const now = new Date();
+  const schoolStartYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  return year >= schoolStartYear && year <= schoolStartYear + 1;
+}
+
+function _GfExtractAttendanceItemsFromDom(root = document, sourcePath = location.pathname) {
+  const body = root.body || root;
+  if (!body) return [];
+  const pageHint = /(studentcard|leerling|afwezig|absen|attendance|late|te-laat|lvs)/i.test(sourcePath + ' ' + (root.title || document.title));
+  const keyword = /(afwezig|afwezigheid|doktersattest|te laat|overmacht|openbaar vervoer|ziek|absence|absent|late|retard|attest)/i;
+  const junk = /(highcharts|created with highcharts|chart|evolutie afwezigheden|totalen per|klassen\b|alle informatie|leerlingvolgsysteem)/i;
+  const candidates = [...body.querySelectorAll('li, tr, article, p, div, [role="listitem"], [class*="absence"], [class*="absen"], [class*="afwezig"], [class*="late"], [class*="lvs"]')]
+    .filter(el => !el.closest('#gradeflow-panel-host, #gradeflow-tab-wrapper'))
+    .sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length)
+    .slice(0, 1400);
+  const seen = new Set();
+  const items = [];
+  for (const el of candidates) {
+    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text.length < 8 || text.length > 360) continue;
+    const meta = `${el.className || ''} ${el.id || ''}`;
+    if (junk.test(text + ' ' + meta)) continue;
+    if (!pageHint && !keyword.test(text + ' ' + meta)) continue;
+    if (!keyword.test(text + ' ' + meta)) continue;
+    const foundDate = _GfAttendanceDateFromText(text);
+    if (!foundDate.value || !_GfAttendanceDateIsRelevant(foundDate)) continue;
+    const momentMatch = text.match(/\b(VM|NM|AM|PM)\b(?:\s*,\s*\b(VM|NM|AM|PM)\b)?/i);
+    const codeMatch = text.match(/\b([LDRBZ])\b/);
+    let title = text
+      .replace(foundDate.text || '', '')
+      .replace(momentMatch?.[0] || '', '')
+      .replace(codeMatch ? new RegExp(`\\b${codeMatch[1]}\\b`) : /$^/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (title.length > 120) title = title.slice(0, 120).trim();
+    const item = {
+      date: foundDate.value,
+      moment: momentMatch?.[0] || '',
+      code: codeMatch?.[1] || '',
+      title: title || keyword.exec(text)?.[0] || '',
+      detail: '',
+      type: keyword.exec(text + ' ' + meta)?.[0] || '',
+      source: sourcePath,
+    };
+    const key = [item.date, item.moment, item.code, item.title].join('\u0001').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(item);
+    if (items.length >= 100) break;
+  }
+  return items;
+}
+
+const _GF_ATTENDANCE_URLS = [
+  '/?module=LVS&file=index&function=main',
+  '/?module=StudentCard&file=index&function=main',
+];
+let _gfAttendanceRefreshPromise = null;
+
+function _GfMergeAttendanceItems(...groups) {
+  const seen = new Set();
+  const out = [];
+  for (const items of groups) {
+    for (const item of (items || [])) {
+      const key = [item.date, item.moment, item.code, item.title].join('\u0001').toLowerCase();
+      if (!item.date || seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+      if (out.length >= 180) return out;
+    }
+  }
+  return out;
+}
+
+function _GfDelay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function _GfFindAttendanceNavElement(doc) {
+  const root = doc?.body || doc;
+  if (!root) return null;
+  const candidates = [...root.querySelectorAll('a, button, li, span, div, td')]
+    .filter(el => !el.closest('#gradeflow-panel-host, #gradeflow-tab-wrapper'))
+    .slice(0, 1800);
+  for (const el of candidates) {
+    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (text === 'afwezigheden' || text === 'absences') return el.closest('a, button, li, tr, [onclick]') || el;
+  }
+  for (const el of candidates) {
+    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!text || text.length > 80) continue;
+    if (/evolutie|totalen|grafiek|chart/.test(text)) continue;
+    if (!/\bafwezigheden\b|\bafwezigheid\b|\babsences\b|\babsence\b/i.test(text)) continue;
+    return el.closest('a, button, li, tr, [onclick]') || el;
+  }
+  return null;
+}
+
+function _GfActivateAttendanceNav(doc) {
+  const target = _GfFindAttendanceNavElement(doc);
+  if (!target) return false;
+  const link = target.matches?.('a[href]') ? target : target.querySelector?.('a[href]') || target.closest?.('a[href]');
+  if (link) {
+    try { link.setAttribute('target', '_self'); } catch (_) {}
+  }
+  try { target.scrollIntoView?.({ block: 'center', inline: 'center' }); } catch (_) {}
+  try {
+    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: target.ownerDocument.defaultView }));
+    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: target.ownerDocument.defaultView }));
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: target.ownerDocument.defaultView }));
+    return true;
+  } catch (_) {
+    try { target.click?.(); return true; } catch (_) { return false; }
+  }
+}
+
+async function _GfLoadAttendanceItemsInFrame(url) {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.tabIndex = -1;
+  frame.style.cssText = 'position:fixed;left:-10000px;top:-10000px;width:1px;height:1px;opacity:0;pointer-events:none;border:0;';
+  document.documentElement.appendChild(frame);
+  try {
+    await new Promise(resolve => {
+      const done = () => resolve();
+      frame.addEventListener('load', done, { once: true });
+      frame.src = url;
+      setTimeout(done, 3500);
+    });
+    const deadline = Date.now() + 10000;
+    const minWaitUntil = Date.now() + 1200;
+    let items = [], stableReads = 0, navClicked = false;
+    while (Date.now() < deadline) {
+      const doc = frame.contentDocument;
+      if (doc?.body) {
+        if (!navClicked) {
+          navClicked = _GfActivateAttendanceNav(doc);
+          if (navClicked) { await _GfDelay(700); continue; }
+        }
+        const nextItems = _GfExtractAttendanceItemsFromDom(doc, url);
+        if (nextItems.length > items.length) {
+          items = nextItems;
+          stableReads = 0;
+        } else if (items.length) {
+          stableReads++;
+          if (Date.now() >= minWaitUntil && stableReads >= 3) return items;
+        }
+      }
+      await _GfDelay(450);
+    }
+    return items;
+  } catch (_) {
+    return [];
+  } finally {
+    frame.remove();
+  }
+}
+
+async function _GfFetchAttendanceItems() {
+  const found = [];
+  for (const url of _GF_ATTENDANCE_URLS) {
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) continue;
+      const html = await res.text();
+      if (!/afwezig|te laat|doktersattest|absence|studentcard|leerling/i.test(html)) continue;
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const items = _GfExtractAttendanceItemsFromDom(doc, url);
+      if (items.length) found.push(items);
+    } catch (_) {}
+  }
+  return _GfMergeAttendanceItems(...found);
+}
+
+async function _GfRenderAttendanceItems() {
+  const found = [];
+  for (const url of _GF_ATTENDANCE_URLS) {
+    const items = await _GfLoadAttendanceItemsInFrame(url);
+    if (items.length) found.push(items);
+  }
+  return _GfMergeAttendanceItems(...found);
+}
+
+function _GfStoreAttendanceItems(items) {
+  chrome.storage.local.set({ [_GF_ATTENDANCE_KEY]: JSON.stringify(items || []) }, () => {
+    _GfGetPanelIframe()?.contentWindow?.postMessage({ type: 'gf-attendance-ready' }, '*');
+  });
+}
+
+async function _GfRefreshAttendanceItems() {
+  if (_gfAttendanceRefreshPromise) return _gfAttendanceRefreshPromise;
+  _gfAttendanceRefreshPromise = (async () => {
+    const fetchedItems = await _GfFetchAttendanceItems();
+    if (fetchedItems.length) _GfStoreAttendanceItems(fetchedItems);
+    const renderedItems = await _GfRenderAttendanceItems();
+    const domItems = _GfExtractAttendanceItemsFromDom();
+    const items = _GfMergeAttendanceItems(fetchedItems, renderedItems, domItems);
+    if (items.length) _GfStoreAttendanceItems(items);
+    return items;
+  })().finally(() => { _gfAttendanceRefreshPromise = null; });
+  return _gfAttendanceRefreshPromise;
 }
 
 function CreateStore() { return {}; }
@@ -587,22 +1181,42 @@ function GetIconUrl() {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" fill="#f97316"/><path d="M7 3v4M17 3v4M3 9h18" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M8 12h3M13 12h3M8 16h3M13 16h3" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>');
 }
 
-// Nav watcher
+// Nav watcher: event-based instead of polling
+function _GfOnNav() {
+  if (document.body) document.body.style.opacity = '1';
+  if (!document.getElementById('gradeflow-tab')) SetupButton();
+  setTimeout(_GfInitHomeSummary, 350);
+  setTimeout(_GfRefreshPlannerItems, 650);
+  setTimeout(_GfRefreshAttendanceItems, 750);
+}
+
+// Patch pushState/replaceState ONCE at module level so they never stack.
+const _gfOrigPush    = history.pushState;
+const _gfOrigReplace = history.replaceState;
+let _gfNavPatched    = false;
+
 function _GfStartNavWatcher() {
   if (_gfNavObserver) return;
-  let lastHref = location.href;
-  _gfNavObserver = setInterval(() => {
-    if (location.href === lastHref) return;
-    lastHref = location.href;
-    if (document.body) document.body.style.opacity = '1';
-    if (!document.getElementById('gradeflow-tab')) SetupButton();
-  }, 500);
+  _gfNavObserver = true;
+  window.addEventListener('popstate', _GfOnNav);
+
+  if (!_gfNavPatched) {
+    _gfNavPatched = true;
+    history.pushState    = function() { _gfOrigPush.apply(this, arguments);    _GfOnNav(); };
+    history.replaceState = function() { _gfOrigReplace.apply(this, arguments); _GfOnNav(); };
+  }
 }
 
 function _GfStopNavWatcher() {
   if (!_gfNavObserver) return;
-  clearInterval(_gfNavObserver);
+  window.removeEventListener('popstate', _GfOnNav);
   _gfNavObserver = null;
+  // Restore original history methods so they don't fire _GfOnNav while stopped
+  if (_gfNavPatched) {
+    _gfNavPatched = false;
+    history.pushState    = _gfOrigPush;
+    history.replaceState = _gfOrigReplace;
+  }
 }
 
 // Panel
@@ -613,6 +1227,9 @@ function _GfGetPanelIframe() {
 function OnPanelMessage(e) {
   if (e.data?.type === 'gf-close') ClosePanel();
   if (e.data?.type === 'gf-f8') _GfLaunchArcade();
+  if (e.data?.type === 'gf-open-gradeflow') OpenPanel(true);
+  if (e.data?.type === 'gf-refresh-planner') _GfRefreshPlannerItems();
+  if (e.data?.type === 'gf-refresh-attendance') _GfRefreshAttendanceItems();
   if (e.data?.type === 'gf-panel-rendered') {
     const iframe = _GfGetPanelIframe();
     if (iframe) iframe.style.opacity = '1';
@@ -681,7 +1298,7 @@ function _GfCreatePanelHost() {
   setTimeout(() => { if (iframe.style.opacity !== '1') iframe.style.opacity = '1'; }, 1500);
 
   iframe.addEventListener('load', () => {
-    iframe.contentWindow?.postMessage({ type: 'gf-theme', theme: _gfCurrentTheme }, '*');
+    iframe.contentWindow?.postMessage({ type: 'gf-theme', theme: _gfEffectiveTheme, vars: _gfExternalThemeVars }, '*');
   }, { once: true });
 
   function _GfAttachSidebarRO(sb) {
@@ -737,6 +1354,8 @@ function _GfLoadGradesInBackground() {
       gradeflowCache.activePeriod = 'Alle';
       _gfLastFetchTime = Date.now();
       StartDomIncrementalSync();
+      _GfRefreshPlannerItems();
+      _GfRefreshAttendanceItems();
 
       return new Promise(resolve => {
         chrome.storage.local.set({ 'gradeflow-grades': JSON.stringify(store) }, () => {
@@ -774,10 +1393,16 @@ function _GfStopUrlGuard() {
   if (_gfUrlTimer) { clearInterval(_gfUrlTimer); _gfUrlTimer = null; }
 }
 
-function OpenPanel() {
+function OpenPanel(forceOpen = false) {
+  if (forceOpen && !/^\/results(\/|$)/.test(location.pathname)) {
+    try { _gfPrevUrl = location.href; } catch (_) {}
+    location.assign(_GF_URL);
+    return;
+  }
+
   const existingHost = document.getElementById('gradeflow-panel-host');
 
-  if (existingHost && existingHost.style.display !== 'none') {
+  if (existingHost && existingHost.style.display !== 'none' && !forceOpen) {
     ClosePanel();
     return;
   }
@@ -809,6 +1434,11 @@ function OpenPanel() {
 // Arcade launcher
 function _GfLaunchArcade() {
   const bossGames = [
+    { id: 'gf-bo',      fn: () => typeof BossKeyBreakout === 'function' && BossKeyBreakout() },
+    { id: 'gf-po',      fn: () => typeof BossKeyPong     === 'function' && BossKeyPong() },
+    { id: 'gf-fl',      fn: () => typeof BossKeyFlappy   === 'function' && BossKeyFlappy() },
+    { id: 'gf-rn',      fn: () => typeof BossKeyRunner   === 'function' && BossKeyRunner() },
+    { id: 'gf-tw',      fn: () => typeof BossKeyTower    === 'function' && BossKeyTower() },
     { id: 'gf-snake',   fn: () => typeof BossKeySnake   === 'function' && BossKeySnake() },
     { id: 'gf-2048',    fn: () => typeof BossKey2048    === 'function' && BossKey2048() },
     { id: 'gf-sweep',   fn: () => typeof BossKeySweeper === 'function' && BossKeySweeper() },
@@ -842,6 +1472,9 @@ try {
       } else if (msg.type === 'ping') {
         sendResponse({ ok: true });
         return true;
+      } else if (msg.type === 'getTheme') {
+        sendResponse({ ok: true, theme: _gfEffectiveTheme, savedTheme: _gfCurrentTheme, vars: _gfExternalThemeVars });
+        return true;
       } else if (msg.type === 'applySettings') {
         const s = msg.settings || {};
         _gfPersSettings = s;
@@ -869,6 +1502,11 @@ try {
 } catch (_) {}
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'F6') {
+    e.preventDefault();
+    e.stopPropagation();
+    OpenPanel(true);
+  }
   if (e.key === 'F8') {
     e.preventDefault();
     e.stopPropagation();
@@ -876,7 +1514,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
     const panelOpen = document.getElementById('gradeflow-panel-host')?.style.display !== 'none';
-    const GAME_IDS = ['gf-tetris','gf-snake','gf-2048','gf-sweep','gf-memory','gf-shooter','gf-arcade'];
+    const GAME_IDS = ['gf-tetris','gf-snake','gf-2048','gf-sweep','gf-memory','gf-shooter','gf-bo','gf-po','gf-fl','gf-rn','gf-tw','gf-arcade'];
     const gameOpen = GAME_IDS.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
     if (panelOpen || gameOpen) { e.preventDefault(); e.stopPropagation(); }
   }
@@ -939,6 +1577,13 @@ if (location.pathname.endsWith('/GradeFlow')) {
 }
 
 let _gfRetryInterval = null, _gfButtonObserver = null;
+let _gfPlannerRefreshTimer = null;
+let _gfAttendanceRefreshTimer = null;
+
+function _GfQueuePlannerRefresh(delay = 700) {
+  clearTimeout(_gfPlannerRefreshTimer);
+  _gfPlannerRefreshTimer = setTimeout(_GfRefreshPlannerItems, delay);
+}
 
 function _GfInjectFallbackButton(wrapper) {
   if (document.getElementById('gradeflow-tab')) return;
@@ -970,6 +1615,300 @@ function _GfInjectFallbackButton(wrapper) {
 
   wrapEl.appendChild(btn);
   wrapper.appendChild(wrapEl);
+}
+
+function _GfIsSmartschoolHome() {
+  return location.pathname === '/' && !location.search && !location.hash;
+}
+
+function _GfEsc(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+}
+
+function _GfFmtNumber(value) {
+  if (!Number.isFinite(value)) return '?';
+  const rounded = Math.round(value * 10) / 10;
+  return String(rounded % 1 === 0 ? Math.round(rounded) : rounded.toFixed(1)).replace('.', ',');
+}
+
+function _GfFmtPct(value) {
+  return `${_GfFmtNumber(value)}%`;
+}
+
+function _GfSummaryColor(pct) {
+  return pct >= 70 ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171';
+}
+
+function _GfHomeGaugeSvg(pct) {
+  const safePct = Math.max(0, Math.min(100, Number(pct) || 0));
+  const angle = (180 - safePct * 1.8) * Math.PI / 180;
+  const needleX = 60 + Math.cos(angle) * 39;
+  const needleY = 60 - Math.sin(angle) * 39;
+  return `<svg class="gf-home-gauge-svg" viewBox="0 0 120 76" focusable="false" aria-hidden="true">
+    <path class="gf-home-gauge-band gf-home-red" d="M12 60 A48 48 0 0 1 45.2 14.3" />
+    <path class="gf-home-gauge-band gf-home-yellow" d="M45.2 14.3 A48 48 0 0 1 89.6 22.2" />
+    <path class="gf-home-gauge-band gf-home-green" d="M89.6 22.2 A48 48 0 0 1 108 60" />
+    <line class="gf-home-gauge-needle" x1="60" y1="60" x2="${needleX.toFixed(1)}" y2="${needleY.toFixed(1)}" />
+    <circle class="gf-home-gauge-dot" cx="60" cy="60" r="5" />
+  </svg>`;
+}
+
+function _GfBuildHomeSummary(store) {
+  const data = BuildAllPeriodData(store || {});
+  const subjectRows = Object.entries(data).map(([subject, payload]) => {
+    const scores = payload?.scores || [];
+    const scored = scores.reduce((sum, score) => sum + (Number(score.scored) || 0), 0);
+    const max = scores.reduce((sum, score) => sum + (Number(score.max) || 0), 0);
+    return { subject, scored, max, pct: max > 0 ? scored / max * 100 : 0 };
+  }).filter(row => row.max > 0);
+  const scored = subjectRows.reduce((sum, row) => sum + row.scored, 0);
+  const max = subjectRows.reduce((sum, row) => sum + row.max, 0);
+  const pct = max > 0 ? scored / max * 100 : 0;
+  const best = subjectRows.reduce((winner, row) => !winner || row.pct > winner.pct ? row : winner, null);
+  const weakest = subjectRows.reduce((loser, row) => !loser || row.pct < loser.pct ? row : loser, null);
+  return { scored, max, pct, best, weakest, subjectCount: subjectRows.length, riskCount: subjectRows.filter(row => row.pct < 60).length };
+}
+
+function _GfHomeStatusText(pct) {
+  if (pct >= 60) return _GfTranslate('overview_status_good');
+  if (pct >= 50) return _GfTranslate('overview_status_watch');
+  return _GfTranslate('overview_status_critical');
+}
+
+function _GfHomeSummaryHtml(summary) {
+  if (!summary || !summary.max) {
+    return `<div class="homepage__block__top">
+      <div class="homepage__block__top__title"><h2 class="smsc-title--1 gf-home-title"><img src="${GetIconUrl()}" alt="">${_GfTranslate('overview_summary_title')}</h2></div>
+      <div class="homepage__block__top__buttonbar"></div>
+    </div>
+    <div class="homepage__block__content"><div class="gf-home-lock-wrap is-loading">${_GfTranslate('fetching')}</div></div>`;
+  }
+  const best = summary.best ? `${_GfEsc(summary.best.subject)} (${_GfFmtPct(summary.best.pct)})` : '-';
+  const weakest = summary.weakest ? `${_GfEsc(summary.weakest.subject)} (${_GfFmtPct(summary.weakest.pct)})` : '-';
+  return `<div class="homepage__block__top">
+    <div class="homepage__block__top__title"><h2 class="smsc-title--1 gf-home-title"><img src="${GetIconUrl()}" alt="">${_GfTranslate('overview_summary_title')}</h2></div>
+    <div class="homepage__block__top__buttonbar"></div>
+  </div>
+  <div class="homepage__block__content">
+    <div class="gf-home-lock-wrap" style="--gf-home-pct:${_GfSummaryColor(summary.pct)};">
+      <div class="gf-home-lock-left">
+        <div class="gf-home-lock-head">
+          <div class="gf-home-lock-copy">
+            <p class="gf-home-lock-message">${_GfHomeStatusText(summary.pct)}</p>
+          </div>
+          <button type="button" class="gf-home-open">Open GradeFlow</button>
+        </div>
+        <div class="gf-home-lock-detail">${_GfTranslate('total')}: ${_GfFmtNumber(summary.scored)} / ${_GfFmtNumber(summary.max)} • ${_GfTranslate('overview_average')}: ${_GfFmtPct(summary.pct)}</div>
+        <div class="gf-home-lock-stats">
+          <div class="gf-home-lock-stat"><div class="gf-home-lock-stat-label">${_GfTranslate('best_subject')}</div><div class="gf-home-lock-stat-value">${best}</div></div>
+          <div class="gf-home-lock-stat"><div class="gf-home-lock-stat-label">${_GfTranslate('overview_weakest_subject')}</div><div class="gf-home-lock-stat-value">${weakest}</div></div>
+          <div class="gf-home-lock-stat"><div class="gf-home-lock-stat-label">${_GfTranslate('overview_subject_count')}</div><div class="gf-home-lock-stat-value">${summary.subjectCount}</div></div>
+          <div class="gf-home-lock-stat"><div class="gf-home-lock-stat-label">${_GfTranslate('overview_risk_subjects')}</div><div class="gf-home-lock-stat-value">${summary.riskCount}</div></div>
+        </div>
+      </div>
+      <div class="gf-home-lock-right">
+        <div class="gf-home-lock-meter">${_GfHomeGaugeSvg(summary.pct)}</div>
+        <div class="gf-home-lock-value">${_GfFmtPct(summary.pct)}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function _GfEnsureHomeSummaryStyle() {
+  let style = document.getElementById('gf-home-summary-style');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'gf-home-summary-style';
+    (document.head || document.documentElement).appendChild(style);
+  }
+  style.textContent = `
+    #gf-home-summary.gf-homepage-block{box-sizing:border-box;position:relative;z-index:2;--gf-home-card-bg:#eeeeee;--gf-home-card-border:#d4d4d4;--gf-home-label:#c2410c;--gf-home-value:#111827;--gf-home-detail-bg:#eeeeee;--gf-home-detail-border:#d4d4d4;--gf-home-detail-text:#111827}
+    .smpp-news-container > #gf-home-summary.gf-homepage-block{margin:16px 24px 12px;width:auto;max-width:none}
+    html[data-gf-theme="dark"] #gf-home-summary:not(.is-smpp){filter:invert(1) hue-rotate(180deg)!important}
+    #gf-home-summary.is-dark{color:#f5f5f5!important;background:transparent!important;--gf-home-card-bg:#171717;--gf-home-card-border:rgba(249,115,22,.42);--gf-home-label:#ff8a2a;--gf-home-value:#f9fafb;--gf-home-detail-bg:#171717;--gf-home-detail-border:rgba(249,115,22,.32);--gf-home-detail-text:#e5e7eb}
+    #gf-home-summary.is-smpp{color:var(--gf-home-value)!important;background:transparent!important}
+    #gf-home-summary.is-dark .homepage__block__content{color:#f5f5f5!important;background:transparent!important}
+    #gf-home-summary.is-smpp .homepage__block__content{color:var(--gf-home-value)!important;background:transparent!important}
+    #gf-home-summary .homepage__block__content{overflow:hidden}
+    #gf-home-summary .gf-home-title{display:flex;align-items:center;gap:8px;color:#c90001!important}
+    #gf-home-summary.is-smpp .gf-home-title{color:var(--gf-home-label)!important}
+    #gf-home-summary .gf-home-title img{width:24px;height:24px;border-radius:6px;display:block;flex:0 0 auto}
+    #gf-home-summary .gf-home-lock-wrap{display:grid;grid-template-columns:minmax(0,1fr) clamp(104px,10vw,132px);grid-template-areas:"left right";gap:clamp(12px,2vw,24px);align-items:center;width:100%;padding:8px 0 4px}
+    #gf-home-summary .gf-home-lock-wrap.is-loading{display:block;color:inherit;font-size:12px;padding:10px 0}
+    #gf-home-summary .gf-home-lock-left{grid-area:left;min-width:0}
+    #gf-home-summary .gf-home-lock-right{grid-area:right;display:grid;place-items:center;gap:2px;align-self:center;justify-self:start}
+    #gf-home-summary .gf-home-lock-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px}
+    #gf-home-summary .gf-home-lock-copy{min-width:0}
+    #gf-home-summary .gf-home-lock-message{margin:0;font-size:14px;font-weight:800;color:inherit;line-height:1.35}
+    html[data-gf-theme="dark"] #gf-home-summary .gf-home-lock-message,#gf-home-summary.is-dark .gf-home-lock-message{color:#f3f4f6!important}
+    #gf-home-summary.is-smpp .gf-home-lock-message{color:var(--gf-home-value)!important}
+    #gf-home-summary.is-smpp.is-glass .gf-home-lock-detail,#gf-home-summary.is-smpp.is-glass .gf-home-lock-stat{backdrop-filter:blur(12px)!important;-webkit-backdrop-filter:blur(12px)!important}
+    #gf-home-summary .gf-home-lock-detail{display:inline-flex;max-width:100%;margin:9px 0 13px;padding:6px 9px;border:1px solid var(--gf-home-detail-border)!important;border-radius:6px;background:var(--gf-home-detail-bg)!important;color:var(--gf-home-detail-text)!important;font-size:12px;font-weight:750;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.35;white-space:normal}
+    html[data-gf-theme="dark"] #gf-home-summary{--gf-home-card-bg:#171717;--gf-home-card-border:rgba(249,115,22,.42);--gf-home-label:#ff8a2a;--gf-home-value:#f9fafb;--gf-home-detail-bg:#171717;--gf-home-detail-border:rgba(249,115,22,.32);--gf-home-detail-text:#e5e7eb}
+    #gf-home-summary .gf-home-lock-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:2px}
+    #gf-home-summary .gf-home-lock-stat{min-width:0;padding:10px 11px;border:1px solid var(--gf-home-card-border)!important;border-radius:6px;background:var(--gf-home-card-bg)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)!important}
+    #gf-home-summary .gf-home-lock-stat-label{margin-bottom:5px;color:var(--gf-home-label)!important;font-size:10px;font-weight:900;letter-spacing:.55px;text-transform:uppercase;line-height:1.2}
+    #gf-home-summary .gf-home-lock-stat-value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:900;color:var(--gf-home-value)!important;line-height:1.3}
+    #gf-home-summary .gf-home-open{flex:0 0 auto;border:1px solid rgba(249,115,22,.55);border-radius:6px;background:rgba(249,115,22,.10);color:#ea580c;padding:7px 11px;font-size:12px;font-weight:850;cursor:pointer;line-height:1.15}
+    #gf-home-summary .gf-home-open:hover{background:#f97316;color:#111}
+    #gf-home-summary.is-smpp .gf-home-open{border-color:var(--gf-home-label)!important;background:var(--gf-home-detail-bg)!important;color:var(--gf-home-label)!important}
+    #gf-home-summary.is-smpp .gf-home-open:hover{background:var(--gf-home-label)!important;color:var(--gf-home-card-bg)!important}
+    #gf-home-summary .gf-home-lock-meter{width:clamp(96px,9vw,120px);height:clamp(62px,6vw,76px);display:grid;place-items:center;overflow:visible}
+    #gf-home-summary .gf-home-gauge-svg{width:clamp(96px,9vw,120px);height:clamp(62px,6vw,76px);overflow:visible}.gf-home-gauge-band{fill:none;stroke-width:18}.gf-home-red{stroke:#f87171}.gf-home-yellow{stroke:#fbbf24}.gf-home-green{stroke:#4ade80}.gf-home-gauge-needle{stroke:#d6d3d1;stroke-width:4;stroke-linecap:round}.gf-home-gauge-dot{fill:#d6d3d1}
+    #gf-home-summary .gf-home-lock-value{color:var(--gf-home-pct);font-size:24px;font-weight:900;line-height:1}
+    @media(max-width:980px){#gf-home-summary .gf-home-lock-wrap{grid-template-columns:1fr;grid-template-areas:"left"}#gf-home-summary .gf-home-lock-right{display:none}}
+    @media(max-width:520px){#gf-home-summary .gf-home-lock-head{display:block}#gf-home-summary .gf-home-open{margin-top:10px}#gf-home-summary .gf-home-lock-stats{grid-template-columns:1fr}#gf-home-summary .gf-home-title{font-size:16px!important}}
+  `;
+}
+
+function _GfFindHomeSummaryMount() {
+  const smppNews = document.querySelector('.smpp-news-container');
+  if (smppNews) return smppNews;
+  const smppNewsContent = document.getElementById('smpp-news-content');
+  if (smppNewsContent?.parentElement?.classList.contains('smpp-news-container')) return smppNewsContent.parentElement;
+  const center = document.getElementById('centercontainer') || document.querySelector('.homepage__center');
+  if (center) return center;
+  const selectors = ['main', '[role="main"]', '#smscMain', '#main', '.smsc-main', '.main-content', '.content', '[class*="mainContent"]', '[class*="MainContent"]'];
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    if (!el || el.closest('header,nav,aside,#gradeflow-panel-host,.smpp-widget,.smpp-widget-pannel,#leftcontainer,#rightcontainer,.homepage__left,.homepage__right')) continue;
+    if (el.classList.contains('smpp-widgets-container') || el.querySelector(':scope > .smpp-news-container')) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 360 && rect.height > 80) return el;
+  }
+  const news = [...document.querySelectorAll('h1,h2,h3,h4,[class]')].find(el => /^nieuws$/i.test((el.textContent || '').trim()));
+  const newsMount = news?.closest('#smpp-news-content,.smpp-news-container,#centercontainer,.homepage__center') || news?.parentElement?.parentElement || news?.parentElement;
+  if (newsMount?.classList?.contains('smpp-news-container')) return newsMount;
+  if (newsMount?.id === 'smpp-news-content' && newsMount.parentElement?.classList.contains('smpp-news-container')) return newsMount.parentElement;
+  if (newsMount && !newsMount.closest?.('.smpp-widget,.smpp-widget-pannel,#leftcontainer,#rightcontainer,.homepage__left,.homepage__right')) return newsMount;
+  return null;
+}
+
+function _GfHomeSummaryInsertBefore(mount) {
+  if (!mount) return null;
+  if (mount.classList?.contains('smpp-news-container')) {
+    return mount.querySelector('#smpp-news-content,.smpp-news-editor') || mount.firstChild;
+  }
+  return mount.firstChild;
+}
+
+function _GfCleanupHomeSummaryWidgetShell(shell) {
+  if (!shell || !shell.classList?.contains('smpp-widget')) return;
+  if (shell.dataset.widgetName !== 'SmartschoolWidget-gf-home-summary' && !shell.querySelector('#gf-home-summary')) return;
+  const next = shell.nextElementSibling;
+  if (next?.classList.contains('smpp-widget-insertion-point')) next.remove();
+  shell.remove();
+}
+
+function _GfStartHomeSummaryLayoutWatcher() {
+  if (_gfHomeSummaryLayoutObserver || !_GfIsSmartschoolHome() || !document.body) return;
+  const schedule = () => {
+    clearTimeout(_gfHomeSummaryLayoutTimer);
+    _gfHomeSummaryLayoutTimer = setTimeout(() => {
+      if (!_GfIsSmartschoolHome()) return;
+      chrome.storage.local.get('gradeflow-grades', result => {
+        _GfRenderHomeSummaryFromRaw(result?.['gradeflow-grades'] || '');
+      });
+    }, 120);
+  };
+  _gfHomeSummaryLayoutObserver = new MutationObserver(mutations => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.matches?.('.smpp-widgets-container,.smpp-news-container,#smpp-news-content,#centercontainer,.homepage__center') || node.querySelector?.('.smpp-widgets-container,.smpp-news-container,#smpp-news-content,#centercontainer,.homepage__center')) {
+          schedule();
+          return;
+        }
+      }
+      for (const node of mutation.removedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.id === 'gf-home-summary' || node.querySelector?.('#gf-home-summary')) {
+          schedule();
+          return;
+        }
+      }
+    }
+  });
+  _gfHomeSummaryLayoutObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function _GfApplyHomeSummaryTheme(card) {
+  if (!card) return;
+  const smpp = _gfExternalThemeVars || _GfReadSmartschoolPlusPlusTheme();
+  if (smpp) {
+    const cardBg = smpp.glass ? smpp.overlay : smpp.surface;
+    const detailBg = smpp.glass ? smpp.overlay : smpp.surface2;
+    card.classList.add('is-smpp');
+    card.classList.toggle('is-glass', !!smpp.glass);
+    card.classList.toggle('is-dark', !!smpp.isDark);
+    card.classList.toggle('is-light', !smpp.isDark);
+    card.style.setProperty('--gf-home-card-bg', cardBg);
+    card.style.setProperty('--gf-home-card-border', smpp.border);
+    card.style.setProperty('--gf-home-label', smpp.accent);
+    card.style.setProperty('--gf-home-value', smpp.text);
+    card.style.setProperty('--gf-home-detail-bg', detailBg);
+    card.style.setProperty('--gf-home-detail-border', smpp.border);
+    card.style.setProperty('--gf-home-detail-text', smpp.text);
+    return;
+  }
+  card.classList.remove('is-smpp');
+  card.classList.remove('is-glass');
+  ['--gf-home-card-bg', '--gf-home-card-border', '--gf-home-label', '--gf-home-value', '--gf-home-detail-bg', '--gf-home-detail-border', '--gf-home-detail-text'].forEach(name => card.style.removeProperty(name));
+  const isDark = _gfCurrentTheme === 'dark' || localStorage.getItem('gf-theme-cache') === 'dark' || document.documentElement.getAttribute('data-gf-theme') === 'dark';
+  card.classList.toggle('is-dark', !!isDark);
+  card.classList.toggle('is-light', !isDark);
+}
+
+function _GfRenderHomeSummary(store) {
+  if (!_GfIsSmartschoolHome() || !document.body) return;
+  _GfEnsureHomeSummaryStyle();
+  document.querySelectorAll('#gf-home-summary:not(.gf-homepage-block)').forEach(node => node.remove());
+  let card = document.getElementById('gf-home-summary');
+  const mount = _GfFindHomeSummaryMount();
+  if (!mount) return;
+  const beforeNode = _GfHomeSummaryInsertBefore(mount);
+  const oldWidgetShell = card?.closest?.('.smpp-widget') || null;
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'gf-home-summary';
+    card.className = 'homepage__block gf-homepage-block';
+    card.setAttribute('aria-label', 'GradeFlow samenvatting');
+    mount.insertBefore(card, beforeNode);
+    card.addEventListener('click', e => {
+      if (!e.target.closest('.gf-home-open')) return;
+      e.preventDefault();
+      OpenPanel(true);
+    });
+  } else {
+    card.className = 'homepage__block gf-homepage-block';
+    if (card.parentElement !== mount && !card.contains(mount)) mount.insertBefore(card, beforeNode);
+    else if (beforeNode && beforeNode !== card && card.nextSibling !== beforeNode) mount.insertBefore(card, beforeNode);
+  }
+  _GfCleanupHomeSummaryWidgetShell(oldWidgetShell);
+  _GfApplyHomeSummaryTheme(card);
+  card.innerHTML = _GfHomeSummaryHtml(_GfBuildHomeSummary(store || {}));
+}
+
+function _GfRenderHomeSummaryFromRaw(raw) {
+  if (!_GfIsSmartschoolHome()) return;
+  try { _GfRenderHomeSummary(raw ? JSON.parse(raw) : null); } catch (_) {}
+}
+
+function _GfInitHomeSummary() {
+  if (!_GfIsSmartschoolHome()) {
+    document.getElementById('gf-home-summary')?.remove();
+    if (_gfHomeSummaryLayoutObserver) { _gfHomeSummaryLayoutObserver.disconnect(); _gfHomeSummaryLayoutObserver = null; }
+    clearTimeout(_gfHomeSummaryLayoutTimer);
+    return;
+  }
+  if (!document.body) return;
+  _GfStartHomeSummaryLayoutWatcher();
+  chrome.storage.local.get('gradeflow-grades', result => {
+    _GfRenderHomeSummaryFromRaw(result?.['gradeflow-grades'] || '');
+  });
+  setTimeout(() => {
+    _GfLoadGradesInBackground().then(store => _GfRenderHomeSummary(store)).catch(() => {});
+  }, 900);
 }
 
 function SetupButton() {
@@ -1067,6 +2006,9 @@ function InitObserver() {
 
   _gfButtonObserver = new MutationObserver(() => {
     if (!document.getElementById('gradeflow-tab')) SetupButton();
+    _GfQueuePlannerRefresh();
+    clearTimeout(_gfAttendanceRefreshTimer);
+    _gfAttendanceRefreshTimer = setTimeout(_GfRefreshAttendanceItems, 900);
   });
   _gfButtonObserver.observe(document.body, { childList: true, subtree: true });
 
@@ -1088,6 +2030,13 @@ function InitObserver() {
 
 SetupButton();
 InitObserver();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _GfInitHomeSummary, { once: true });
+} else {
+  _GfInitHomeSummary();
+}
+setTimeout(_GfRefreshPlannerItems, 1200);
+setTimeout(_GfRefreshAttendanceItems, 1400);
 
 
 const _GF_P_SETTINGS_KEY = 'gf-personalization';
@@ -1096,21 +2045,32 @@ let _gfPersSettings = null;
 let _gfPersPfp      = null;
 let _gfPersReady    = false; // true once settings are loaded from storage
 
-let _gfDetectedRealName = null;
+let _gfDetectedRealName = (typeof window !== 'undefined' && window._gfDetectedRealName) || null;
+
+function _GfNameScanRoot() {
+  // Use SmartSchool-specific selectors only, broad wildcards like
+  // [class*="Header"] can accidentally match content containers.
+  return document.querySelector(
+    '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
+  ) || document.body;
+}
 
 function _GfApplyName(name) {
   if (!name) return;
   let count = 0;
 
   document.querySelectorAll('[data-gf-orig-name]').forEach(el => {
-    el.textContent = name;
+    if (el.textContent !== name) el.textContent = name;
     count++;
   });
 
+  const root = _GfNameScanRoot();
+  if (!root) return;
+
   const realName = _gfDetectedRealName;
   if (realName) {
-    document.querySelectorAll('a, span, div, p, li, td, h1, h2, h3, h4, button, label').forEach(el => {
-      if (el.dataset.gfOrigName) return; // already tagged
+    root.querySelectorAll('a, span, div, p, li, td, h1, h2, h3, h4, button, label').forEach(el => {
+      if (el.dataset.gfOrigName) return;
       if (el.closest('#gradeflow-panel-host, #gf-arcade, iframe')) return;
       if (el.children.length > 0) return;
       const t = el.textContent.trim();
@@ -1121,10 +2081,10 @@ function _GfApplyName(name) {
       }
     });
   }
-  if (count) return;
+  if (count) { _GfCacheName(name); return; }
 
   const candidates = [];
-  document.querySelectorAll('a, span, div, p, li, td, h1, h2, h3, h4, button, label').forEach(el => {
+  root.querySelectorAll('a, span, div, p, li, td, h1, h2, h3, h4, button, label').forEach(el => {
     if (el.closest('#gradeflow-panel-host, #gf-arcade, iframe')) return;
     if (el.children.length > 0) return;
     const t = el.textContent.trim();
@@ -1133,15 +2093,15 @@ function _GfApplyName(name) {
     if (/^\d/.test(t)) return;
     if (!/\s/.test(t)) return;
     if (!/^[A-Za-zÀ-ÿ\s\-'.]+$/.test(t)) return;
-    const inHeader = !!el.closest('header, nav, [class*="topbar"], [class*="top-bar"], [role="banner"]');
-    candidates.push({ el, text: t, score: inHeader ? 10 : 1 });
+    candidates.push({ el, text: t });
   });
 
-  candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0];
-  if (!best) return;
+  if (!candidates.length) return;
 
+  // Best candidate is the first (we're already scoped to header/nav)
+  const best = candidates[0];
   _gfDetectedRealName = best.text;
+  try { localStorage.setItem('gf-realname-cache', best.text); } catch (_) {}
 
   candidates.forEach(c => {
     if (c.text === best.text) {
@@ -1150,6 +2110,11 @@ function _GfApplyName(name) {
       count++;
     }
   });
+  if (count) _GfCacheName(name);
+}
+
+function _GfCacheName(name) {
+  try { localStorage.setItem('gf-name-cache', name || ''); } catch (_) {}
 }
 
 function _GfRevertName() {
@@ -1157,111 +2122,108 @@ function _GfRevertName() {
     el.textContent = el.dataset.gfOrigName;
     delete el.dataset.gfOrigName;
   });
+  try {
+    localStorage.removeItem('gf-name-cache');
+    localStorage.removeItem('gf-realname-cache');
+  } catch (_) {}
 }
 
 // Profile picture
-let _gfDetectedAvatarSrc = null; // cached original avatar URL
+let _gfDetectedAvatarSrc = null;
+let _gfPfpLastUrl = '';
+let _gfPfpBgUrlCache = '';
+let _gfBgScanDone = false;  // background-image avatars only need scanning once
+
+function _GfPfpScanRoot() {
+  // SmartSchool-specific selectors only. Falls back to body if not present yet.
+  return document.querySelector(
+    '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
+  ) || document.body;
+}
+
+function _GfRememberDetectedAvatar(src) {
+  if (!src || src.startsWith('data:')) return;
+  _gfDetectedAvatarSrc = src;
+  try { chrome.storage.local.set({ 'gf-detected-profile-picture': src }); } catch (_) {}
+}
+
+function _GfDetectOriginalAvatar() {
+  if (_gfDetectedAvatarSrc) return _gfDetectedAvatarSrc;
+  const root = _GfPfpScanRoot();
+  const img = root?.querySelector('img[src*="userpicture"], img[src*="Userimage"], img[src*="UserImage"]');
+  const src = img?.dataset?.gfOrigSrc || img?.src || '';
+  if (src) _GfRememberDetectedAvatar(src);
+  return _gfDetectedAvatarSrc;
+}
 
 function _GfApplyPfp(dataUrl) {
   if (!dataUrl) return;
-  let count = 0;
+  if (dataUrl !== _gfPfpLastUrl) {
+    _gfPfpLastUrl = dataUrl;
+    _gfPfpBgUrlCache = `url(${dataUrl})`;
+    try { localStorage.setItem('gf-pfp-cache', dataUrl); } catch (_) {}
+    _gfBgScanDone = false; // re-scan backgrounds when PFP changes
+  }
+  const bgUrl = _gfPfpBgUrlCache;
+  const skip = '#gradeflow-panel-host, #gf-arcade';
 
+  // 1) Re-apply to elements we already swapped (cheap targeted query)
   document.querySelectorAll('[data-gf-orig-src]').forEach(el => {
-    if (el.tagName === 'IMG') el.src = dataUrl;
-    else el.style.backgroundImage = `url(${dataUrl})`;
-    count++;
+    if (el.tagName === 'IMG') { if (el.src !== dataUrl) el.src = dataUrl; }
+    else if (el.style.backgroundImage !== bgUrl) el.style.backgroundImage = bgUrl;
   });
 
-  if (!_gfDetectedAvatarSrc) {
-    for (const img of document.querySelectorAll('img')) {
-      if (img.closest('#gradeflow-panel-host, #gf-arcade')) continue;
-      if (img.dataset.gfOrigSrc) { _gfDetectedAvatarSrc = img.dataset.gfOrigSrc; break; }
-      const src = img.src || '';
-      if (/userpicture\d*\.smartschool\.be/i.test(src)) {
-        _gfDetectedAvatarSrc = src;
-        break;
-      }
-    }
-    if (!_gfDetectedAvatarSrc) {
-      const avatarParents = document.querySelectorAll(
-        '[class*="avatar"] img, [class*="header-avatar"] img, [class*="header__avatar"] img, ' +
-        '[class*="profile"] img, [class*="user-img"] img, [class*="userpic"] img, ' +
-        '[class*="foto"] img, [class*="profielfoto"] img, ' +
-        'header img, nav img, [class*="topbar"] img, [class*="top-bar"] img, [role="banner"] img'
-      );
-      for (const img of avatarParents) {
-        if (img.closest('#gradeflow-panel-host, #gf-arcade')) continue;
-        if (img.dataset.gfOrigSrc) { _gfDetectedAvatarSrc = img.dataset.gfOrigSrc; break; }
-        const src = img.src || '';
-        if (!src || src.startsWith('data:')) continue;
-        if (/logo|favicon|sprite|icon\.(png|svg)|\/icons?\//i.test(src)) continue;
-        _gfDetectedAvatarSrc = src;
-        break;
-      }
-    }
-  }
-
-  if (_gfDetectedAvatarSrc) {
+  // 2) Scan only the header/nav region for new userpicture imgs.
+  //    The src setter override at document_start already swaps most of these
+  //    instantly, but this handles imgs created after that override missed
+  //    (e.g. dynamically added in a deeply nested shadow DOM, or via cssText).
+  const root = _GfPfpScanRoot();
+  if (root) {
     const avatarUrl = _gfDetectedAvatarSrc;
-    document.querySelectorAll('img').forEach(img => {
-      if (img.dataset.gfOrigSrc) return;
-      if (img.closest('#gradeflow-panel-host, #gf-arcade')) return;
+    const detectedId = avatarUrl ? _GfExtractSmscUserId(avatarUrl) : null;
+
+    root.querySelectorAll('img').forEach(img => {
+      if (img.dataset.gfOrigSrc || img.src === dataUrl) return;
+      if (img.closest(skip)) return;
       const src = img.src || '';
-      if (src === avatarUrl || _GfSameAvatarUrl(src, avatarUrl)) {
+      if (!src || src.startsWith('data:')) return;
+
+      let match = /userpicture\d*\.smartschool\.be/i.test(src);
+      if (!match && avatarUrl) {
+        if (src === avatarUrl || _GfSameAvatarUrl(src, avatarUrl)) match = true;
+        else if (detectedId) {
+          const thisId = _GfExtractSmscUserId(src);
+          if (thisId && detectedId === thisId) match = true;
+        }
+      }
+
+      if (match) {
+        if (!_gfDetectedAvatarSrc) {
+          _GfRememberDetectedAvatar(src);
+        }
         img.dataset.gfOrigSrc = src;
         img.src = dataUrl;
-        count++;
       }
     });
   }
 
-  document.querySelectorAll('img').forEach(img => {
-    if (img.dataset.gfOrigSrc) return;
-    if (img.closest('#gradeflow-panel-host, #gf-arcade')) return;
-    const src = img.src || '';
-    if (_gfDetectedAvatarSrc && /userpicture\d*\.smartschool\.be/i.test(src)) {
-      const detectedId = _GfExtractSmscUserId(_gfDetectedAvatarSrc);
-      const thisId = _GfExtractSmscUserId(src);
-      if (detectedId && thisId && detectedId === thisId) {
-        img.dataset.gfOrigSrc = src;
-        img.src = dataUrl;
-        count++;
+  // 3) Background-image avatars: only scan ONCE per PFP value.
+  //    getComputedStyle is expensive; once we've found and tagged them, the
+  //    targeted [data-gf-orig-src] re-apply above keeps them in sync.
+  if (!_gfBgScanDone && root) {
+    _gfBgScanDone = true;
+    root.querySelectorAll(
+      '[class*="avatar"], [class*="profile-pic"], [class*="foto"], [class*="user-img"], [class*="userpic"]'
+    ).forEach(el => {
+      if (el.tagName === 'IMG' || el.dataset.gfOrigSrc) return;
+      if (el.closest(skip)) return;
+      const bg = window.getComputedStyle(el).backgroundImage;
+      if (bg && bg !== 'none' && bg.startsWith('url(')) {
+        el.dataset.gfOrigSrc = bg;
+        el.style.backgroundImage = bgUrl;
       }
-    }
-  });
-
-  if (!_gfDetectedAvatarSrc) {
-    document.querySelectorAll(
-      'header [class*="avatar"] img, nav [class*="avatar"] img, ' +
-      '[role="banner"] [class*="avatar"] img, [class*="topbar"] [class*="avatar"] img, ' +
-      '[class*="header__avatar"] img, [class*="header-avatar"] img'
-    ).forEach(img => {
-      if (img.dataset.gfOrigSrc) return;
-      if (img.closest('#gradeflow-panel-host, #gf-arcade')) return;
-      if (!_gfDetectedAvatarSrc && img.src && !img.src.startsWith('data:')) {
-        _gfDetectedAvatarSrc = img.src;
-      }
-      img.dataset.gfOrigSrc = img.src;
-      img.src = dataUrl;
-      count++;
     });
   }
-
-  document.querySelectorAll(
-    '[class*="avatar"], [class*="profile-pic"], [class*="foto"], [class*="user-img"], [class*="userpic"]'
-  ).forEach(el => {
-    if (el.tagName === 'IMG') return;
-    if (el.dataset.gfOrigSrc) return;
-    if (el.closest('#gradeflow-panel-host, #gf-arcade')) return;
-    const bg = window.getComputedStyle(el).backgroundImage;
-    if (bg && bg !== 'none' && bg.startsWith('url(')) {
-      el.dataset.gfOrigSrc = bg;
-      el.style.backgroundImage = `url(${dataUrl})`;
-      count++;
-    }
-  });
-
-
 }
 
 function _GfSameAvatarUrl(a, b) {
@@ -1284,11 +2246,11 @@ function _GfRevertPfp() {
     if (el.tagName === 'IMG') {
       el.src = el.dataset.gfOrigSrc;
     } else {
-      // background-image element
       el.style.backgroundImage = el.dataset.gfOrigSrc;
     }
     delete el.dataset.gfOrigSrc;
   });
+  try { localStorage.removeItem('gf-pfp-cache'); } catch (_) {}
 }
 
 function _GfIsInTopnav(el) {
@@ -1663,6 +2625,7 @@ function _GfRevertNewsCounter() {
 
 function _GfApplyPersonalization(s) {
   _gfPersSettings = s;
+  try { _GfDetectOriginalAvatar(); } catch (_) {}
 
   const needsHide = (s.nameChanger && s.customName) || s.pfpChanger;
   try { localStorage.setItem('gf-pers-active', needsHide ? '1' : '0'); } catch (_) {}
@@ -1737,56 +2700,64 @@ function _GfApplyPersonalization(s) {
   }
 
   let _gfRetryId     = null;
-  let _gfKeepAliveId = null;
   let _gfRetryCount  = 0;
-  const _GF_MAX_RETRIES = 30; // 30 × 500 ms = 15 s fast phase
+  const _GF_MAX_RETRIES = 8;       // 8 × 750 ms = 6 s fast phase
+  const _GF_FAST_INTERVAL = 750;
+  const _GF_SLOW_INTERVAL = 8000;  // keepalive idle interval
+
+  function _GfAnyActive() {
+    const s = _gfPersSettings;
+    if (!s) return false;
+    return (s.nameChanger && s.customName) || (s.pfpChanger && _gfPersPfp) ||
+           s.fakeMsgCounter || s.fakeNotifCounter || s.fakeNewsCounter;
+  }
 
   function _GfStartRetryPolling() {
     if (_gfRetryId) return;
     _gfRetryId = setInterval(() => {
       _gfRetryCount++;
       if (!_gfPersReady || !document.body) {
-        if (_gfRetryCount >= _GF_MAX_RETRIES) clearInterval(_gfRetryId);
+        if (_gfRetryCount >= _GF_MAX_RETRIES) { clearInterval(_gfRetryId); _gfRetryId = null; }
         return;
       }
-      const s = _gfPersSettings;
-      if (!s) { clearInterval(_gfRetryId); return; }
+      if (!_gfPersSettings) { clearInterval(_gfRetryId); _gfRetryId = null; return; }
 
-      const anyActive = (s.nameChanger && s.customName) || (s.pfpChanger && _gfPersPfp) || s.fakeMsgCounter || s.fakeNotifCounter || s.fakeNewsCounter;
-      if (anyActive) _GfRunPersonalization();
+      if (_GfAnyActive()) _GfRunPersonalization();
 
       if (_gfRetryCount >= _GF_MAX_RETRIES) {
         clearInterval(_gfRetryId);
         _gfRetryId = null;
-        _GfStartKeepAlive(); // switch to slow indefinite poll
+        _GfStartKeepAlive();
       }
-    }, 500);
+    }, _GF_FAST_INTERVAL);
   }
 
+  // Idle-scheduled keepalive: never blocks an interactive frame.
   function _GfStartKeepAlive() {
-    if (_gfKeepAliveId) return;
-    _gfKeepAliveId = setInterval(() => {
+    const ric = window.requestIdleCallback || function (cb) { return setTimeout(() => cb({ didTimeout: true, timeRemaining: () => 0 }), _GF_SLOW_INTERVAL); };
+    function tick() {
       if (!_gfPersReady || !_gfPersSettings) return;
-      const s = _gfPersSettings;
-      const anyActive = (s.nameChanger && s.customName) || (s.pfpChanger && _gfPersPfp) || s.fakeMsgCounter || s.fakeNotifCounter || s.fakeNewsCounter;
-      if (anyActive) _GfRunPersonalization();
-    }, 2000);
+      if (_GfAnyActive()) _GfRunPersonalization();
+      ric(tick, { timeout: _GF_SLOW_INTERVAL });
+    }
+    ric(tick, { timeout: _GF_SLOW_INTERVAL });
   }
 
+  // Mutation observer: scope to header/nav once it exists, fall back to body.
   let _gfObsTimer = null;
   let _gfFirstApply = true;
-  const _gfPersObserver = new MutationObserver((mutations) => {
-    if (!_gfPersReady) return;
-    const s = _gfPersSettings;
-    if (!s) return;
-    const anyActive = (s.nameChanger && s.customName) || (s.pfpChanger && _gfPersPfp) || s.fakeMsgCounter || s.fakeNotifCounter || s.fakeNewsCounter;
-    if (!anyActive) return;
 
-    let hasNewNodes = false;
-    for (const m of mutations) {
-      if (m.addedNodes.length > 0 || m.removedNodes.length > 0 || m.type === 'characterData') { hasNewNodes = true; break; }
+  function _GfMutationCallback(mutations) {
+    if (!_gfPersReady || !_GfAnyActive()) return;
+
+    // Only react to additions/removals of element nodes
+    let hasRelevant = false;
+    for (let i = 0; i < mutations.length; i++) {
+      const m = mutations[i];
+      if (m.addedNodes.length > 0 || m.removedNodes.length > 0) { hasRelevant = true; break; }
+      if (m.type === 'characterData') { hasRelevant = true; break; }
     }
-    if (!hasNewNodes) return;
+    if (!hasRelevant) return;
 
     if (_gfFirstApply) {
       _gfFirstApply = false;
@@ -1796,14 +2767,24 @@ function _GfApplyPersonalization(s) {
     if (_gfObsTimer) return;
     _gfObsTimer = setTimeout(() => {
       _gfObsTimer = null;
-      _GfRunPersonalization();
-    }, 200);
-  });
+      // Run inside requestIdleCallback if available so the work happens
+      // off the critical path (no Violation warnings).
+      const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 0));
+      ric(_GfRunPersonalization, { timeout: 1500 });
+    }, 800);
+  }
+
+  const _gfPersObserver = new MutationObserver(_GfMutationCallback);
 
   function StartObserving() {
     if (!document.body) return;
-    _gfPersObserver.observe(document.body, {
-      childList: true, subtree: true, characterData: true
+    // Prefer narrow scope: only watch header/nav. If those don't exist yet,
+    // watch the body but still get filtered by relevance check above.
+    const root = document.querySelector(
+      '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
+    ) || document.body;
+    _gfPersObserver.observe(root, {
+      childList: true, subtree: true, characterData: true,
     });
   }
   if (document.body) StartObserving();

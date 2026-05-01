@@ -1,4 +1,4 @@
-﻿/* chat.css, Gradeflow LAN chat overlay. Theme-aware via :root[data-gf-theme]. */
+﻿/* chat.css, Gradeflow LAN chat overlay. Theme-aware via GradeFlow and SPP root attributes. */
 
 #gf-chat-root {
   /* default: light theme */
@@ -45,6 +45,28 @@ html[data-gf-theme="dark"] #gf-chat-root {
   --gfc-msg-peer-bg:  #292524;
   --gfc-msg-peer-fg:  #fafaf9;
   --gfc-shadow: 0 12px 40px rgba(0,0,0,0.45);
+}
+
+html[data-gf-theme-source="smpp"] #gf-chat-root {
+  filter: none !important;
+  --gfc-bg:        var(--gf-ext-surface, #ffffff);
+  --gfc-bg-alt:    var(--gf-ext-surface-2, #f5f5f4);
+  --gfc-border:    var(--gf-ext-border, #e7e5e4);
+  --gfc-text:      var(--gf-ext-text, #1c1917);
+  --gfc-text-mute: var(--gf-ext-muted, #78716c);
+  --gfc-accent:    var(--gf-ext-accent, #f97316);
+  --gfc-accent-hover: color-mix(in srgb, var(--gf-ext-accent, #f97316) 82%, var(--gf-ext-text, #1c1917));
+  --gfc-on-accent: var(--gf-ext-bg, #ffffff);
+  --gfc-secondary: var(--gf-ext-surface-3, #e7e5e4);
+  --gfc-secondary-hover: color-mix(in srgb, var(--gf-ext-surface-3, #e7e5e4) 75%, var(--gf-ext-text, #1c1917));
+  --gfc-msg-peer-bg:  var(--gf-ext-surface-2, #f5f5f4);
+  --gfc-msg-peer-fg:  var(--gf-ext-text, #1c1917);
+  --gfc-shadow: var(--gf-ext-shadow-soft, 0 12px 40px rgba(0,0,0,0.18));
+}
+
+html[data-gf-theme-source="smpp"][data-gf-external-glass="1"] #gf-chat-root .gf-chat-card {
+  background: color-mix(in srgb, var(--gf-ext-surface, #ffffff) 78%, transparent);
+  backdrop-filter: blur(16px) saturate(1.18);
 }
 
 #gf-chat-root.gf-chat-hidden { display: none !important; }

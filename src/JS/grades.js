@@ -186,12 +186,39 @@ function SubjectIconHtml(subj) {
 }
 
 // Theme sync
-function ApplyGradeTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : '');
+const GF_EXTERNAL_THEME_PROPS = ['--orange', '--orange-dim', '--orange-bg', '--orange-bg2', '--bg-0', '--bg-1', '--bg-2', '--bg-3', '--bg-4', '--border', '--border-hi', '--text-0', '--text-1', '--text-2', '--text-3'];
+let _gfParentThemeSource = '';
+
+function ClearExternalGradeTheme() {
+  GF_EXTERNAL_THEME_PROPS.forEach(name => document.documentElement.style.removeProperty(name));
+}
+
+function ApplyGradeTheme(theme, vars = null) {
+  if (theme === 'smpp' && vars) {
+    document.documentElement.setAttribute('data-theme', 'smpp');
+    document.documentElement.style.setProperty('--orange', vars.accent || '#f97316');
+    document.documentElement.style.setProperty('--orange-dim', vars.accent || '#f97316');
+    document.documentElement.style.setProperty('--orange-bg', `color-mix(in srgb, ${vars.accent || '#f97316'} 14%, transparent)`);
+    document.documentElement.style.setProperty('--orange-bg2', `color-mix(in srgb, ${vars.accent || '#f97316'} 22%, transparent)`);
+    document.documentElement.style.setProperty('--bg-0', vars.bg || '#0d0d0d');
+    document.documentElement.style.setProperty('--bg-1', vars.surface || vars.bg || '#141414');
+    document.documentElement.style.setProperty('--bg-2', vars.surface2 || vars.surface || vars.bg || '#1c1c1c');
+    document.documentElement.style.setProperty('--bg-3', vars.surface2 || vars.surface || '#242424');
+    document.documentElement.style.setProperty('--bg-4', vars.surface3 || vars.surface2 || '#2e2e2e');
+    document.documentElement.style.setProperty('--border', vars.border || vars.surface3 || '#2a2a2a');
+    document.documentElement.style.setProperty('--border-hi', vars.accent || vars.border || '#3a3a3a');
+    document.documentElement.style.setProperty('--text-0', vars.text || '#f5f5f5');
+    document.documentElement.style.setProperty('--text-1', vars.text || '#c4c4c4');
+    document.documentElement.style.setProperty('--text-2', vars.text || '#888');
+    document.documentElement.style.setProperty('--text-3', vars.text || '#555');
+    return;
+  }
+  ClearExternalGradeTheme();
+  document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
 }
 
 chrome.storage.local.get('gradeflow-theme', ({ 'gradeflow-theme': saved }) => {
-  const th = saved === 'dark' ? 'dark' : 'light';
+  const th = saved === 'dark' || saved === 'smpp' ? saved : 'light';
   S.theme = th;
   ApplyGradeTheme(th);
 });
@@ -199,24 +226,48 @@ chrome.storage.local.get('gradeflow-theme', ({ 'gradeflow-theme': saved }) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes['gradeflow-theme']) {
     const th = changes['gradeflow-theme'].newValue;
+    if (_gfParentThemeSource === 'smpp' && th !== 'smpp') return;
     S.theme = th;
     ApplyGradeTheme(th);
     const overlay = document.getElementById('gf-settings-overlay');
     if (overlay?.classList.contains('is-open')) RenderSettings();
   }
+  if (area === 'local' && changes['gradeflow-study-sessions']) {
+    S.studySessions = NormalizeStudySessions(changes['gradeflow-study-sessions'].newValue);
+    if (S.activeView === 'planner') RenderMainContent(false);
+  }
+  if (area === 'local' && changes['gradeflow-attendance-items']) {
+    S.attendanceItems = NormalizeAttendanceItems(changes['gradeflow-attendance-items'].newValue);
+    if (S.activeView === 'attendance') RenderMainContent(false);
+  }
+  if (area === 'local' && changes['gf-profile-picture']) {
+    S.profilePicture = changes['gf-profile-picture'].newValue || '';
+    if (S.activeView === 'comparison') RenderMainContent(false);
+  }
+  if (area === 'local' && changes['gf-detected-profile-picture']) {
+    S.detectedProfilePicture = changes['gf-detected-profile-picture'].newValue || '';
+    if (S.activeView === 'comparison') RenderMainContent(false);
+  }
 });
 
 window.addEventListener('message', e => {
   if (e.data?.type === 'gf-theme') {
+    _gfParentThemeSource = e.data.theme === 'smpp' ? 'smpp' : '';
     S.theme = e.data.theme;
-    ApplyGradeTheme(e.data.theme);
+    ApplyGradeTheme(e.data.theme, e.data.vars || null);
     const overlay = document.getElementById('gf-settings-overlay');
     if (overlay?.classList.contains('is-open')) RenderSettings();
   }
 
   if (e.data?.type === 'gf-grades-ready') {
     const prevJSON = S.store ? JSON.stringify(S.store) : null;
-    chrome.storage.local.get('gradeflow-grades', result => {
+    const prevStore = S.store ? JSON.parse(JSON.stringify(S.store)) : null;
+    chrome.storage.local.get(['gradeflow-grades', 'gradeflow-planner-items', 'gradeflow-study-sessions', 'gradeflow-attendance-items', 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
+      S.profilePicture = result?.['gf-profile-picture'] || S.profilePicture || '';
+      S.detectedProfilePicture = result?.['gf-detected-profile-picture'] || S.detectedProfilePicture || '';
+      S.plannerItems = NormalizePlannerItems(result?.['gradeflow-planner-items']);
+      S.studySessions = NormalizeStudySessions(result?.['gradeflow-study-sessions']);
+      S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
       const raw = result?.['gradeflow-grades'];
       if (!raw || (prevJSON && prevJSON === raw)) return;
       const wasAlreadyLoaded = !!S.store;
@@ -229,11 +280,12 @@ if (S.store?._courseIcons) {
       S.periods = ComputePeriods(S.store);
       if (!S.periods.includes(S.activePeriod)) S.activePeriod = 'Alle';
       if (wasAlreadyLoaded) {
+        NotifyNewGrades(prevStore, S.store);
         const wrap = document.getElementById('gf-table-wrap');
         if (wrap) { wrap.style.transition = 'opacity 0.1s'; wrap.style.opacity = '0'; }
         requestAnimationFrame(() => requestAnimationFrame(() => {
           RenderSidebar();
-          RenderTable(false);
+          RenderMainContent(false);
           UpdateTopbar();
           UpdateBottomBar();
           if (wrap) { wrap.style.opacity = '1'; setTimeout(() => { wrap.style.transition = ''; }, 110); }
@@ -242,6 +294,18 @@ if (S.store?._courseIcons) {
         Render(false);
         window.parent.postMessage({ type: 'gf-panel-rendered' }, '*');
       }
+    });
+  }
+
+  if (e.data?.type === 'gf-planner-ready') {
+    LoadPlannerItems(() => {
+      if (S.activeView === 'planner') RenderMainContent(false);
+    });
+  }
+
+  if (e.data?.type === 'gf-attendance-ready') {
+    LoadAttendanceItems(() => {
+      if (S.activeView === 'attendance') RenderMainContent(false);
     });
   }
 
@@ -310,7 +374,7 @@ function BuildAllPeriodData(store) {
       const seen = new Set(merged[subject].scores.map(x => x.title + '\0' + x.date + '\0' + x.scored + '\0' + x.max));
       for (const score of (payload?.scores || [])) {
         const k = score.title + '\0' + score.date + '\0' + score.scored + '\0' + score.max;
-        if (!seen.has(k)) { seen.add(k); merged[subject].scores.push({ ...score }); }
+        if (!seen.has(k)) { seen.add(k); merged[subject].scores.push({ ...score, _period: key }); }
       }
     }
   }
@@ -372,12 +436,12 @@ function ComputeTotalWeightedHours(data) {
   for (const subj of Object.keys(data)) { const h = GetHoursForSubject(subj); if (h) total += h; }
   return total > 0 ? total : null;
 }
-function WeightedPct(data) {
+function WeightedPct(data, period = S.activePeriod, includeWhatIf = period === S.activePeriod) {
   let weighted = 0, totalHours = 0;
   for (const [subject, { scores }] of Object.entries(data || {})) {
     const h = GetHoursForSubject(subject);
     if (!h || isNaN(h)) continue;
-    weighted += CalcPercent(scores) * h;
+    weighted += EffectiveSubjectPct(subject, scores, period, includeWhatIf) * h;
     totalHours += h;
   }
   return totalHours > 0 ? (weighted / totalHours) : 0;
@@ -412,7 +476,7 @@ function FormulaSubjectPct(subject, store) {
     for (const part of (group.parts || [])) {
       const pw = parseFloat(part.weight) || 0;
       if (!pw || !part.period) continue;
-      const scores = store[part.period]?.[subject]?.scores || [];
+      const scores = EffectiveScores(subject, store[part.period]?.[subject]?.scores || [], part.period, false);
       if (!scores.length) continue;
       gws += CalcPercent(scores) * pw;
       gtw += pw;
@@ -449,13 +513,526 @@ function FormulaOverallPct(store, useHours = false) {
   return count > 0 ? sum / count : 0;
 }
 
+// Decision-tool state
+function LoadJSONSetting(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : fallback;
+  } catch (_) { return fallback; }
+}
+function SaveJSONSetting(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value || {})); } catch (_) {}
+}
+function LoadActiveView() {
+  try {
+    const v = localStorage.getItem('gradeflow-active-view-v1');
+    return ['overview', 'trends', 'planner', 'comparison', 'attendance', 'decision', 'export'].includes(v) ? v : 'overview';
+  } catch (_) { return 'overview'; }
+}
+function SaveActiveView(view) {
+  S.activeView = view;
+  try { localStorage.setItem('gradeflow-active-view-v1', view); } catch (_) {}
+}
+function LoadWhatIfMode() {
+  try { return localStorage.getItem('gradeflow-whatif-enabled-v1') === '1'; } catch (_) { return false; }
+}
+function SaveWhatIfMode(val) {
+  S.whatIfMode = !!val;
+  try { localStorage.setItem('gradeflow-whatif-enabled-v1', val ? '1' : '0'); } catch (_) {}
+}
+function LoadRiskNextMax() {
+  try {
+    const n = parseFloat(localStorage.getItem('gradeflow-risk-nextmax-v1'));
+    return Number.isFinite(n) && n > 0 ? n : 20;
+  } catch (_) { return 20; }
+}
+function SaveRiskNextMax(value) {
+  S.riskNextMax = Math.max(1, parseFloat(value) || 20);
+  try { localStorage.setItem('gradeflow-risk-nextmax-v1', String(S.riskNextMax)); } catch (_) {}
+}
+function NormalizeRiskThresholds(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  let watch = parseFloat(source.watch);
+  let safe = parseFloat(source.safe);
+  if (!Number.isFinite(watch)) watch = 50;
+  if (!Number.isFinite(safe)) safe = 60;
+  watch = Math.max(0, Math.min(99, watch));
+  safe = Math.max(watch + 1, Math.min(100, safe));
+  return { watch, safe };
+}
+function LoadRiskThresholds() {
+  return NormalizeRiskThresholds(LoadJSONSetting('gradeflow-risk-thresholds-v1', { watch: 50, safe: 60 }));
+}
+function SaveRiskThresholds(next) {
+  S.riskThresholds = NormalizeRiskThresholds(next);
+  SaveJSONSetting('gradeflow-risk-thresholds-v1', S.riskThresholds);
+}
+function Esc(value) {
+  return String(value ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+function GetScorePeriod(score, fallbackPeriod) {
+  return score?._period || fallbackPeriod || S.activePeriod || 'Alle';
+}
+function GradeKey(period, subject, score) {
+  return [period || '', subject || '', score?.title || '', score?.date || '', String(score?.scored ?? ''), String(score?.max ?? '')]
+    .join('\u0001');
+}
+function GradeKeyFromScore(subject, score, fallbackPeriod) {
+  return GradeKey(GetScorePeriod(score, fallbackPeriod), subject, score);
+}
+function IsGradeExcluded(period, subject, score) {
+  return !!S.excludedGrades?.[GradeKey(period, subject, score)];
+}
+function GetGradeWeight(period, subject, score) {
+  const v = parseFloat(S.gradeWeights?.[GradeKey(period, subject, score)]);
+  return Number.isFinite(v) && v > 0 ? v : 1;
+}
+function SaveExcludedGrades(map) {
+  S.excludedGrades = { ...(map || {}) };
+  SaveJSONSetting('gradeflow-excluded-grades-v1', S.excludedGrades);
+}
+function SaveGradeWeights(map) {
+  S.gradeWeights = { ...(map || {}) };
+  SaveJSONSetting('gradeflow-grade-weights-v1', S.gradeWeights);
+}
+function SaveWhatIfScores(map) {
+  S.whatIfScores = { ...(map || {}) };
+  SaveJSONSetting('gradeflow-whatif-scores-v1', S.whatIfScores);
+}
+function BuildWhatIfScore(subject) {
+  const w = S.whatIfScores?.[subject];
+  if (!w || w.period !== S.activePeriod) return null;
+  const scored = parseFloat(w?.scored);
+  const max = parseFloat(w?.max);
+  if (!S.whatIfMode || !Number.isFinite(scored) || !Number.isFinite(max) || max <= 0) return null;
+  return { title: Translate('planned_grade'), date: '', scored, max, _whatIf: true, _period: S.activePeriod };
+}
+function ApplyScoreModel(subject, score, fallbackPeriod) {
+  if (score?._whatIf) return { ...score };
+  const period = GetScorePeriod(score, fallbackPeriod);
+  const weight = GetGradeWeight(period, subject, score);
+  return { ...score, scored: score.scored * weight, max: score.max * weight, _weight: weight, _period: period };
+}
+function EffectiveScores(subject, scores, fallbackPeriod, includeWhatIf = true) {
+  const base = (scores || [])
+    .filter(score => !score?._whatIf && !IsGradeExcluded(GetScorePeriod(score, fallbackPeriod), subject, score))
+    .map(score => ApplyScoreModel(subject, score, fallbackPeriod));
+  const planned = includeWhatIf ? BuildWhatIfScore(subject) : null;
+  return planned ? [...base, planned] : base;
+}
+function EffectiveSubjectPct(subject, scores, fallbackPeriod, includeWhatIf = true) {
+  return CalcPercent(EffectiveScores(subject, scores, fallbackPeriod, includeWhatIf));
+}
+function EffectiveTotals(data, fallbackPeriod, includeWhatIf = true) {
+  return Object.entries(data || {}).flatMap(([subject, payload]) => EffectiveScores(subject, payload?.scores || [], fallbackPeriod, includeWhatIf));
+}
+function NormalizePlannerItems(raw) {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set();
+    return parsed.map(item => ({
+      title: String(item?.title || '').trim(),
+      subject: String(item?.subject || '').trim(),
+      dueDate: String(item?.dueDate || '').trim(),
+      type: String(item?.type || '').trim(),
+      url: String(item?.url || '').trim(),
+      source: String(item?.source || '').trim(),
+    })).filter(item => item.title || item.subject).filter(item => {
+      const key = [item.title, item.subject, item.dueDate].join('\u0001').toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 120);
+  } catch (_) { return []; }
+}
+function NormalizeAttendanceItems(raw) {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set();
+    const now = new Date();
+    const schoolStartYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+    const junk = /highcharts|created with highcharts|evolutie afwezigheden|totalen per|klassen\b|alle informatie|leerlingvolgsysteem/i;
+    return parsed.map(item => ({
+      date: String(item?.date || '').trim(),
+      moment: String(item?.moment || '').trim(),
+      code: String(item?.code || '').trim(),
+      title: String(item?.title || '').trim(),
+      detail: String(item?.detail || '').trim(),
+      type: String(item?.type || '').trim(),
+      source: String(item?.source || '').trim(),
+    })).filter(item => {
+      if (!item.date || junk.test(`${item.title} ${item.detail}`)) return false;
+      const time = ParseLocalDateToTime(item.date);
+      if (!time) return false;
+      const year = new Date(time).getFullYear();
+      return year >= schoolStartYear && year <= schoolStartYear + 1;
+    }).filter(item => {
+      const key = [item.date, item.moment, item.code, item.title].join('\u0001').toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 180);
+  } catch (_) { return []; }
+}
+function LoadPlannerItems(done) {
+  try {
+    chrome.storage.local.get('gradeflow-planner-items', result => {
+      S.plannerItems = NormalizePlannerItems(result?.['gradeflow-planner-items']);
+      if (done) done(S.plannerItems);
+    });
+  } catch (_) {
+    S.plannerItems = [];
+    if (done) done(S.plannerItems);
+  }
+}
+function LoadAttendanceItems(done) {
+  try {
+    chrome.storage.local.get('gradeflow-attendance-items', result => {
+      S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
+      if (done) done(S.attendanceItems);
+    });
+  } catch (_) {
+    S.attendanceItems = [];
+    if (done) done(S.attendanceItems);
+  }
+}
+function CurrentMonthValue(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+function NormalizeStudySessions(raw) {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(item => ({
+      id: String(item?.id || ''),
+      subject: String(item?.subject || '').trim(),
+      topic: String(item?.topic || '').trim(),
+      startAt: String(item?.startAt || '').trim(),
+      durationMin: Math.max(5, parseInt(item?.durationMin, 10) || 45),
+      notifiedAt: String(item?.notifiedAt || '').trim(),
+    })).filter(item => item.id && item.startAt && (item.subject || item.topic) && new Date(item.startAt).getTime() > Date.now());
+  } catch (_) { return []; }
+}
+function LoadStudySessions(done) {
+  try {
+    chrome.storage.local.get('gradeflow-study-sessions', result => {
+      S.studySessions = NormalizeStudySessions(result?.['gradeflow-study-sessions']);
+      if (done) done(S.studySessions);
+    });
+  } catch (_) {
+    S.studySessions = [];
+    if (done) done(S.studySessions);
+  }
+}
+function SaveStudySessions(sessions) {
+  S.studySessions = NormalizeStudySessions(sessions);
+  chrome.storage.local.set({ 'gradeflow-study-sessions': S.studySessions }, () => {
+    try { chrome.runtime.sendMessage({ type: 'gf-study-sync' }, () => { void chrome.runtime.lastError; }); } catch (_) {}
+  });
+}
+function CleanupExpiredStudySessions() {
+  const active = NormalizeStudySessions(S.studySessions || []);
+  if (active.length !== (S.studySessions || []).length) SaveStudySessions(active);
+  else S.studySessions = active;
+}
+function StudySessionInputValue(value) {
+  const date = value ? new Date(value) : new Date();
+  if (isNaN(date)) return '';
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+function StudySessionDisplay(value) {
+  const date = new Date(value);
+  if (isNaN(date)) return String(value || '');
+  return `${date.toLocaleDateString()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+function StudySessionMonth(value) {
+  const date = new Date(value);
+  return isNaN(date) ? '' : CurrentMonthValue(date);
+}
+function AddStudySessionFromForm(root) {
+  const subject = root.querySelector('#gf-study-subject')?.value?.trim() || '';
+  const topic = root.querySelector('#gf-study-topic')?.value?.trim() || '';
+  const startAtValue = root.querySelector('#gf-study-start')?.value || '';
+  const durationMin = parseInt(root.querySelector('#gf-study-duration')?.value, 10) || 45;
+  const startDate = startAtValue ? new Date(startAtValue) : null;
+  if (!startDate || isNaN(startDate) || startDate.getTime() <= Date.now() || (!subject && !topic)) {
+    ShowToast(Translate('study_invalid'), '', 'warn');
+    return;
+  }
+  const session = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    subject,
+    topic,
+    startAt: startDate.toISOString(),
+    durationMin: Math.max(5, durationMin),
+  };
+  SaveStudySessions([...(S.studySessions || []), session]);
+  S.studyMonth = StudySessionMonth(session.startAt) || S.studyMonth;
+  RenderPlannerView();
+  ShowToast(Translate('study_saved'), StudySessionDisplay(session.startAt), 'ok');
+}
+function DeleteStudySession(id) {
+  SaveStudySessions((S.studySessions || []).filter(session => session.id !== id));
+  RenderPlannerView();
+}
+function FirstNameOnly(name) {
+  return String(name || '').trim().split(/\s+/)[0] || '';
+}
+function LoadClassComparisonAlias() {
+  try { return localStorage.getItem('gradeflow-class-share-alias-v1') || ''; } catch (_) { return ''; }
+}
+function SaveClassComparisonAlias(value) {
+  S.classShareAlias = String(value || '').trim().slice(0, 80);
+  try { localStorage.setItem('gradeflow-class-share-alias-v1', S.classShareAlias); } catch (_) {}
+}
+function LoadClassComparisonShareName() {
+  try { return localStorage.getItem('gradeflow-class-share-real-name-v1') !== '0'; } catch (_) { return true; }
+}
+function SaveClassComparisonShareName(value) {
+  S.classShareRealName = !!value;
+  try { localStorage.setItem('gradeflow-class-share-real-name-v1', value ? '1' : '0'); } catch (_) {}
+}
+function ClassComparisonRawName() {
+  try {
+    return localStorage.getItem('gf-realname-cache') || localStorage.getItem('gf-name-cache') || Translate('comparison_you');
+  } catch (_) { return Translate('comparison_you'); }
+}
+function ClassComparisonName() {
+  if (!S.classShareRealName) return S.classShareAlias || Translate('comparison_you');
+  return S.classShareAlias || FirstNameOnly(ClassComparisonRawName()) || Translate('comparison_you');
+}
+function ClassComparisonIdentity() {
+  try {
+    let id = localStorage.getItem('gradeflow-class-identity-v1');
+    if (!id) {
+      const part = globalThis.crypto?.getRandomValues ? [...globalThis.crypto.getRandomValues(new Uint32Array(3))].map(v => v.toString(36)).join('') : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+      id = `gf-${part}`.slice(0, 48);
+      localStorage.setItem('gradeflow-class-identity-v1', id);
+    }
+    return id;
+  } catch (_) { return ''; }
+}
+function SanitizedClassComparisonPicture(value) {
+  const url = String(value || '').trim();
+  if (!url || url.length > 2048 || /^data:/i.test(url)) return '';
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+function ClassComparisonPicture() {
+  try {
+    return SanitizedClassComparisonPicture(S.detectedProfilePicture)
+      || SanitizedClassComparisonPicture(localStorage.getItem('gf-pfp-cache'))
+      || SanitizedClassComparisonPicture(S.profilePicture);
+  } catch (_) { return SanitizedClassComparisonPicture(S.detectedProfilePicture || S.profilePicture); }
+}
+function ClassComparisonSubjects(data) {
+  const subjects = {};
+  for (const [subject, payload] of Object.entries(data || {})) {
+    const scores = EffectiveScores(subject, payload?.scores || [], S.activePeriod, false);
+    const scored = scores.reduce((sum, score) => sum + score.scored, 0);
+    const max = scores.reduce((sum, score) => sum + score.max, 0);
+    if (max > 0) subjects[subject] = { o: Math.round(scored * 10) / 10, m: Math.round(max * 10) / 10 };
+  }
+  return subjects;
+}
+function ClassComparisonOverall(subjects) {
+  let scored = 0, max = 0;
+  for (const score of Object.values(subjects || {})) {
+    scored += Number(score?.o) || 0;
+    max += Number(score?.m) || 0;
+  }
+  return max > 0 ? scored / max * 100 : 0;
+}
+function Base64UrlEncodeJson(value) {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  let binary = '';
+  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+function Base64UrlDecodeJson(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+function BuildClassComparisonPayload() {
+  const data = S.store ? GetPeriodData(S.store, S.activePeriod) : {};
+  return {
+    v: 1,
+    u: ClassComparisonIdentity(),
+    n: ClassComparisonName(),
+    p: ClassComparisonPicture(),
+    s: ClassComparisonSubjects(data),
+    ts: Date.now(),
+    period: S.activePeriod === 'Alle' ? 'both' : S.activePeriod,
+  };
+}
+function BuildClassComparisonCode() {
+  return `SSCOMP:${Base64UrlEncodeJson(BuildClassComparisonPayload())}`;
+}
+function NormalizeClassPeer(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const rawSubjects = payload.s && typeof payload.s === 'object' ? payload.s : {};
+  const subjects = {};
+  for (const [subject, score] of Object.entries(rawSubjects)) {
+    const scored = Number(score?.o);
+    const max = Number(score?.m);
+    if (!subject || !Number.isFinite(scored) || !Number.isFinite(max) || max <= 0) continue;
+    subjects[String(subject).trim()] = { o: Math.round(scored * 10) / 10, m: Math.round(max * 10) / 10 };
+  }
+  if (!Object.keys(subjects).length) return null;
+  const name = String(payload.n || Translate('comparison_peer')).trim().slice(0, 80);
+  const uid = String(payload.u || '').trim().slice(0, 80).replace(/[^a-z0-9_-]/gi, '');
+  const nameKey = name.toLowerCase().replace(/\s+/g, ' ').trim() || Translate('comparison_peer').toLowerCase();
+  const timestamp = Number(payload.ts) || Date.now();
+  return {
+    id: uid ? `u:${uid}` : `n:${nameKey}`,
+    uid,
+    name,
+    picture: SanitizedClassComparisonPicture(payload.p),
+    period: String(payload.period || '').trim(),
+    ts: timestamp,
+    subjects,
+  };
+}
+function NormalizeClassPeers(raw) {
+  const source = Array.isArray(raw) ? raw : [];
+  const seen = new Set();
+  return source.map(NormalizeClassPeer).filter(peer => {
+    if (!peer || seen.has(peer.id)) return false;
+    seen.add(peer.id);
+    return true;
+  }).slice(0, 60);
+}
+function DecodeClassComparisonCodes(text) {
+  const raw = String(text || '').trim();
+  const matches = [...raw.matchAll(/SSCOMP:([A-Za-z0-9_-]+)/g)].map(match => match[1]);
+  const chunks = matches.length ? matches : [raw.replace(/^SSCOMP:/i, '')].filter(Boolean);
+  return chunks.map(chunk => NormalizeClassPeer(Base64UrlDecodeJson(chunk))).filter(Boolean);
+}
+function SaveClassPeers(peers) {
+  S.classPeers = NormalizeClassPeers(peers);
+  SaveJSONSetting('gradeflow-class-peers-v1', S.classPeers);
+}
+function DeleteClassPeer(id) {
+  SaveClassPeers((S.classPeers || []).filter(peer => peer.id !== id));
+  RenderComparisonView();
+}
+async function CopyText(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {}
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.style.position = 'fixed';
+  area.style.left = '-9999px';
+  document.body.appendChild(area);
+  area.select();
+  const ok = document.execCommand('copy');
+  area.remove();
+  return ok;
+}
+function ToggleGradeExcluded(key) {
+  const next = { ...(S.excludedGrades || {}) };
+  const nowExcluded = !next[key];
+  if (nowExcluded) next[key] = 1; else delete next[key];
+  SaveExcludedGrades(next);
+  ShowToast(nowExcluded ? Translate('notify_grade_excluded') : Translate('notify_grade_included'), '', nowExcluded ? 'warn' : 'ok');
+  RenderMainContent(false);
+  UpdateTopbar();
+  UpdateBottomBar();
+}
+function SetGradeWeight(key, value) {
+  const next = { ...(S.gradeWeights || {}) };
+  const n = parseFloat(value);
+  if (Number.isFinite(n) && n > 0 && Math.abs(n - 1) > 0.001) next[key] = n;
+  else delete next[key];
+  SaveGradeWeights(next);
+  RenderMainContent(false);
+  UpdateTopbar();
+  UpdateBottomBar();
+}
+function ShowToast(title, message = '', kind = 'info') {
+  const stack = document.getElementById('gf-toast-stack');
+  if (!stack) return;
+  const toast = document.createElement('div');
+  toast.className = `gf-toast gf-toast-${kind}`;
+  toast.innerHTML = `<div class="gf-toast-icon">GF</div><div><div class="gf-toast-title">${Esc(title)}</div>${message ? `<div class="gf-toast-msg">${Esc(message)}</div>` : ''}</div>`;
+  stack.appendChild(toast);
+  const close = () => {
+    if (!toast.isConnected) return;
+    toast.classList.add('is-out');
+    setTimeout(() => toast.remove(), 220);
+  };
+  [...stack.querySelectorAll('.gf-toast:not(.is-out)')].slice(0, -4).forEach(oldToast => {
+    oldToast.classList.add('is-out');
+    setTimeout(() => oldToast.remove(), 180);
+  });
+  toast.addEventListener('click', close, { once: true });
+  setTimeout(close, 4200);
+}
+function SnapshotGradeKeys(store) {
+  const map = new Map();
+  for (const [period, subjects] of Object.entries(store || {})) {
+    if (period.startsWith('_')) continue;
+    for (const [subject, payload] of Object.entries(subjects || {})) {
+      for (const score of (payload?.scores || [])) {
+        const key = GradeKey(period, subject, score);
+        map.set(key, { period, subject, score });
+      }
+    }
+  }
+  return map;
+}
+function NotifyNewGrades(previousStore, nextStore) {
+  if (!previousStore || !nextStore) return;
+  const before = SnapshotGradeKeys(previousStore);
+  const after = SnapshotGradeKeys(nextStore);
+  const added = [...after.entries()].filter(([key]) => !before.has(key)).map(([, value]) => value);
+  if (!added.length) return;
+  if (added.length === 1) {
+    const item = added[0];
+    ShowToast(Translate('notify_new_grade'), `${item.subject}: ${FormatNumber(item.score.scored)} / ${FormatNumber(item.score.max)}`, 'ok');
+  } else {
+    ShowToast(Translate('notify_new_grades').replace('{count}', added.length), Translate('notify_new_grades_body'), 'ok');
+  }
+}
+
 // State
 const S = {
   store: null,
   periods: [],
   activePeriod: 'Alle',
+  activeView: LoadActiveView(),
   weightMode: LoadWeightMode(),
   useFormula: LoadUseFormula(),
+  excludedGrades: LoadJSONSetting('gradeflow-excluded-grades-v1', {}),
+  gradeWeights: LoadJSONSetting('gradeflow-grade-weights-v1', {}),
+  whatIfMode: LoadWhatIfMode(),
+  whatIfScores: LoadJSONSetting('gradeflow-whatif-scores-v1', {}),
+  riskNextMax: LoadRiskNextMax(),
+  riskThresholds: LoadRiskThresholds(),
+  classPeers: NormalizeClassPeers(LoadJSONSetting('gradeflow-class-peers-v1', [])),
+  classShareAlias: LoadClassComparisonAlias(),
+  classShareRealName: LoadClassComparisonShareName(),
+  profilePicture: '',
+  detectedProfilePicture: '',
+  plannerItems: [],
+  attendanceItems: [],
+  studySessions: [],
+  studyMonth: CurrentMonthValue(),
   hoursOpen: false,
   formulaOpen: false,
   manualHours: LoadManualHours(),
@@ -471,12 +1048,12 @@ const S = {
   courseIcons: {},
 };
 
-function OverallPct(data) {
+function OverallPct(data, period = S.activePeriod, includeWhatIf = period === S.activePeriod) {
   if (!data || !Object.keys(data).length) return 0;
-  const applyFormula = S.useFormula && S.store && S.activePeriod === 'Alle' && HasFormula();
+  const applyFormula = S.useFormula && S.store && period === 'Alle' && HasFormula();
   if (applyFormula) return FormulaOverallPct(S.store, S.weightMode === 'hours');
-  if (S.weightMode === 'hours') return WeightedPct(data);
-  return CalcPercent(Object.values(data).flatMap(s => s.scores));
+  if (S.weightMode === 'hours') return WeightedPct(data, period, includeWhatIf);
+  return CalcPercent(EffectiveTotals(data, period, includeWhatIf));
 }
 
 function GetModeLabel() {
@@ -496,8 +1073,9 @@ function GetBestSubject(data) {
   const useValue = S.bestSubjectMode === 'value' && HasManualHours() && S.weightMode === 'hours';
   let best = null, bestScore = -Infinity;
   for (const [subj, { scores }] of Object.entries(data)) {
-    if (!scores.length) continue;
-    const subjPct = CalcPercent(scores);
+    const effective = EffectiveScores(subj, scores, S.activePeriod);
+    if (!effective.length) continue;
+    const subjPct = CalcPercent(effective);
     const score = useValue ? (GetHoursForSubject(subj) ? subjPct * GetHoursForSubject(subj) : -Infinity) : subjPct;
     if (score > bestScore) { bestScore = score; best = { subj, CalcPercent: subjPct, hours: GetHoursForSubject(subj), valueScore: score }; }
   }
@@ -534,8 +1112,9 @@ function UpdateBottomBar() {
   fillEl.style.background = col;
 
   const allScores  = Object.values(data).flatMap(s => s.scores);
-  const tScored    = allScores.reduce((a, e) => a + e.scored, 0);
-  const tMax       = allScores.reduce((a, e) => a + e.max, 0);
+  const modelScores = EffectiveTotals(data, S.activePeriod);
+  const tScored    = modelScores.reduce((a, e) => a + e.scored, 0);
+  const tMax       = modelScores.reduce((a, e) => a + e.max, 0);
   if (scoreEl) scoreEl.textContent = FormatNumber(tScored) + ' / ' + FormatNumber(tMax) + ' pt';
 
   if (metaEl) {
@@ -722,6 +1301,7 @@ function RenderHelp() {
     </div>
     <div class="gf-help-section">
       <div class="gf-help-section-title">${Translate('help_shortcuts_title')}</div>
+      <div class="gf-help-shortcut">${Translate('help_shortcut_f6')}</div>
       <div class="gf-help-shortcut">${Translate('help_shortcut_f7')}</div>
       <div class="gf-help-shortcut">${Translate('help_shortcut_f8')}</div>
       <div class="gf-help-shortcut">${Translate('help_shortcut_esc')}</div>
@@ -921,6 +1501,624 @@ function BindCustomLangEditor(body) {
   });
 }
 
+// Main views
+const GF_VIEW_DEFS = [
+  { id: 'overview', icon: '▦', labelKey: 'view_overview' },
+  { id: 'trends', icon: '↗', labelKey: 'view_trends' },
+  { id: 'planner', icon: '□', labelKey: 'view_planner' },
+  { id: 'comparison', icon: '♟', labelKey: 'view_comparison' },
+  { id: 'attendance', icon: '!', labelKey: 'view_attendance' },
+  { id: 'decision', icon: '◇', labelKey: 'view_decision' },
+  { id: 'export', icon: '↓', labelKey: 'view_export' },
+];
+
+function RenderTabs() {
+  const bar = document.getElementById('gf-view-tabs');
+  if (!bar) return;
+  bar.innerHTML = GF_VIEW_DEFS.map(v => `
+    <button class="gf-view-tab${S.activeView === v.id ? ' active' : ''}" data-gf-view="${v.id}" role="tab" aria-selected="${S.activeView === v.id ? 'true' : 'false'}">
+      <span>${v.icon}</span><span>${Translate(v.labelKey)}</span>
+    </button>`).join('');
+  bar.querySelectorAll('[data-gf-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      SaveActiveView(btn.dataset.gfView);
+      RenderTabs();
+      RenderMainContent(false);
+      UpdateTopbar();
+      UpdateBottomBar();
+      if (typeof _GfApplyPressToAll === 'function') _GfApplyPressToAll(bar);
+    });
+  });
+}
+
+function RenderMainContent(animated = true) {
+  if (S.activeView === 'trends') return RenderTrendsView();
+  if (S.activeView === 'planner') return RenderPlannerView();
+  if (S.activeView === 'comparison') return RenderComparisonView();
+  if (S.activeView === 'attendance') return RenderAttendanceView();
+  if (S.activeView === 'decision') return RenderDecisionView();
+  if (S.activeView === 'export') return RenderExportView();
+  return RenderTable(animated);
+}
+
+function BuildTrendPoints(subject, scores) {
+  let scored = 0, max = 0;
+  return SortScoresChronologically(scores || [])
+    .filter(score => !score?._whatIf && score.max > 0 && !IsGradeExcluded(GetScorePeriod(score, S.activePeriod), subject, score))
+    .map(score => ApplyScoreModel(subject, score, S.activePeriod))
+    .map(score => {
+      scored += score.scored;
+      max += score.max;
+      return {
+        title: score.title || '',
+        date: score.date || '',
+        pct: max > 0 ? scored / max * 100 : 0,
+        singlePct: score.max > 0 ? score.scored / score.max * 100 : 0,
+      };
+    });
+}
+
+function TrendStatus(delta) {
+  if (delta >= 3) return 'up';
+  if (delta <= -3) return 'down';
+  return 'flat';
+}
+
+function TrendSvg(points) {
+  const width = 260, height = 82, pad = 10;
+  if (!points.length) return `<svg class="gf-trend-svg" viewBox="0 0 ${width} ${height}" aria-hidden="true"></svg>`;
+  const coords = points.map((point, i) => {
+    const x = points.length === 1 ? width / 2 : pad + (i / (points.length - 1)) * (width - pad * 2);
+    const y = pad + (1 - Math.max(0, Math.min(100, point.pct)) / 100) * (height - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const first = coords[0].split(',');
+  const last = coords[coords.length - 1].split(',');
+  return `<svg class="gf-trend-svg" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+    <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" class="gf-trend-axis"/>
+    <line x1="${pad}" y1="${pad + (height - pad * 2) * .3}" x2="${width - pad}" y2="${pad + (height - pad * 2) * .3}" class="gf-trend-target"/>
+    <polyline points="${coords.join(' ')}" class="gf-trend-line"/>
+    <circle cx="${first[0]}" cy="${first[1]}" r="3" class="gf-trend-dot muted"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="4" class="gf-trend-dot"/>
+  </svg>`;
+}
+
+function BuildTrendRows(data) {
+  return Object.entries(data || {}).map(([subject, payload]) => {
+    const points = BuildTrendPoints(subject, payload?.scores || []);
+    const first = points[0]?.pct ?? 0;
+    const last = points[points.length - 1]?.pct ?? 0;
+    const delta = points.length > 1 ? last - first : 0;
+    return { subject, points, first, last, delta, status: TrendStatus(delta) };
+  }).filter(row => row.points.length).sort((a, b) => a.status === b.status ? a.subject.localeCompare(b.subject, undefined, { sensitivity: 'base' }) : a.delta - b.delta);
+}
+
+function RenderTrendsView() {
+  const wrap = document.getElementById('gf-table-wrap');
+  if (!wrap) return;
+  const data = S.store ? GetPeriodData(S.store, S.activePeriod) : {};
+  const rows = BuildTrendRows(data);
+  const slipping = rows.filter(row => row.status === 'down').length;
+  const improving = rows.filter(row => row.status === 'up').length;
+  const stable = rows.filter(row => row.status === 'flat').length;
+  const body = rows.length ? rows.map(row => {
+    const latest = row.points[row.points.length - 1];
+    return `<section class="gf-trend-card is-${row.status}">
+      <div class="gf-trend-head">
+        <div class="gf-trend-name">${SubjectIconHtml(row.subject)}${Esc(row.subject)}</div>
+        <div class="gf-trend-latest" style="color:${ColorForPercent(row.last)}">${FormatPercent(row.last)}%</div>
+      </div>
+      ${TrendSvg(row.points)}
+      <div class="gf-trend-foot">
+        <span>${Translate(`trend_${row.status}`)}</span>
+        <span>${row.delta >= 0 ? '+' : ''}${FormatPercent(row.delta)} ${Translate('trend_points')}</span>
+        <span>${Esc(latest.date || latest.title || '')}</span>
+      </div>
+    </section>`;
+  }).join('') : `<section class="gf-tool-panel"><div id="gf-state"><span>${Translate('trend_empty')}</span></div></section>`;
+  wrap.innerHTML = `<div class="gf-tool-view">
+    <div class="gf-tool-head"><div><div class="gf-tool-title">${Translate('trends_title')}</div><div class="gf-tool-sub">${Translate('trends_desc')}</div></div></div>
+    <div class="gf-trend-summary">
+      <div class="gf-trend-stat is-up"><b>${improving}</b><span>${Translate('trend_up')}</span></div>
+      <div class="gf-trend-stat is-flat"><b>${stable}</b><span>${Translate('trend_flat')}</span></div>
+      <div class="gf-trend-stat is-down"><b>${slipping}</b><span>${Translate('trend_down')}</span></div>
+    </div>
+    <div class="gf-trend-grid">${body}</div>
+  </div>`;
+}
+
+function PlannerItemTime(item) {
+  const t = ParseLocalDateToTime(item?.dueDate);
+  if (!t) return Number.MAX_SAFE_INTEGER;
+  const d = new Date(t);
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
+}
+
+function MatchPlannerRisk(item, riskRows) {
+  const hay = `${item.subject || ''} ${item.title || ''}`.toLowerCase();
+  return riskRows.find(row => hay.includes(row.subject.toLowerCase())) || null;
+}
+
+function RenderPlannerView() {
+  const wrap = document.getElementById('gf-table-wrap');
+  if (!wrap) return;
+  const data = S.store ? GetPeriodData(S.store, S.activePeriod) : {};
+  const riskRows = BuildRiskRows(data);
+  const now = Date.now();
+  const items = [...(S.plannerItems || [])].sort((a, b) => PlannerItemTime(a) - PlannerItemTime(b));
+  const upcoming = items.filter(item => PlannerItemTime(item) >= now || !item.dueDate).slice(0, 40);
+  const overdue = items.filter(item => PlannerItemTime(item) < now).slice(0, 12);
+  const subjects = Object.keys(data).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+  const selectedMonth = S.studyMonth || CurrentMonthValue();
+  const defaultStart = new Date(Date.now() + 60 * 60 * 1000);
+  defaultStart.setMinutes(0, 0, 0);
+  const subjectOptions = [`<option value="">${Translate('planner_unknown_subject')}</option>`, ...subjects.map(subject => `<option value="${Esc(subject)}">${Esc(subject)}</option>`)].join('');
+  const studySessions = [...(S.studySessions || [])]
+    .filter(session => StudySessionMonth(session.startAt) === selectedMonth)
+    .sort((left, right) => new Date(left.startAt).getTime() - new Date(right.startAt).getTime());
+  const studyRows = studySessions.length ? studySessions.map(session => {
+    const isPast = new Date(session.startAt).getTime() < Date.now();
+    return `<div class="gf-study-row${isPast ? ' is-past' : ''}">
+      <div class="gf-study-time">${Esc(StudySessionDisplay(session.startAt))}</div>
+      <div class="gf-planner-main"><div class="gf-planner-title">${Esc(session.subject || Translate('planner_unknown_subject'))}</div><div class="gf-planner-meta">${Esc(session.topic || Translate('study_general'))} · ${FormatNumber(session.durationMin)} ${Translate('study_minutes')}${session.notifiedAt ? ` · ${Translate('study_notified')}` : ''}</div></div>
+      <button class="gf-tool-btn" data-study-delete="${Esc(session.id)}">${Translate('study_delete')}</button>
+    </div>`;
+  }).join('') : `<div id="gf-state"><span>${Translate('study_empty')}</span></div>`;
+  const rows = upcoming.length ? upcoming.map(item => {
+    const risk = MatchPlannerRisk(item, riskRows);
+    const riskClass = risk?.status || 'flat';
+    const subject = item.subject || risk?.subject || Translate('planner_unknown_subject');
+    return `<div class="gf-planner-row is-${riskClass}">
+      <div class="gf-planner-date">${Esc(item.dueDate || Translate('planner_no_date'))}</div>
+      <div class="gf-planner-main"><div class="gf-planner-title">${Esc(item.title || Translate('planner_untitled'))}</div><div class="gf-planner-meta">${Esc(subject)}${item.type ? ` · ${Esc(item.type)}` : ''}${risk ? ` · ${Translate(`risk_${risk.status === 'watch' ? 'watchlist' : risk.status}`)}` : ''}</div></div>
+      ${item.url ? `<a class="gf-tool-btn" href="${Esc(item.url)}" target="_blank" rel="noopener">${Translate('planner_open')}</a>` : ''}
+    </div>`;
+  }).join('') : `<div id="gf-state"><span>${Translate('planner_empty')}</span></div>`;
+  const overdueHtml = overdue.length ? `<section class="gf-tool-panel"><div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('planner_overdue')}</div></div></div><div class="gf-planner-list">${overdue.map(item => `<div class="gf-planner-row is-critical"><div class="gf-planner-date">${Esc(item.dueDate)}</div><div class="gf-planner-main"><div class="gf-planner-title">${Esc(item.title || Translate('planner_untitled'))}</div><div class="gf-planner-meta">${Esc(item.subject || Translate('planner_unknown_subject'))}</div></div></div>`).join('')}</div></section>` : '';
+  wrap.innerHTML = `<div class="gf-tool-view">
+    <div class="gf-tool-head"><div><div class="gf-tool-title">${Translate('planner_title')}</div><div class="gf-tool-sub">${Translate('planner_desc')}</div></div><div class="gf-tool-actions"><button class="gf-tool-btn" id="gf-planner-refresh">${Translate('planner_refresh')}</button></div></div>
+    <section class="gf-tool-panel">
+      <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('study_title')}</div><div class="gf-tool-panel-sub">${Translate('study_desc')}</div></div><label class="gf-tool-btn" style="cursor:default;">${Translate('study_month')}<input id="gf-study-month" type="month" value="${Esc(selectedMonth)}" style="width:118px;margin-left:4px;"></label></div>
+      <div class="gf-study-form">
+        <select id="gf-study-subject" class="gf-study-input">${subjectOptions}</select>
+        <input id="gf-study-topic" class="gf-study-input" type="text" maxlength="80" placeholder="${Translate('study_topic')}">
+        <input id="gf-study-start" class="gf-study-input" type="datetime-local" value="${Esc(StudySessionInputValue(defaultStart.toISOString()))}">
+        <label class="gf-study-duration"><span>${Translate('study_duration')}</span><input id="gf-study-duration" class="gf-study-input" type="number" min="5" step="5" value="45"></label>
+        <button class="gf-tool-btn active" id="gf-study-add">${Translate('study_add')}</button>
+      </div>
+      <div class="gf-study-list">${studyRows}</div>
+    </section>
+    ${overdueHtml}
+    <section class="gf-tool-panel"><div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('planner_upcoming')}</div><div class="gf-tool-panel-sub">${Translate('planner_hint')}</div></div><span class="gf-planner-count">${items.length}</span></div><div class="gf-planner-list">${rows}</div></section>
+  </div>`;
+  wrap.querySelector('#gf-planner-refresh')?.addEventListener('click', () => {
+    window.parent.postMessage({ type: 'gf-refresh-planner' }, '*');
+    ShowToast(Translate('planner_refreshing'), '', 'info');
+  });
+  wrap.querySelector('#gf-study-month')?.addEventListener('change', event => { S.studyMonth = event.target.value || CurrentMonthValue(); RenderPlannerView(); });
+  wrap.querySelector('#gf-study-add')?.addEventListener('click', () => AddStudySessionFromForm(wrap));
+  wrap.querySelectorAll('[data-study-delete]').forEach(btn => btn.addEventListener('click', () => DeleteStudySession(btn.dataset.studyDelete || '')));
+}
+
+function ClassComparisonRows() {
+  const ownPayload = BuildClassComparisonPayload();
+  const own = NormalizeClassPeer(ownPayload) || { id: 'self', name: Translate('comparison_you'), subjects: {} };
+  own.id = 'self';
+  own.isSelf = true;
+  own.name = ClassComparisonName();
+  return [own, ...NormalizeClassPeers(S.classPeers || [])];
+}
+
+function RenderComparisonView() {
+  const wrap = document.getElementById('gf-table-wrap');
+  if (!wrap) return;
+  const code = BuildClassComparisonCode();
+  const rows = ClassComparisonRows();
+  const subjects = [...new Set(rows.flatMap(row => Object.keys(row.subjects || {})))]
+    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+  const leaders = {};
+  for (const subject of subjects) {
+    leaders[subject] = Math.max(...rows.map(row => {
+      const score = row.subjects?.[subject];
+      return score?.m > 0 ? score.o / score.m * 100 : -1;
+    }));
+  }
+  const totalLeader = Math.max(...rows.map(row => ClassComparisonOverall(row.subjects || {})), 0);
+  const peers = NormalizeClassPeers(S.classPeers || []);
+  const shareName = ClassComparisonName();
+  const realFirstName = FirstNameOnly(ClassComparisonRawName()) || Translate('comparison_you');
+  const peerChips = peers.length ? peers.map(peer => `
+    <button class="gf-compare-chip" data-compare-delete="${Esc(peer.id)}" title="${Translate('comparison_remove')}">
+      <span>${Esc(peer.name)}</span><b>x</b>
+    </button>`).join('') : `<span class="gf-compare-empty-chip">${Translate('comparison_no_peers')}</span>`;
+  const headerCells = subjects.map(subject => `<th title="${Esc(subject)}">${Esc(subject)}</th>`).join('');
+  const leftRows = rows.map(row => {
+    const avatar = row.picture
+      ? `<img src="${Esc(row.picture)}" alt="">`
+      : `<span>${Esc((row.name || '?').slice(0, 1).toUpperCase())}</span>`;
+    const meta = row.isSelf ? Translate('comparison_you_badge') : `${Translate('comparison_added')} ${new Date(row.ts || Date.now()).toLocaleDateString()}`;
+    return `<tr class="${row.isSelf ? 'is-self' : ''}">
+      <td class="gf-compare-person">
+        <div class="gf-compare-avatar">${avatar}</div>
+        <div class="gf-compare-person-main"><strong>${Esc(row.name)}</strong><span>${Esc(meta)}</span></div>
+      </td>
+    </tr>`;
+  }).join('');
+  const scoreRows = rows.map(row => {
+    const totalPct = ClassComparisonOverall(row.subjects || {});
+    const totalBest = rows.length > 1 && Math.abs(totalPct - totalLeader) < 0.05;
+    const cells = subjects.map(subject => {
+      const score = row.subjects?.[subject];
+      if (!score) return `<td class="gf-compare-score-cell is-empty"><span>-</span></td>`;
+      const pct = score.m > 0 ? score.o / score.m * 100 : 0;
+      const best = rows.length > 1 && Math.abs(pct - leaders[subject]) < 0.05;
+      return `<td class="gf-compare-score-cell${best ? ' is-best' : ''}" style="--cmp-color:${ColorForPercent(pct)};">
+        <div class="gf-compare-pct-line">${best ? '<span class="gf-compare-crown">♛</span>' : ''}<b>${FormatPercent(pct)}%</b></div>
+        <span>${FormatNumber(score.o)}/${FormatNumber(score.m)}</span>
+      </td>`;
+    }).join('');
+    return `<tr class="${row.isSelf ? 'is-self' : ''}">
+      ${cells}
+      <td class="gf-compare-total-cell${totalBest ? ' is-best' : ''}" style="--cmp-color:${ColorForPercent(totalPct)};">
+        <div class="gf-compare-pct-line">${totalBest ? '<span class="gf-compare-crown">♛</span>' : ''}<b>${FormatPercent(totalPct)}%</b></div>
+      </td>
+    </tr>`;
+  }).join('');
+  const table = subjects.length ? `<div class="gf-compare-grid">
+    <table class="gf-compare-left-table"><thead><tr><th>${Translate('comparison_student')}</th></tr></thead><tbody>${leftRows}</tbody></table>
+    <div class="gf-compare-scroller gf-hscroll">
+      <table class="gf-compare-table">
+        <thead><tr>${headerCells}<th>${Translate('total')}</th></tr></thead>
+        <tbody>${scoreRows}</tbody>
+      </table>
+    </div>
+  </div>` : `<div id="gf-state"><span>${Translate('comparison_no_subjects')}</span></div>`;
+
+  wrap.innerHTML = `<div class="gf-tool-view gf-compare-view">
+    <div class="gf-tool-head"><div><div class="gf-tool-title">${Translate('comparison_title')}</div><div class="gf-tool-sub">${Translate('comparison_desc')}</div></div></div>
+    <div class="gf-compare-actions">
+      <section class="gf-tool-panel">
+        <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('comparison_share_title')}</div><div class="gf-tool-panel-sub">${Translate('comparison_share_desc')}</div></div></div>
+        <div class="gf-compare-box">
+          <div class="gf-compare-privacy-row">
+            <label class="gf-compare-check"><input id="gf-compare-share-real" type="checkbox" ${S.classShareRealName ? 'checked' : ''}> <span>${Translate('comparison_share_name')}</span></label>
+            <input id="gf-compare-alias" type="text" maxlength="80" value="${Esc(S.classShareAlias || '')}" placeholder="${S.classShareRealName ? Esc(realFirstName) : Translate('comparison_alias_placeholder')}">
+          </div>
+          <div class="gf-compare-share-note" id="gf-compare-share-note">${Translate('comparison_share_note').replace('{name}', Esc(shareName))}</div>
+          <textarea id="gf-compare-code" readonly spellcheck="false">${Esc(code)}</textarea>
+          <div class="gf-compare-btns"><button class="gf-tool-btn active" id="gf-compare-copy">${Translate('comparison_copy')}</button></div>
+        </div>
+      </section>
+      <section class="gf-tool-panel">
+        <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('comparison_add_title')}</div><div class="gf-tool-panel-sub">${Translate('comparison_add_desc')}</div></div></div>
+        <div class="gf-compare-box">
+          <textarea id="gf-compare-input" spellcheck="false" placeholder="${Translate('comparison_placeholder')}"></textarea>
+          <button class="gf-tool-btn active" id="gf-compare-add">${Translate('comparison_add')}</button>
+        </div>
+      </section>
+    </div>
+    <section class="gf-tool-panel">
+      <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('comparison_table_title')}</div><div class="gf-tool-panel-sub">${Translate('comparison_table_desc')}</div></div><div class="gf-compare-chips">${peerChips}</div></div>
+      ${table}
+    </section>
+  </div>`;
+
+  BindComparisonEvents(wrap);
+}
+
+function BindComparisonEvents(root) {
+  const codeArea = root.querySelector('#gf-compare-code');
+  const aliasInput = root.querySelector('#gf-compare-alias');
+  const shareNameInput = root.querySelector('#gf-compare-share-real');
+  const shareNote = root.querySelector('#gf-compare-share-note');
+  const refreshShareCode = () => {
+    SaveClassComparisonAlias(aliasInput?.value || '');
+    SaveClassComparisonShareName(!!shareNameInput?.checked);
+    if (codeArea) codeArea.value = BuildClassComparisonCode();
+    if (shareNote) shareNote.textContent = Translate('comparison_share_note').replace('{name}', ClassComparisonName());
+  };
+  aliasInput?.addEventListener('input', refreshShareCode);
+  shareNameInput?.addEventListener('change', () => RenderComparisonView());
+  root.querySelector('#gf-compare-copy')?.addEventListener('click', async () => {
+    try {
+      refreshShareCode();
+      await CopyText(BuildClassComparisonCode());
+      ShowToast(Translate('comparison_copied'), '', 'ok');
+    } catch (_) { ShowToast(Translate('comparison_copy_failed'), '', 'warn'); }
+  });
+  root.querySelector('#gf-compare-add')?.addEventListener('click', () => {
+    const input = root.querySelector('#gf-compare-input');
+    try {
+      const incoming = DecodeClassComparisonCodes(input?.value || '');
+      if (!incoming.length) throw new Error('empty');
+      const current = NormalizeClassPeers(S.classPeers || []);
+      const byId = new Map(current.map(peer => [peer.id, peer]));
+      incoming.forEach(peer => byId.set(peer.id, peer));
+      SaveClassPeers([...byId.values()]);
+      if (input) input.value = '';
+      ShowToast(Translate('comparison_added_toast'), `${incoming.length}`, 'ok');
+      RenderComparisonView();
+    } catch (_) { ShowToast(Translate('comparison_invalid'), '', 'warn'); }
+  });
+  root.querySelectorAll('[data-compare-delete]').forEach(btn => {
+    btn.addEventListener('click', () => DeleteClassPeer(btn.dataset.compareDelete || ''));
+  });
+}
+
+function AttendanceType(item) {
+  const hay = `${item.code || ''} ${item.title || ''} ${item.type || ''}`.toLowerCase();
+  if (/te laat|late|retard|\bl\b/.test(hay)) return 'late';
+  if (/dokter|afwezig|absent|absence|attest|overmacht|ziek|\bd\b|\br\b|\bz\b/.test(hay)) return 'absent';
+  return 'other';
+}
+
+function AttendanceTime(item) {
+  const t = ParseLocalDateToTime(item?.date);
+  return t || 0;
+}
+
+function RenderAttendanceView() {
+  const wrap = document.getElementById('gf-table-wrap');
+  if (!wrap) return;
+  const items = [...(S.attendanceItems || [])].sort((a, b) => AttendanceTime(b) - AttendanceTime(a));
+  const lateCount = items.filter(item => AttendanceType(item) === 'late').length;
+  const absentCount = items.filter(item => AttendanceType(item) === 'absent').length;
+  const otherCount = Math.max(0, items.length - lateCount - absentCount);
+  const rows = items.length ? items.map(item => {
+    const type = AttendanceType(item);
+    const label = type === 'late' ? Translate('attendance_late') : type === 'absent' ? Translate('attendance_absent') : Translate('attendance_other');
+    return `<div class="gf-att-row is-${type}">
+      <div class="gf-att-code">${Esc(item.code || label.slice(0, 1))}</div>
+      <div class="gf-att-main"><div class="gf-att-title">${Esc(item.title || label)}</div><div class="gf-att-meta">${Esc(item.date || Translate('planner_no_date'))}${item.moment ? ` · ${Esc(item.moment)}` : ''}${item.detail ? ` · ${Esc(item.detail)}` : ''}</div></div>
+      <div class="gf-att-type">${Esc(label)}</div>
+    </div>`;
+  }).join('') : `<div id="gf-state"><span>${Translate('attendance_empty')}</span></div>`;
+  wrap.innerHTML = `<div class="gf-tool-view">
+    <div class="gf-tool-head"><div><div class="gf-tool-title">${Translate('attendance_title')}</div><div class="gf-tool-sub">${Translate('attendance_desc')}</div></div><div class="gf-tool-actions"><button class="gf-tool-btn" id="gf-attendance-refresh">${Translate('attendance_refresh')}</button></div></div>
+    <div class="gf-att-summary">
+      <div class="gf-att-stat is-late"><b>${lateCount}</b><span>${Translate('attendance_late')}</span></div>
+      <div class="gf-att-stat is-absent"><b>${absentCount}</b><span>${Translate('attendance_absent')}</span></div>
+      <div class="gf-att-stat is-other"><b>${otherCount}</b><span>${Translate('attendance_other')}</span></div>
+    </div>
+    <section class="gf-tool-panel"><div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('attendance_recent')}</div><div class="gf-tool-panel-sub">${Translate('attendance_hint')}</div></div><span class="gf-planner-count">${items.length}</span></div><div class="gf-att-list">${rows}</div></section>
+  </div>`;
+  wrap.querySelector('#gf-attendance-refresh')?.addEventListener('click', () => {
+    window.parent.postMessage({ type: 'gf-refresh-attendance' }, '*');
+    ShowToast(Translate('attendance_refreshing'), '', 'info');
+  });
+}
+
+function BuildRiskRows(data) {
+  const nextMax = Math.max(1, parseFloat(S.riskNextMax) || 20);
+  const thresholds = NormalizeRiskThresholds(S.riskThresholds);
+  return Object.entries(data || {}).map(([subject, payload]) => {
+    const scores = EffectiveScores(subject, payload?.scores || [], S.activePeriod);
+    const scored = scores.reduce((sum, score) => sum + score.scored, 0);
+    const max = scores.reduce((sum, score) => sum + score.max, 0);
+    const pct = max > 0 ? scored / max * 100 : 0;
+    const status = pct >= thresholds.safe ? 'safe' : pct >= thresholds.watch ? 'watch' : 'critical';
+    const target = status === 'critical' ? thresholds.watch : thresholds.safe;
+    const required = Math.max(0, (target / 100) * (max + nextMax) - scored);
+    return { subject, pct, scored, max, status, target, required, nextMax };
+  }).filter(row => row.max > 0).sort((a, b) => a.pct - b.pct);
+}
+
+function RenderRiskBucket(rows, status, titleKey) {
+  const items = rows.filter(row => row.status === status);
+  const headClass = status === 'safe' ? 'is-safe' : status === 'watch' ? 'is-watch' : 'is-critical';
+  const body = items.length ? items.map(row => {
+    const impossible = row.required > row.nextMax;
+    const needText = row.required <= 0
+      ? Translate('risk_ok')
+      : impossible
+        ? Translate('risk_impossible').replace('{required}', FormatNumber(row.required)).replace('{score}', FormatNumber(row.nextMax))
+        : `${Translate('risk_needed')} ${FormatNumber(row.required)} / ${FormatNumber(row.nextMax)}`;
+    return `<div class="gf-risk-row">
+      <div class="gf-risk-name" title="${Esc(row.subject)}">${SubjectIconHtml(row.subject)}${Esc(row.subject)}</div>
+      <div class="gf-risk-pct" style="color:${ColorForPercent(row.pct)}">${FormatPercent(row.pct)}%</div>
+      <div class="gf-risk-meta">${needText}</div>
+    </div>`;
+  }).join('') : `<div class="gf-risk-row"><div class="gf-risk-meta">${Translate('no_items')}</div></div>`;
+  return `<section class="gf-tool-card">
+    <div class="gf-tool-card-head ${headClass}"><span>${Translate(titleKey)}</span><span>${items.length}</span></div>
+    <div class="gf-risk-list">${body}</div>
+  </section>`;
+}
+
+function RenderDecisionView() {
+  const wrap = document.getElementById('gf-table-wrap');
+  if (!wrap) return;
+  const data = S.store ? GetPeriodData(S.store, S.activePeriod) : {};
+  if (!S.store || !Object.keys(data).length) {
+    wrap.innerHTML = `<div id="gf-state"><span>${Translate('no_grades')}</span></div>`;
+    return;
+  }
+
+  const riskRows = BuildRiskRows(data);
+  const thresholds = NormalizeRiskThresholds(S.riskThresholds);
+  const subjects = Object.keys(data).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  const whatIfRows = subjects.map(subject => {
+    const stored = S.whatIfScores?.[subject] || {};
+    const planned = stored.period === S.activePeriod ? stored : {};
+    return `<tr>
+      <td>${SubjectIconHtml(subject)}${Esc(subject)}</td>
+      <td><input type="number" min="0" step="0.1" data-whatif-subject="${encodeURIComponent(subject)}" data-whatif-field="scored" value="${Esc(planned.scored ?? '')}" placeholder="${Translate('score')}"></td>
+      <td><input type="number" min="0" step="0.1" data-whatif-subject="${encodeURIComponent(subject)}" data-whatif-field="max" value="${Esc(planned.max ?? '')}" placeholder="max"></td>
+    </tr>`;
+  }).join('');
+
+  const gradeRows = [];
+  for (const [subject, payload] of Object.entries(data)) {
+    for (const score of SortScoresChronologically(payload?.scores || [])) {
+      const period = GetScorePeriod(score, S.activePeriod);
+      const key = GradeKey(period, subject, score);
+      const excluded = !!S.excludedGrades?.[key];
+      const weight = GetGradeWeight(period, subject, score);
+      gradeRows.push(`<tr>
+        <td>${Esc(period)}</td>
+        <td>${Esc(subject)}</td>
+        <td>${Esc(score.title || '')}</td>
+        <td>${FormatNumber(score.scored)} / ${FormatNumber(score.max)}</td>
+        <td><input type="number" min="0.1" step="0.1" data-grade-weight="${encodeURIComponent(key)}" value="${weight === 1 ? '' : String(weight)}" placeholder="1"></td>
+        <td><button class="gf-tool-btn${excluded ? ' active' : ''}" data-grade-toggle="${encodeURIComponent(key)}">${excluded ? Translate('excluded') : Translate('included')}</button></td>
+      </tr>`);
+    }
+  }
+
+  wrap.innerHTML = `<div class="gf-tool-view">
+    <div class="gf-tool-head">
+      <div>
+        <div class="gf-tool-title">${Translate('decision_title')}</div>
+        <div class="gf-tool-sub">${Translate('decision_desc')}</div>
+      </div>
+      <div class="gf-tool-actions">
+        <button class="gf-tool-btn${S.whatIfMode ? ' active' : ''}" id="gf-whatif-toggle">${Translate('whatif_mode')}</button>
+        <label class="gf-tool-btn" style="cursor:default;">
+          ${Translate('whatif_next_max')}
+          <input id="gf-risk-nextmax" type="number" min="1" step="1" value="${String(S.riskNextMax)}" style="width:54px;margin-left:4px;">
+        </label>
+        <label class="gf-tool-btn" style="cursor:default;">
+          ${Translate('risk_watch_from')}
+          <input id="gf-risk-watch" type="number" min="0" max="99" step="1" value="${String(thresholds.watch)}" style="width:48px;margin-left:4px;">
+        </label>
+        <label class="gf-tool-btn" style="cursor:default;">
+          ${Translate('risk_safe_from')}
+          <input id="gf-risk-safe" type="number" min="1" max="100" step="1" value="${String(thresholds.safe)}" style="width:48px;margin-left:4px;">
+        </label>
+      </div>
+    </div>
+    <div class="gf-tool-grid">
+      ${RenderRiskBucket(riskRows, 'critical', 'risk_critical')}
+      ${RenderRiskBucket(riskRows, 'watch', 'risk_watchlist')}
+      ${RenderRiskBucket(riskRows, 'safe', 'risk_safe')}
+    </div>
+    <section class="gf-tool-panel">
+      <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('whatif_subject_scores')}</div><div class="gf-tool-panel-sub">${Translate('whatif_desc')}</div></div><button class="gf-tool-btn" id="gf-whatif-clear">${Translate('clear_whatif')}</button></div>
+      <table class="gf-tool-table"><thead><tr><th>${Translate('subjects')}</th><th>${Translate('score')}</th><th>Max</th></tr></thead><tbody>${whatIfRows}</tbody></table>
+    </section>
+    <section class="gf-tool-panel">
+      <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('grade_controls')}</div><div class="gf-tool-panel-sub">${Translate('grade_controls_desc')}</div></div></div>
+      <table class="gf-tool-table"><thead><tr><th>${Translate('period')}</th><th>${Translate('subjects')}</th><th>${Translate('results')}</th><th>${Translate('score')}</th><th>${Translate('coeff')}</th><th>${Translate('status')}</th></tr></thead><tbody>${gradeRows.join('') || `<tr><td colspan="6">${Translate('no_items')}</td></tr>`}</tbody></table>
+    </section>
+  </div>`;
+
+  BindDecisionEvents(wrap);
+}
+
+function BindDecisionEvents(root) {
+  root.querySelector('#gf-whatif-toggle')?.addEventListener('click', () => { SaveWhatIfMode(!S.whatIfMode); Render(); });
+  root.querySelector('#gf-whatif-clear')?.addEventListener('click', () => { SaveWhatIfScores({}); Render(); });
+  root.querySelector('#gf-risk-nextmax')?.addEventListener('change', e => { SaveRiskNextMax(e.target.value); RenderMainContent(false); });
+  const saveRiskThresholdInputs = () => {
+    SaveRiskThresholds({
+      watch: root.querySelector('#gf-risk-watch')?.value,
+      safe: root.querySelector('#gf-risk-safe')?.value,
+    });
+    RenderMainContent(false);
+    UpdateBottomBar();
+  };
+  root.querySelector('#gf-risk-watch')?.addEventListener('change', saveRiskThresholdInputs);
+  root.querySelector('#gf-risk-safe')?.addEventListener('change', saveRiskThresholdInputs);
+  root.querySelectorAll('[data-whatif-subject]').forEach(input => {
+    input.addEventListener('change', () => {
+      const subject = decodeURIComponent(input.dataset.whatifSubject || '');
+      const field = input.dataset.whatifField;
+      if (!subject || !field) return;
+      const next = { ...(S.whatIfScores || {}) };
+      const current = { ...((next[subject]?.period === S.activePeriod ? next[subject] : {})), period: S.activePeriod };
+      if (input.value === '') delete current[field]; else current[field] = parseFloat(input.value);
+      if (current.scored == null && current.max == null) delete next[subject]; else next[subject] = current;
+      SaveWhatIfScores(next);
+      RenderMainContent(false);
+      UpdateBottomBar();
+    });
+  });
+  root.querySelectorAll('[data-grade-toggle]').forEach(btn => btn.addEventListener('click', () => ToggleGradeExcluded(decodeURIComponent(btn.dataset.gradeToggle || ''))));
+  root.querySelectorAll('[data-grade-weight]').forEach(input => input.addEventListener('change', () => SetGradeWeight(decodeURIComponent(input.dataset.gradeWeight || ''), input.value)));
+}
+
+function BuildExportRows() {
+  const rows = [];
+  for (const [period, subjects] of Object.entries(S.store || {})) {
+    if (period.startsWith('_')) continue;
+    for (const [subject, payload] of Object.entries(subjects || {})) {
+      for (const score of (payload?.scores || [])) {
+        const key = GradeKey(period, subject, score);
+        rows.push({
+          period, subject, title: score.title || '', date: score.date || '',
+          scored: score.scored, max: score.max,
+          percent: score.max > 0 ? score.scored / score.max * 100 : 0,
+          excluded: !!S.excludedGrades?.[key], weight: GetGradeWeight(period, subject, score),
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function GroupExportRowsByPeriod(rows) {
+  return rows.reduce((map, row) => {
+    if (!map[row.period]) map[row.period] = [];
+    map[row.period].push(row);
+    return map;
+  }, {});
+}
+
+function ExportTableRows(rows) {
+  return rows.map(row => `<tr class="${row.excluded ? 'is-excluded' : ''}"><td>${Esc(row.period)}</td><td>${Esc(row.subject)}</td><td>${Esc(row.title)}</td><td>${Esc(row.date)}</td><td>${FormatNumber(row.scored)} / ${FormatNumber(row.max)}</td><td>${FormatPercent(row.percent)}%</td><td>${row.excluded ? Translate('excluded') : Translate('included')}</td><td>${FormatNumber(row.weight)}</td></tr>`).join('');
+}
+
+function CsvCell(value) {
+  const text = String(value ?? '');
+  return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+function DownloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function ExportGradesCsv() {
+  const header = ['period', 'subject', 'title', 'date', 'scored', 'max', 'percent', 'excluded', 'weight'];
+  const rows = BuildExportRows().map(row => [row.period, row.subject, row.title, row.date, row.scored, row.max, FormatPercent(row.percent), row.excluded ? 'yes' : 'no', row.weight]);
+  const csv = [header, ...rows].map(row => row.map(CsvCell).join(';')).join('\n');
+  DownloadBlob('gradeflow-export.csv', new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  ShowToast(Translate('export_done'), Translate('export_csv'), 'ok');
+}
+function ExportGradesPdf() {
+  const rows = BuildExportRows();
+  const periodSummaries = (S.periods || []).filter(p => p !== 'Alle').map(period => {
+    const data = GetPeriodData(S.store, period);
+    return `<tr><td>${Esc(period)}</td><td>${Object.keys(data).length}</td><td>${FormatPercent(OverallPct(data, period))}%</td></tr>`;
+  }).join('');
+  const grouped = GroupExportRowsByPeriod(rows);
+  const allRows = rows.slice().sort((a, b) => String(a.period).localeCompare(String(b.period), undefined, { sensitivity: 'base' }) || String(a.subject).localeCompare(String(b.subject), undefined, { sensitivity: 'base' }) || String(a.date).localeCompare(String(b.date), undefined, { sensitivity: 'base' }));
+  const periodPages = Object.entries(grouped).map(([period, periodRows]) => `<section class="page"><div class="page-kicker">GradeFlow</div><h2>${Esc(period)}</h2><table><thead><tr><th>${Translate('subjects')}</th><th>${Translate('results')}</th><th>Date</th><th>${Translate('score')}</th><th>%</th><th>${Translate('status')}</th><th>${Translate('coeff')}</th></tr></thead><tbody>${periodRows.map(row => `<tr class="${row.excluded ? 'is-excluded' : ''}"><td>${Esc(row.subject)}</td><td>${Esc(row.title)}</td><td>${Esc(row.date)}</td><td>${FormatNumber(row.scored)} / ${FormatNumber(row.max)}</td><td>${FormatPercent(row.percent)}%</td><td>${row.excluded ? Translate('excluded') : Translate('included')}</td><td>${FormatNumber(row.weight)}</td></tr>`).join('')}</tbody></table></section>`).join('');
+  const printWin = window.open('', '_blank', 'width=900,height=700');
+  if (!printWin) { ShowToast(Translate('export_failed'), Translate('export_popup_blocked'), 'warn'); return; }
+  printWin.document.write(`<!doctype html><html><head><title>GradeFlow export</title><style>
+    *{box-sizing:border-box}body{margin:0;background:#050505;color:#fff;font-family:Inter,Arial,sans-serif}body:before{content:"";position:fixed;inset:0;background:linear-gradient(135deg,rgba(255,133,27,.12),transparent 32%),radial-gradient(circle at top right,rgba(255,255,255,.08),transparent 24%);pointer-events:none}.page{position:relative;min-height:100vh;padding:30px 34px 36px;page-break-after:always;background:#050505}.page:last-child{page-break-after:auto}.cover{display:grid;align-content:center;gap:18px}.brand{font-size:40px;font-weight:900;letter-spacing:0}.brand span,.page-kicker{color:#ff8a1f}.stamp{font-family:Consolas,monospace;color:#b8b8b8;font-size:12px}.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.summary-card{border:1px solid #f1f1f1;padding:14px 16px;min-height:74px}.summary-card b{display:block;font-size:22px;color:#fff}.summary-card span{font-family:Consolas,monospace;font-size:11px;color:#bdbdbd;text-transform:uppercase}.page-kicker{font-family:Consolas,monospace;font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px}h1,h2{margin:0 0 16px}h1{font-size:34px}h2{font-size:20px}table{width:100%;border-collapse:collapse;font-size:11px;background:#050505}th,td{border:1px solid #e8e8e8;padding:6px 7px;text-align:left;vertical-align:top}th{font-size:10px;color:#fff;text-transform:uppercase;background:#101010}td:nth-child(5),td:nth-child(6),td:nth-child(8),th:nth-child(5),th:nth-child(6),th:nth-child(8){text-align:right;font-family:Consolas,monospace}.is-excluded td{color:#8d8d8d;text-decoration:line-through}.muted{color:#a7a7a7}.all-table{font-size:9px}.all-table th,.all-table td{padding:4px 5px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{min-height:auto;height:auto;padding:18mm 12mm}.summary-grid{break-inside:avoid}table{break-inside:auto}tr{break-inside:avoid;page-break-inside:avoid}}
+  </style></head><body><section class="page cover"><div><div class="brand">Grade<span>Flow</span></div><div class="stamp">${Esc(new Date().toLocaleString())}</div></div><div class="summary-grid"><div class="summary-card"><b>${rows.length}</b><span>${Translate('results')}</span></div><div class="summary-card"><b>${(S.periods || []).filter(p => p !== 'Alle').length}</b><span>${Translate('period')}</span></div><div class="summary-card"><b>${rows.filter(row => row.excluded).length}</b><span>${Translate('excluded')}</span></div></div><table><thead><tr><th>${Translate('period')}</th><th>${Translate('subjects')}</th><th>${Translate('total')}</th></tr></thead><tbody>${periodSummaries}</tbody></table></section>${periodPages}<section class="page"><div class="page-kicker">GradeFlow</div><h2>${Translate('all')} ${Translate('results')}</h2><table class="all-table"><thead><tr><th>${Translate('period')}</th><th>${Translate('subjects')}</th><th>${Translate('results')}</th><th>Date</th><th>${Translate('score')}</th><th>%</th><th>${Translate('status')}</th><th>${Translate('coeff')}</th></tr></thead><tbody>${ExportTableRows(allRows)}</tbody></table></section><script>window.onload=()=>setTimeout(()=>window.print(),100);<\/script></body></html>`);
+  printWin.document.close();
+  ShowToast(Translate('export_done'), Translate('export_pdf'), 'ok');
+}
+function RenderExportView() {
+  const wrap = document.getElementById('gf-table-wrap');
+  if (!wrap) return;
+  const rowCount = BuildExportRows().length;
+  wrap.innerHTML = `<div class="gf-tool-view">
+    <div class="gf-tool-head"><div><div class="gf-tool-title">${Translate('export_title')}</div><div class="gf-tool-sub">${Translate('export_desc')}</div></div></div>
+    <div class="gf-export-grid">
+      <div class="gf-export-card"><strong>${Translate('export_csv')}</strong><span>${Translate('export_csv_desc').replace('{count}', rowCount)}</span><button class="gf-tool-btn" id="gf-export-csv">${Translate('export_csv')}</button></div>
+      <div class="gf-export-card"><strong>${Translate('export_pdf')}</strong><span>${Translate('export_pdf_desc')}</span><button class="gf-tool-btn" id="gf-export-pdf">${Translate('export_pdf')}</button></div>
+    </div>
+  </div>`;
+  wrap.querySelector('#gf-export-csv')?.addEventListener('click', ExportGradesCsv);
+  wrap.querySelector('#gf-export-pdf')?.addEventListener('click', ExportGradesPdf);
+}
+
 // Sidebar
 function RenderSidebar() {
   const scroll = document.getElementById('gf-sidebar-scroll');
@@ -1032,7 +2230,7 @@ function BindSidebarEvents() {
       if (!subject) return;
       if (isNaN(value) || value <= 0) delete next[subject]; else next[subject] = value;
       SaveManualHours(next);
-      RenderTable(false); UpdateTopbar(); UpdateBottomBar();
+      RenderMainContent(false); UpdateTopbar(); UpdateBottomBar();
       requestAnimationFrame(UpdateScrollButton);
     });
   });
@@ -1095,25 +2293,31 @@ function RenderTable(animated = true) {
     .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
     .map(([subj, { scores }]) => [subj, SortScoresChronologically(scores)]);
 
-  const longest = Math.max(...entries.map(([, s]) => s.length), 0);
+  const longest = Math.max(...entries.map(([subj, s]) => s.length + (BuildWhatIfScore(subj) ? 1 : 0)), 0);
 
   const tipMode = S.useFormula
     ? (S.weightMode === 'hours' ? 'hours+formula' : 'formula')
     : S.weightMode;
 
   const rows = entries.map(([subj, scores], rowIdx) => {
-    const rawSubjPct      = CalcPercent(scores);
+    const effectiveScores = EffectiveScores(subj, scores, S.activePeriod);
+    const rawSubjPct      = CalcPercent(effectiveScores);
     const formulaPctValue = useFormulaPct ? FormulaSubjectPct(subj, S.store) : null;
     const subjPct         = formulaPctValue ?? rawSubjPct;
-    const subjTotalMax    = scores.reduce((a, e) => a + e.max, 0);
-    const subjTotalScored = scores.reduce((a, e) => a + e.scored, 0);
+    const subjTotalMax    = effectiveScores.reduce((a, e) => a + e.max, 0);
+    const subjTotalScored = effectiveScores.reduce((a, e) => a + e.scored, 0);
     const activeHours     = GetHoursForSubject(subj);
 
     const filledCells = scores.map(e => {
       const ep         = e.max > 0 ? (e.scored / e.max) * 100 : 0;
-      const contrib_pp = subjTotalMax > 0 ? (e.max / subjTotalMax) * 100 : 0;
+      const period     = GetScorePeriod(e, S.activePeriod);
+      const key        = GradeKey(period, subj, e);
+      const excluded   = !!S.excludedGrades?.[key];
+      const weight     = GetGradeWeight(period, subj, e);
+      const modeled    = ApplyScoreModel(subj, e, S.activePeriod);
+      const contrib_pp = (!excluded && subjTotalMax > 0) ? (modeled.max / subjTotalMax) * 100 : 0;
       const wpp        = (S.weightMode === 'hours' && activeHours && totalWeightedHours && subjTotalMax > 0)
-        ? ((e.scored / subjTotalMax) * (activeHours / totalWeightedHours) * 100).toFixed(2) : null;
+        ? ((modeled.scored / subjTotalMax) * (activeHours / totalWeightedHours) * 100).toFixed(2) : null;
 
       const tip = encodeURIComponent(JSON.stringify({
         title: e.title || '', date: e.date || '',
@@ -1126,10 +2330,24 @@ function RenderTable(animated = true) {
         weighted_contrib_pp: wpp, mode: tipMode,
       }));
 
-      return `<td class="gf-grade-cell" data-gf-grade="${tip}" style="background:${BgForPercent(ep)};">${FormatNumber(e.scored)}/${FormatNumber(e.max)}</td>`;
-    }).join('');
+      const cls = `gf-grade-cell${excluded ? ' gf-grade-excluded' : ''}${weight !== 1 ? ' gf-grade-weighted' : ''}`;
+      return `<td class="${cls}" data-gf-grade="${tip}" data-gf-grade-key="${encodeURIComponent(key)}" style="background:${BgForPercent(ep)};">${FormatNumber(e.scored)}/${FormatNumber(e.max)}</td>`;
+    });
+    const planned = BuildWhatIfScore(subj);
+    if (planned) {
+      const ep = planned.max > 0 ? (planned.scored / planned.max) * 100 : 0;
+      const tip = encodeURIComponent(JSON.stringify({
+        title: planned.title, date: '', scored: planned.scored, max: planned.max,
+        CalcPercent: ep.toFixed(1), contrib_pp: '0', subj_scored: subjTotalScored.toFixed(1), subj_max: subjTotalMax,
+        subj_pct: rawSubjPct.toFixed(1), formula_pct: null,
+        hours: activeHours || null, total_hours: totalWeightedHours || null,
+        weighted_contrib_pp: null, mode: tipMode,
+      }));
+      filledCells.push(`<td class="gf-grade-cell gf-grade-whatif" data-gf-grade="${tip}" style="background:${BgForPercent(ep)};">${FormatNumber(planned.scored)}/${FormatNumber(planned.max)}</td>`);
+    }
+    const filledHtml = filledCells.join('');
 
-    const emptyCells = Array.from({ length: longest - scores.length }, () => `<td class="gf-empty-cell"></td>`).join('');
+    const emptyCells = Array.from({ length: longest - filledCells.length }, () => `<td class="gf-empty-cell"></td>`).join('');
     const hoursBadge = (S.weightMode === 'hours' && activeHours) ? `<span class="gf-hours-badge">${activeHours}u</span>` : '';
     const formulaTag = (useFormulaPct && formulaPctValue != null)
       ? `<span style="margin-left:6px;color:var(--text-3);font-size:10px;" title="${Translate('custom_formula')}">ƒ</span>` : '';
@@ -1137,9 +2355,9 @@ function RenderTable(animated = true) {
     const rowStyle = animated ? `style="animation:gf-row-in 0.22s ${rowIdx * 20}ms ease both;"` : '';
     return `<tr ${rowStyle}>
       <td class="gf-subject-cell" data-gf-subj="${subj.replace(/"/g, '&quot;')}">${SubjectIconHtml(subj)}${subj}${hoursBadge}</td>
-      ${filledCells}${emptyCells}
+      ${filledHtml}${emptyCells}
       <td class="gf-pct-cell" data-gf-pct-tip="1" style="color:${ColorForPercent(subjPct)};">
-        ${FormatPercent(subjPct)}%${formulaTag}
+        <span class="gf-pct-badge" style="--pct-color:${ColorForPercent(subjPct)};">${FormatPercent(subjPct)}%</span>${formulaTag}
       </td>
     </tr>`;
   }).join('');
@@ -1159,7 +2377,7 @@ function RenderTable(animated = true) {
     <tr class="gf-total-row" ${totalRowStyle}>
       <td class="gf-total-subject">${totalLabel}</td>
       ${totalEmpty}
-      <td class="gf-total-pct" data-gf-pct-tip="1" style="color:${ColorForPercent(totalPct)};">${FormatPercent(totalPct)}%</td>
+      <td class="gf-total-pct" data-gf-pct-tip="1" style="color:${ColorForPercent(totalPct)};"><span class="gf-total-pct-badge" style="--pct-color:${ColorForPercent(totalPct)};">${FormatPercent(totalPct)}%</span></td>
     </tr>
   </tbody></table>`;
 
@@ -1206,6 +2424,7 @@ function UpdateScrollButton() {
   const wrap = document.getElementById('gf-table-wrap');
   const btn  = document.getElementById('gf-scroll-recent-btn');
   if (!wrap || !btn) return;
+  if (S.activeView !== 'overview') { btn.classList.remove('is-visible'); return; }
   btn.classList.toggle('is-visible',
     wrap.scrollWidth - wrap.clientWidth > 80 &&
     wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 60);
@@ -1215,6 +2434,18 @@ function BindScrollButton() {
   if (!wrap || wrap._gfScrollBound) return;
   wrap._gfScrollBound = true;
   wrap.addEventListener('scroll', UpdateScrollButton, { passive: true });
+  wrap.addEventListener('wheel', e => {
+    if (e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    if (e.target.closest('textarea, input, select')) return;
+    const scroller = e.target.closest('.gf-hscroll') || wrap;
+    if (!scroller || scroller.scrollWidth <= scroller.clientWidth + 8) return;
+    const shouldConvert = S.activeView === 'overview' || S.activeView === 'comparison' || e.target.closest('.gf-hscroll');
+    if (!shouldConvert) return;
+    scroller.scrollLeft += e.deltaY;
+    e.preventDefault();
+    UpdateScrollButton();
+  }, { passive: false });
   if (window.ResizeObserver) new ResizeObserver(UpdateScrollButton).observe(wrap);
 }
 
@@ -1228,6 +2459,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { CloseSettings(); CloseHelp(); }
+  if (e.key === 'F6') { e.preventDefault(); window.parent.postMessage({ type: 'gf-open-gradeflow' }, '*'); }
   if (e.key === 'F8') { e.preventDefault(); window.parent.postMessage({ type: 'gf-f8' }, '*'); }
   if (e.key === 'F7') { e.preventDefault(); window.parent.postMessage({ type: 'gf-chat-f7' }, '*'); }
 });
@@ -1302,6 +2534,12 @@ function BindTableListeners() {
   });
 
   wrap.addEventListener('click', e => {
+    const gradeCell = e.target.closest('[data-gf-grade-key]');
+    if (gradeCell) {
+      ToggleGradeExcluded(decodeURIComponent(gradeCell.dataset.gfGradeKey || ''));
+      return;
+    }
+
     const icon = e.target.closest('.gf-subj-icon');
     if (!icon) return;
     const cell = icon.closest('[data-gf-subj]');
@@ -1355,37 +2593,52 @@ function BindDraggableFormulaGroups() {
   });
 }
 
+const _GF_PRESS_SEL = '.gf-period-btn, .gf-action-btn, .gf-sett-opt, #gf-refresh-btn, ' +
+  '#gf-settings-btn, #gf-help-btn, #gf-github-btn, #gf-cws-btn, ' +
+  '#gf-close-btn, .gf-formula-remove, #gf-scroll-recent-btn, ' +
+  '#gf-collapse-btn, .gf-formula-add-part, .gf-view-tab, .gf-tool-btn';
+
+function _GfApplyPressTo(el) {
+  if (typeof interact === 'undefined') return;
+  if (!el || el._gfPress) return; el._gfPress = true;
+  interact(el)
+    .on('down', () => { el.style.transition = 'transform 0.08s ease'; el.style.transform = 'scale(0.93)'; })
+    .on('up',   () => {
+      el.style.transition = 'transform 0.35s cubic-bezier(0.34,1.56,0.64,1)';
+      el.style.transform = 'scale(1)';
+      setTimeout(() => { if (el.style.transform === 'scale(1)') { el.style.transform = el.style.transition = ''; } }, 400);
+    })
+    .on('cancel', () => { el.style.transition = 'transform 0.2s ease'; el.style.transform = 'scale(1)'; });
+}
+
+function _GfApplyPressToAll(root) {
+  (root || document).querySelectorAll(_GF_PRESS_SEL).forEach(_GfApplyPressTo);
+}
+
 function InitInteractAnimations() {
   if (typeof interact === 'undefined') return;
-  const SELS = ['.gf-period-btn', '.gf-action-btn', '.gf-sett-opt', '#gf-refresh-btn',
-    '#gf-settings-btn', '#gf-help-btn', '#gf-github-btn', '#gf-cws-btn',
-    '#gf-close-btn', '.gf-formula-remove', '#gf-scroll-recent-btn',
-    '#gf-collapse-btn', '.gf-formula-add-part'];
 
-  function ApplyPress(el) {
-    if (!el || el._gfPress) return; el._gfPress = true;
-    interact(el)
-      .on('down', () => { el.style.transition = 'transform 0.08s ease'; el.style.transform = 'scale(0.93)'; })
-      .on('up',   () => {
-        el.style.transition = 'transform 0.35s cubic-bezier(0.34,1.56,0.64,1)';
-        el.style.transform = 'scale(1)';
-        setTimeout(() => { if (el.style.transform === 'scale(1)') { el.style.transform = el.style.transition = ''; } }, 400);
-      })
-      .on('cancel', () => { el.style.transition = 'transform 0.2s ease'; el.style.transform = 'scale(1)'; });
+  // Initial pass over what exists now
+  _GfApplyPressToAll();
+
+  // Lazy: hook each element only on first user interaction. No DOM scanning,
+  // no MutationObserver.
+  function lazyAttach(e) {
+    const t = e.target.closest && e.target.closest(_GF_PRESS_SEL);
+    if (t && !t._gfPress) _GfApplyPressTo(t);
   }
-
-  SELS.forEach(sel => document.querySelectorAll(sel).forEach(ApplyPress));
-  new MutationObserver(() => SELS.forEach(sel => document.querySelectorAll(sel).forEach(ApplyPress)))
-    .observe(document.body, { childList: true, subtree: true });
+  document.addEventListener('pointerdown', lazyAttach, { capture: true, passive: true });
 }
 
 // Master Render
 function Render(animated = true) {
+  RenderTabs();
   RenderSidebar();
-  RenderTable(animated);
+  RenderMainContent(animated);
   UpdateTopbar();
   UpdateBottomBar();
   BindScrollButton();
+  if (typeof _GfApplyPressToAll === 'function') _GfApplyPressToAll();
   requestAnimationFrame(() => requestAnimationFrame(() => {
     UpdateDynamicGridSize();
     UpdateDynamicCellSize();
@@ -1450,7 +2703,13 @@ window.addEventListener('DOMContentLoaded', () => {
     window.parent.postMessage({ type: 'gf-close' }, '*'));
 
   try {
-    chrome.storage.local.get('gradeflow-grades', result => {
+    chrome.storage.local.get(['gradeflow-grades', 'gradeflow-planner-items', 'gradeflow-study-sessions', 'gradeflow-attendance-items', 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
+      S.profilePicture = result?.['gf-profile-picture'] || S.profilePicture || '';
+      S.detectedProfilePicture = result?.['gf-detected-profile-picture'] || S.detectedProfilePicture || '';
+      S.plannerItems = NormalizePlannerItems(result?.['gradeflow-planner-items']);
+      S.studySessions = NormalizeStudySessions(result?.['gradeflow-study-sessions']);
+      S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
+      CleanupExpiredStudySessions();
       const raw = result?.['gradeflow-grades'];
       const wrap = document.getElementById('gf-table-wrap');
       if (!raw) {

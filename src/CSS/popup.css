@@ -115,6 +115,9 @@ input, textarea { user-select: text; }
   transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
 #theme-toggle:hover { border-color: var(--orange); color: var(--orange); background: var(--orange-dim); }
+#theme-toggle:disabled { cursor: default; opacity: 0.7; }
+#theme-toggle:disabled:hover { border-color: var(--border); color: var(--text-2); background: var(--bg-2); }
+[data-theme-source="smpp"] #theme-toggle { border-color: var(--orange); color: var(--orange); background: var(--orange-dim); }
 #theme-toggle svg { width: 13px; height: 13px; display: block; }
 
 /* Status bar */

@@ -1,6 +1,6 @@
 # GradeFlow
 
-A browser extension that adds a grade overview panel directly inside SmartSchool with weighted averages, period filters, personalisation options, and 6 hidden arcade games.
+A browser extension that adds a full grade dashboard directly inside SmartSchool with weighted averages, period filters, planner tools, class comparison, personalisation options, peer-to-peer chat, and 11 hidden arcade games.
 
 > **Note:** This extension only works on SmartSchool (`*.smartschool.be`). You need to be logged in for it to access your grades.
 
@@ -11,8 +11,17 @@ A browser extension that adds a grade overview panel directly inside SmartSchool
 - All your grades across every period, sorted by subject
 - Color coded cells (green/yellow/red) so you can spot weak and strong results at a glance
 - Hover any grade to see score, contribution, and weighted details
+- Exclude individual grades or adjust coefficients for what-if planning
 - Bottom bar with overall percentage, total points, subject count, best subject, and a progress bar
 - Disclaimer: results may differ from your official report
+
+### Dashboard tools
+- Overview, trends, planner, class comparison, attendance, decision help, and export tabs
+- Trend view shows whether each subject is improving, stable, or slipping
+- Study/work planner lets you add your own tasks and get one reminder at the start time
+- SmartSchool planner and attendance loaders show upcoming work, absences, and late arrivals when SmartSchool exposes that data
+- Decision help highlights safe, watchlist, and critical subjects with approximate next-score targets
+- Export grades to CSV or a print-friendly PDF report
 
 ### Weighting
 - **Points** - plain scored/max percentage
@@ -26,9 +35,15 @@ A browser extension that adds a grade overview panel directly inside SmartSchool
 
 ### Appearance
 - Dark and light theme with anti-flash loading
+- Smartschool++ support: when Smartschool++ is active, its theme, glass mode, layout, popup styling, chat, games, and update modal take over cleanly
 - Dutch, English, and French
 - Custom language editor with JSON import/export
 - Configurable decimal separator and decimal places
+
+### SmartSchool homepage
+- Native GradeFlow homepage summary with average, weakest subject, subject count, and risk subjects
+- Summary stays in the main Smartschool++ news area when Smartschool++ rewrites the homepage layout
+- Quick shortcut back to the GradeFlow panel
 
 ### Subject icons
 - Pulled from SmartSchool's own icon set
@@ -41,7 +56,7 @@ A browser extension that adds a grade overview panel directly inside SmartSchool
 - Fake message, notification, and news counters (0-9999)
 
 ### Arcade (press F8)
-6 hidden grade-themed games that use your actual grades when available:
+11 hidden grade-themed games that use your actual grades when available:
 
 | Game | What it is |
 |------|-----------|
@@ -51,6 +66,11 @@ A browser extension that adds a grade overview panel directly inside SmartSchool
 | GradeSweeper | Minesweeper where failing grades are mines (3 difficulties) |
 | GradeMemory | Flip and match grade card pairs (easy/medium/hard) |
 | GradeShooter | Bubble shooter with grade-colored bubbles, clear and endless mode |
+| GradeBreakout | Smash grade bricks with a paddle and ball |
+| GradePong | Play pong against an AI with grade-powered effects |
+| GradeFlappy | Fly through pipe gaps and dodge bad grades |
+| GradeRunner | Endless runner with jumps, slides, pickups, and grade obstacles |
+| GradeTower | Micro tower defense with difficulty levels and grade-unlocked towers |
 
 All games track your personal best and have animated previews in the menu.
 
@@ -68,8 +88,9 @@ Optional opt-in overlay for chatting with friends who also use GradeFlow.
 ### Keyboard shortcuts
 | Key | Action |
 |-----|--------|
+| F6 | Open GradeFlow |
 | F7 | Open/close chat overlay |
-| F8 | Open/close arcade |
+| F8 / Shift+F8 | Open/close arcade |
 | Esc | Close settings, arcade, or current game |
 | P | Pause game |
 | R | Restart game |
@@ -78,7 +99,7 @@ Optional opt-in overlay for chatting with friends who also use GradeFlow.
 
 ## Privacy
 
-GradeFlow reads grades from SmartSchool's own API and stores everything locally in your browser. No data is sent to any external server. No analytics, no tracking. See the [privacy policy](https://github.com/ForceWarrior/Smartschool-GradeFlow/blob/main/privacy-policy.md) for details.
+GradeFlow reads grades from SmartSchool's own API and stores everything locally in your browser. No analytics, no tracking. Smartschool++ compatibility is visual only: GradeFlow reads page CSS variables at runtime so its UI can follow the active theme, but it does not store Smartschool++ theme data. See the [privacy policy](https://github.com/ForceWarrior/Smartschool-GradeFlow/blob/main/privacy-policy.md) for details.
 
 ## Install
 

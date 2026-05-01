@@ -144,12 +144,23 @@
     const ny = gs.snake[0].y + gs.dir.y;
 
     // Wall
-    if (nx < 0 || nx >= gs.N || ny < 0 || ny >= gs.N) { gs.status = 'gameover'; return; }
+    if (nx < 0 || nx >= gs.N || ny < 0 || ny >= gs.N) {
+      gs.PrevSnake = gs.snake.map(s => ({ x: s.x, y: s.y }));
+      gs.snake.unshift({ x: nx, y: ny });
+      gs.status = 'gameover';
+      return;
+    }
 
-    const tailFrees = gs.growthBuffer < 1;
+    // Self-collision: skip tail segments that will be freed this step
+    const tailsFreed = gs.growthBuffer >= 1 ? 0 : gs.growthBuffer <= -1 ? 2 : 1;
     for (let i = 0; i < gs.snake.length; i++) {
-      if (tailFrees && i === gs.snake.length - 1) continue;
-      if (gs.snake[i].x === nx && gs.snake[i].y === ny) { gs.status = 'gameover'; return; }
+      if (i >= gs.snake.length - tailsFreed) continue;
+      if (gs.snake[i].x === nx && gs.snake[i].y === ny) {
+        gs.PrevSnake = gs.snake.map(s => ({ x: s.x, y: s.y }));
+        gs.snake.unshift({ x: nx, y: ny });
+        gs.status = 'gameover';
+        return;
+      }
     }
 
     gs.PrevSnake = gs.snake.map(s => ({ x: s.x, y: s.y }));
@@ -364,14 +375,14 @@
 
     const barEl = document.getElementById('gf-sn-progbar');
     if (barEl) {
-      barEl.style.width = isFP ? '100%' : `${(prog * 100).toFixed(1)}%`;
+      barEl.style.transform = `scaleX(${isFP ? 1 : prog})`;
       barEl.style.background = isFP ? '#a78bfa' : '#4ade80';
     }
 
     const bufEl = document.getElementById('gf-sn-gbuf');
     if (bufEl) {
       const buf = Math.max(-3, Math.min(3, GS.growthBuffer));
-      bufEl.style.width      = `${((buf + 3) / 6 * 100).toFixed(1)}%`;
+      bufEl.style.transform  = `scaleX(${(buf + 3) / 6})`;
       bufEl.style.background = buf >= 0 ? '#4ade80' : '#f87171';
     }
 
@@ -562,9 +573,12 @@
   function ApplyTheme() {
     const el = document.getElementById('gf-snake');
     if (!el) return;
-    const dark = document.documentElement.getAttribute('data-gf-theme') === 'dark';
-    el.style.filter = dark ? 'invert(1) hue-rotate(180deg)' : '';
-    el.dataset.theme = dark ? 'dark' : 'light';
+    if (typeof window._GfApplyThemeToHost === 'function') window._GfApplyThemeToHost(el);
+    else {
+      const isDark = document.documentElement.getAttribute('data-gf-theme') === 'dark';
+      el.style.filter = isDark ? 'invert(1) hue-rotate(180deg)' : '';
+      el.dataset.theme = isDark ? 'dark' : 'light';
+    }
   }
   const _tobs = new MutationObserver(ApplyTheme);
 
@@ -706,7 +720,7 @@
     if (!document.getElementById('gf-snake')) BuildOverlay();
     document.getElementById('gf-snake').style.display = 'flex';
     ApplyTheme();
-    _tobs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme'] });
+    _tobs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'style'] });
     AttachKeys();
     document.addEventListener('visibilitychange', OnVisibilityChange);
     ShowStartScreen();
@@ -802,7 +816,7 @@
 .gf-snp-val{font-size:14px;font-weight:700;color:var(--gs-txt);}
 .gf-snp-stat-row{display:flex;justify-content:space-between;align-items:center;padding:2px 0;}
 .gf-snp-bufwrap{height:7px;background:var(--gs-brd2);border-radius:4px;overflow:hidden;margin:4px 0;}
-.gf-snp-buf{height:100%;width:50%;background:#4ade80;border-radius:4px;transition:width .1s,background .15s;}
+.gf-snp-buf{height:100%;width:100%;background:#4ade80;border-radius:4px;transform-origin:left;transform:scaleX(0.5);will-change:transform;}
 .gf-snp-buflbl{display:flex;justify-content:space-between;font-size:8px;color:var(--gs-txt3);}
 .gf-snp-le-subj{font-size:9px;color:var(--gs-txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;}
 .gf-snp-le-row{display:flex;align-items:baseline;gap:6px;}

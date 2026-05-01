@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "GradeFlow",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Improve SmartSchool: games, chat, and more. See all your grades at a glance with weighted averages, period filters, and hour-based calculations.",
-  "permissions": ["storage", "tabs", "offscreen"],
+  "permissions": ["storage", "tabs", "offscreen", "alarms", "notifications"],
   "host_permissions": ["https://*.smartschool.be/*"],
   "action": {
     "default_popup": "HTML/popup.html",
@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["*://smartschool.be/*", "*://*.smartschool.be/*"],
-      "js": ["JS/translations.js", "JS/content.js", "JS/games/tetris.js", "JS/games/snake.js", "JS/games/grade2048.js", "JS/games/gradesweeper.js", "JS/games/gradememory.js", "JS/games/gradeshooter.js", "JS/games/game-menu.js"],
+      "js": ["JS/translations.js", "JS/content.js", "JS/update-modal.js", "JS/games/tetris.js", "JS/games/snake.js", "JS/games/grade2048.js", "JS/games/gradesweeper.js", "JS/games/gradememory.js", "JS/games/gradeshooter.js", "JS/games/gradebreakout.js", "JS/games/gradepong.js", "JS/games/gradeflappy.js", "JS/games/graderunner.js", "JS/games/gradetower.js", "JS/games/game-menu.js"],
       "run_at": "document_start"
     },
     {
@@ -37,6 +37,7 @@
     {
       "resources": [
         "Assets/icon.png",
+        "Assets/update-preview.png",
         "HTML/grades.html",
         "JS/grades.js",
         "CSS/grades.css",
