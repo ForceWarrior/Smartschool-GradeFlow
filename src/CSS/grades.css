@@ -519,6 +519,13 @@ body { font-family: var(--sans); color: var(--text-0); display: flex; height: 10
 .gf-att-title { min-width: 0; font-size: 12px; font-weight: 800; color: var(--text-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gf-att-meta, .gf-att-type { font-family: var(--mono); font-size: 10px; color: var(--text-3); }
 .gf-att-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gf-att-debug-panel { border-color: rgba(234,179,8,.35); }
+.gf-att-debug {
+  display: grid; gap: 5px; padding: 10px;
+  font-family: var(--mono); font-size: 10px; line-height: 1.45;
+  color: var(--text-2); background: var(--bg-0);
+}
+.gf-att-debug div { overflow-wrap: anywhere; }
 .gf-tool-panel {
   border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1); overflow: hidden;
 }
