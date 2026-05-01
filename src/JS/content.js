@@ -727,12 +727,13 @@ function _GfExtractAttendanceItemsFromDom(root = document, sourcePath = location
     if (text.length < 8 || text.length > 360) continue;
     const meta = `${el.className || ''} ${el.id || ''}`;
     if (junk.test(text + ' ' + meta)) continue;
-    if (!pageHint && !keyword.test(text + ' ' + meta)) continue;
-    if (!keyword.test(text + ' ' + meta)) continue;
     const foundDate = _GfAttendanceDateFromText(text);
     if (!foundDate.value || !_GfAttendanceDateIsRelevant(foundDate)) continue;
     const momentMatch = text.match(/\b(VM|NM|AM|PM)\b(?:\s*,\s*\b(VM|NM|AM|PM)\b)?/i);
     const codeMatch = text.match(/\b([LDRBZ])\b/);
+    const hasKeyword = keyword.test(text + ' ' + meta);
+    const hasCompactAttendanceCode = pageHint && (!!codeMatch || !!momentMatch) && text.length <= 180;
+    if (!hasKeyword && !hasCompactAttendanceCode) continue;
     let title = text
       .replace(foundDate.text || '', '')
       .replace(momentMatch?.[0] || '', '')
@@ -744,9 +745,9 @@ function _GfExtractAttendanceItemsFromDom(root = document, sourcePath = location
       date: foundDate.value,
       moment: momentMatch?.[0] || '',
       code: codeMatch?.[1] || '',
-      title: title || keyword.exec(text)?.[0] || '',
+      title: title || keyword.exec(text)?.[0] || codeMatch?.[1] || momentMatch?.[0] || '',
       detail: '',
-      type: keyword.exec(text + ' ' + meta)?.[0] || '',
+      type: keyword.exec(text + ' ' + meta)?.[0] || codeMatch?.[1] || momentMatch?.[0] || '',
       source: sourcePath,
     };
     const key = [item.date, item.moment, item.code, item.title].join('\u0001').toLowerCase();
@@ -761,6 +762,8 @@ function _GfExtractAttendanceItemsFromDom(root = document, sourcePath = location
 const _GF_ATTENDANCE_URLS = [
   '/?module=LVS&file=index&function=main',
   '/?module=StudentCard&file=index&function=main',
+  '/?module=Absence&file=index&function=main',
+  '/?module=Absences&file=index&function=main',
 ];
 let _gfAttendanceRefreshPromise = null;
 
