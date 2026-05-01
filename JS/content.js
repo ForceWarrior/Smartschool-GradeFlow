@@ -765,6 +765,7 @@ function _GfExtractAttendanceItemsFromDom(root = document, sourcePath = location
 }
 
 const _GF_ATTENDANCE_URLS = [
+  '/Studentcard',
   '/?module=LVS&file=index&function=main',
   '/?module=StudentCard&file=index&function=main',
   '/?module=Absence&file=index&function=main',
@@ -845,7 +846,7 @@ function _GfDiscoverAttendanceUrls(root = document) {
 }
 
 function _GfAttendanceUrls() {
-  return [...new Set([..._GfDiscoverAttendanceUrls(), ..._GF_ATTENDANCE_URLS])].slice(0, 12);
+  return [...new Set([..._GF_ATTENDANCE_URLS, ..._GfDiscoverAttendanceUrls()])].slice(0, 12);
 }
 
 function _GfMergeAttendanceItems(...groups) {
@@ -968,7 +969,10 @@ async function _GfRenderAttendanceItems() {
   for (const url of _GfAttendanceUrls()) {
     const items = await _GfLoadAttendanceItemsInFrame(url);
     _GfPushAttendanceDebug('frame', url, items.length ? 'items' : 'empty', items);
-    if (items.length) found.push(items);
+    if (items.length) {
+      found.push(items);
+      _GfStoreAttendanceItems(_GfMergeAttendanceItems(...found));
+    }
   }
   return _GfMergeAttendanceItems(...found);
 }
@@ -985,12 +989,13 @@ async function _GfRefreshAttendanceItems() {
     const urls = _GfAttendanceUrls();
     _GfResetAttendanceDebug(urls);
     _GfStoreAttendanceDebug(null, false);
-    const fetchedItems = await _GfFetchAttendanceItems();
-    if (fetchedItems.length) _GfStoreAttendanceItems(fetchedItems);
-    const renderedItems = await _GfRenderAttendanceItems();
     const domItems = _GfExtractAttendanceItemsFromDom();
     _GfPushAttendanceDebug('dom', location.pathname + location.search, domItems.length ? 'items' : 'empty', domItems);
-    const items = _GfMergeAttendanceItems(fetchedItems, renderedItems, domItems);
+    if (domItems.length) _GfStoreAttendanceItems(domItems);
+    const renderedItems = await _GfRenderAttendanceItems();
+    const fetchedItems = renderedItems.length ? [] : await _GfFetchAttendanceItems();
+    if (fetchedItems.length) _GfStoreAttendanceItems(fetchedItems);
+    const items = _GfMergeAttendanceItems(domItems, renderedItems, fetchedItems);
     if (items.length) _GfStoreAttendanceItems(items);
     _GfStoreAttendanceDebug(items, true);
     return items;
