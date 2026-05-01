@@ -1900,7 +1900,7 @@ function RenderAttendanceView() {
   const lateCount = items.filter(item => AttendanceType(item) === 'late').length;
   const absentCount = items.filter(item => AttendanceType(item) === 'absent').length;
   const otherCount = Math.max(0, items.length - lateCount - absentCount);
-  const debugRows = !items.length && S.attendanceDebug?.attempts?.length ? `<div class="gf-att-debug">${S.attendanceDebug.attempts.map(item => `<div>${Esc(item.mode)} ${Esc(item.status)} (${Number(item.count) || 0}) - ${Esc(item.url)}${item.note ? ` · ${Esc(item.note)}` : ''}</div>`).join('')}</div>` : '';
+  const debugRows = !items.length && S.attendanceDebug?.attempts?.length ? `<div class="gf-att-debug">${S.attendanceDebug.attempts.map(item => `<div>${Esc(item.mode)} ${Esc(item.status)} (${Number(item.count) || 0}) - ${Esc(item.url)}${item.note ? ` - ${Esc(item.note)}` : ''}</div>`).join('')}</div>` : '';
   const rows = items.length ? items.map(item => {
     const type = AttendanceType(item);
     const label = type === 'late' ? Translate('attendance_late') : type === 'absent' ? Translate('attendance_absent') : Translate('attendance_other');
