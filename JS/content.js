@@ -764,6 +764,63 @@ const _GF_ATTENDANCE_URLS = [
 ];
 let _gfAttendanceRefreshPromise = null;
 
+function _GfNormalizeAttendanceUrl(raw) {
+  const value = String(raw || '').trim().replace(/&amp;/g, '&');
+  if (!value || value === '#' || /^javascript:/i.test(value)) return '';
+  try {
+    const url = new URL(value, location.href);
+    if (url.origin !== location.origin) return '';
+    const full = `${url.pathname}${url.search}${url.hash}` || '/';
+    return /(module=(?:LVS|StudentCard)\b|afwezig|absen|absence|attendance|te[-_ ]?laat|studentcard)/i.test(full) ? full : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function _GfExtractAttendanceUrlsFromText(text) {
+  const found = [];
+  const raw = String(text || '').replace(/\\\//g, '/').replace(/\u0026/g, '&');
+  const matches = raw.match(/(?:https?:\/\/[^'"\s<>]+|\/\?[^'"\s<>]+|\/index\.php\?[^'"\s<>]+|index\.php\?[^'"\s<>]+)/gi) || [];
+  for (const match of matches) {
+    const clean = match.replace(/[),.;]+$/g, '');
+    const url = _GfNormalizeAttendanceUrl(clean.startsWith('index.php') ? `/${clean}` : clean);
+    if (url) found.push(url);
+  }
+  return found;
+}
+
+function _GfDiscoverAttendanceUrls(root = document) {
+  const body = root.body || root;
+  if (!body) return [];
+  const urls = [];
+  const push = value => {
+    const url = _GfNormalizeAttendanceUrl(value);
+    if (url) urls.push(url);
+  };
+  push(location.href);
+  const candidates = [...body.querySelectorAll('a[href], area[href], form[action], [onclick], [data-href], [data-url], [data-link], [data-module]')]
+    .filter(el => !el.closest('#gradeflow-panel-host, #gradeflow-tab-wrapper'))
+    .slice(0, 2200);
+  for (const el of candidates) {
+    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+    const meta = `${el.getAttribute('href') || ''} ${el.getAttribute('action') || ''} ${el.getAttribute('onclick') || ''} ${el.dataset?.href || ''} ${el.dataset?.url || ''} ${el.dataset?.link || ''} ${el.dataset?.module || ''} ${text}`;
+    if (!/(module=(?:LVS|StudentCard)\b|afwezig|absen|absence|attendance|te[-_ ]?laat|studentcard|leerlingvolgsysteem)/i.test(meta)) continue;
+    push(el.getAttribute('href'));
+    push(el.getAttribute('action'));
+    push(el.dataset?.href);
+    push(el.dataset?.url);
+    push(el.dataset?.link);
+    if (/^(LVS|StudentCard)$/i.test(el.dataset?.module || '')) push(`/?module=${el.dataset.module}&file=index&function=main`);
+    urls.push(..._GfExtractAttendanceUrlsFromText(el.getAttribute('onclick')));
+    urls.push(..._GfExtractAttendanceUrlsFromText(meta));
+  }
+  return [...new Set(urls)];
+}
+
+function _GfAttendanceUrls() {
+  return [...new Set([..._GfDiscoverAttendanceUrls(), ..._GF_ATTENDANCE_URLS])].slice(0, 12);
+}
+
 function _GfMergeAttendanceItems(...groups) {
   const seen = new Set();
   const out = [];
@@ -865,7 +922,7 @@ async function _GfLoadAttendanceItemsInFrame(url) {
 
 async function _GfFetchAttendanceItems() {
   const found = [];
-  for (const url of _GF_ATTENDANCE_URLS) {
+  for (const url of _GfAttendanceUrls()) {
     try {
       const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) continue;
@@ -881,7 +938,7 @@ async function _GfFetchAttendanceItems() {
 
 async function _GfRenderAttendanceItems() {
   const found = [];
-  for (const url of _GF_ATTENDANCE_URLS) {
+  for (const url of _GfAttendanceUrls()) {
     const items = await _GfLoadAttendanceItemsInFrame(url);
     if (items.length) found.push(items);
   }
