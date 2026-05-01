@@ -242,6 +242,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
   if (area === 'local' && changes['gradeflow-attendance-debug']) {
     S.attendanceDebug = NormalizeAttendanceDebug(changes['gradeflow-attendance-debug'].newValue);
+    S.attendanceRefreshing = !!S.attendanceDebug?.running;
     if (S.activeView === 'attendance') RenderMainContent(false);
   }
   if (area === 'local' && changes['gf-profile-picture']) {
@@ -273,6 +274,7 @@ window.addEventListener('message', e => {
       S.studySessions = NormalizeStudySessions(result?.['gradeflow-study-sessions']);
       S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
       S.attendanceDebug = NormalizeAttendanceDebug(result?.['gradeflow-attendance-debug']);
+      S.attendanceRefreshing = !!S.attendanceDebug?.running;
       const raw = result?.['gradeflow-grades'];
       if (!raw || (prevJSON && prevJSON === raw)) return;
       const wasAlreadyLoaded = !!S.store;
@@ -691,6 +693,8 @@ function NormalizeAttendanceDebug(raw) {
     return {
       at: String(parsed.at || ''),
       total: Number(parsed.total || 0),
+      running: !!parsed.running,
+      urls: Array.isArray(parsed.urls) ? parsed.urls.slice(0, 18).map(url => String(url || '')) : [],
       attempts: Array.isArray(parsed.attempts) ? parsed.attempts.slice(0, 18).map(item => ({
         mode: String(item?.mode || ''),
         url: String(item?.url || ''),
@@ -718,6 +722,7 @@ function LoadAttendanceItems(done) {
     chrome.storage.local.get(['gradeflow-attendance-items', 'gradeflow-attendance-debug'], result => {
       S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
       S.attendanceDebug = NormalizeAttendanceDebug(result?.['gradeflow-attendance-debug']);
+      S.attendanceRefreshing = !!S.attendanceDebug?.running;
       if (done) done(S.attendanceItems);
     });
   } catch (_) {
@@ -1057,6 +1062,7 @@ const S = {
   plannerItems: [],
   attendanceItems: [],
   attendanceDebug: null,
+  attendanceRefreshing: false,
   studySessions: [],
   studyMonth: CurrentMonthValue(),
   hoursOpen: false,
@@ -1563,6 +1569,8 @@ function RequestAttendanceRefresh() {
   const now = Date.now();
   if (now - _gfAttendanceRequestAt < 2500) return;
   _gfAttendanceRequestAt = now;
+  S.attendanceRefreshing = true;
+  if (S.activeView === 'attendance') RenderAttendanceView();
   try { window.parent.postMessage({ type: 'gf-refresh-attendance' }, '*'); } catch (_) {}
 }
 
@@ -1900,7 +1908,14 @@ function RenderAttendanceView() {
   const lateCount = items.filter(item => AttendanceType(item) === 'late').length;
   const absentCount = items.filter(item => AttendanceType(item) === 'absent').length;
   const otherCount = Math.max(0, items.length - lateCount - absentCount);
-  const debugRows = !items.length && S.attendanceDebug?.attempts?.length ? `<div class="gf-att-debug">${S.attendanceDebug.attempts.map(item => `<div>${Esc(item.mode)} ${Esc(item.status)} (${Number(item.count) || 0}) - ${Esc(item.url)}${item.note ? ` - ${Esc(item.note)}` : ''}</div>`).join('')}</div>` : '';
+  const debug = S.attendanceDebug;
+  const debugLines = (debug?.attempts || []).map(item => `${item.mode} ${item.status} (${Number(item.count) || 0}) - ${item.url}${item.note ? ` - ${item.note}` : ''}`);
+  const debugFallback = !debugLines.length && S.attendanceRefreshing ? ['Waiting for attendance routes...'] : [];
+  const debugText = [`GradeFlow attendance debug`, `at: ${debug?.at || 'not started'}`, `running: ${debug?.running || S.attendanceRefreshing ? 'yes' : 'no'}`, `total: ${debug?.total || 0}`, ...debugLines].join('\n');
+  const debugPanel = !items.length ? `<section class="gf-tool-panel gf-att-debug-panel">
+    <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">Attendance diagnostics</div><div class="gf-tool-panel-sub">Copy this if attendance stays empty.</div></div><button class="gf-tool-btn" id="gf-attendance-copy-debug">Copy debug</button></div>
+    <div class="gf-att-debug">${[...debugFallback, ...debugLines].length ? [...debugFallback, ...debugLines].map(line => `<div>${Esc(line)}</div>`).join('') : `<div>No debug attempts yet. Click Refresh attendance.</div>`}</div>
+  </section>` : '';
   const rows = items.length ? items.map(item => {
     const type = AttendanceType(item);
     const label = type === 'late' ? Translate('attendance_late') : type === 'absent' ? Translate('attendance_absent') : Translate('attendance_other');
@@ -1909,19 +1924,24 @@ function RenderAttendanceView() {
       <div class="gf-att-main"><div class="gf-att-title">${Esc(item.title || label)}</div><div class="gf-att-meta">${Esc(item.date || Translate('planner_no_date'))}${item.moment ? ` · ${Esc(item.moment)}` : ''}${item.detail ? ` · ${Esc(item.detail)}` : ''}</div></div>
       <div class="gf-att-type">${Esc(label)}</div>
     </div>`;
-  }).join('') : `<div id="gf-state"><span>${Translate('attendance_empty')}</span></div>${debugRows}`;
+  }).join('') : `<div id="gf-state"><span>${Translate('attendance_empty')}</span></div>`;
   wrap.innerHTML = `<div class="gf-tool-view">
-    <div class="gf-tool-head"><div><div class="gf-tool-title">${Translate('attendance_title')}</div><div class="gf-tool-sub">${Translate('attendance_desc')}</div></div><div class="gf-tool-actions"><button class="gf-tool-btn" id="gf-attendance-refresh">${Translate('attendance_refresh')}</button></div></div>
+    <div class="gf-tool-head"><div><div class="gf-tool-title">${Translate('attendance_title')}</div><div class="gf-tool-sub">${Translate('attendance_desc')}</div></div><div class="gf-tool-actions"><button class="gf-tool-btn${S.attendanceRefreshing || debug?.running ? ' active' : ''}" id="gf-attendance-refresh">${S.attendanceRefreshing || debug?.running ? Translate('attendance_refreshing') : Translate('attendance_refresh')}</button></div></div>
     <div class="gf-att-summary">
       <div class="gf-att-stat is-late"><b>${lateCount}</b><span>${Translate('attendance_late')}</span></div>
       <div class="gf-att-stat is-absent"><b>${absentCount}</b><span>${Translate('attendance_absent')}</span></div>
       <div class="gf-att-stat is-other"><b>${otherCount}</b><span>${Translate('attendance_other')}</span></div>
     </div>
     <section class="gf-tool-panel"><div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('attendance_recent')}</div><div class="gf-tool-panel-sub">${Translate('attendance_hint')}</div></div><span class="gf-planner-count">${items.length}</span></div><div class="gf-att-list">${rows}</div></section>
+    ${debugPanel}
   </div>`;
   wrap.querySelector('#gf-attendance-refresh')?.addEventListener('click', () => {
     RequestAttendanceRefresh();
     ShowToast(Translate('attendance_refreshing'), '', 'info');
+  });
+  wrap.querySelector('#gf-attendance-copy-debug')?.addEventListener('click', async () => {
+    const ok = await CopyText(debugText);
+    ShowToast(ok ? 'Attendance debug copied' : Translate('comparison_copy_failed'), '', ok ? 'ok' : 'warn');
   });
 }
 

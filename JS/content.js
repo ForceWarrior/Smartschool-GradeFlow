@@ -774,18 +774,20 @@ let _gfAttendanceRefreshPromise = null;
 let _gfAttendanceDebug = null;
 
 function _GfResetAttendanceDebug(urls) {
-  _gfAttendanceDebug = { at: new Date().toISOString(), urls: urls || [], attempts: [], total: 0 };
+  _gfAttendanceDebug = { at: new Date().toISOString(), urls: urls || [], attempts: [], total: 0, running: true };
 }
 
 function _GfPushAttendanceDebug(mode, url, status, items = [], note = '') {
   if (!_gfAttendanceDebug) _GfResetAttendanceDebug([]);
   _gfAttendanceDebug.attempts.push({ mode, url, status, count: (items || []).length, note });
   _gfAttendanceDebug.total = Math.max(_gfAttendanceDebug.total || 0, (items || []).length);
+  _GfStoreAttendanceDebug(null, false);
 }
 
-function _GfStoreAttendanceDebug(items = []) {
+function _GfStoreAttendanceDebug(items = null, finished = false) {
   if (!_gfAttendanceDebug) return;
-  _gfAttendanceDebug.total = (items || []).length;
+  if (Array.isArray(items)) _gfAttendanceDebug.total = items.length;
+  _gfAttendanceDebug.running = !finished;
   try { chrome.storage.local.set({ [_GF_ATTENDANCE_DEBUG_KEY]: JSON.stringify(_gfAttendanceDebug) }); } catch (_) {}
 }
 
@@ -982,6 +984,7 @@ async function _GfRefreshAttendanceItems() {
   _gfAttendanceRefreshPromise = (async () => {
     const urls = _GfAttendanceUrls();
     _GfResetAttendanceDebug(urls);
+    _GfStoreAttendanceDebug(null, false);
     const fetchedItems = await _GfFetchAttendanceItems();
     if (fetchedItems.length) _GfStoreAttendanceItems(fetchedItems);
     const renderedItems = await _GfRenderAttendanceItems();
@@ -989,7 +992,7 @@ async function _GfRefreshAttendanceItems() {
     _GfPushAttendanceDebug('dom', location.pathname + location.search, domItems.length ? 'items' : 'empty', domItems);
     const items = _GfMergeAttendanceItems(fetchedItems, renderedItems, domItems);
     if (items.length) _GfStoreAttendanceItems(items);
-    _GfStoreAttendanceDebug(items);
+    _GfStoreAttendanceDebug(items, true);
     return items;
   })().finally(() => { _gfAttendanceRefreshPromise = null; });
   return _gfAttendanceRefreshPromise;
