@@ -1909,12 +1909,16 @@ function RenderAttendanceView() {
   const absentCount = items.filter(item => AttendanceType(item) === 'absent').length;
   const otherCount = Math.max(0, items.length - lateCount - absentCount);
   const debug = S.attendanceDebug;
-  const debugLines = (debug?.attempts || []).map(item => `${item.mode} ${item.status} (${Number(item.count) || 0}) - ${item.url}${item.note ? ` - ${item.note}` : ''}`);
+  const debugAttempts = debug?.attempts || [];
+  const debugLines = debugAttempts.map(item => `${item.mode} ${item.status} (${Number(item.count) || 0}) - ${item.url}${item.note ? ` - ${item.note}` : ''}`);
+  const workingLines = debugAttempts
+    .filter(item => item.status === 'items' && item.url)
+    .map(item => `${item.mode} ${item.url}`);
   const debugFallback = !debugLines.length && S.attendanceRefreshing ? ['Waiting for attendance routes...'] : [];
-  const debugText = [`GradeFlow attendance debug`, `at: ${debug?.at || 'not started'}`, `running: ${debug?.running || S.attendanceRefreshing ? 'yes' : 'no'}`, `total: ${debug?.total || 0}`, ...debugLines].join('\n');
-  const debugPanel = !items.length ? `<section class="gf-tool-panel gf-att-debug-panel">
-    <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">Attendance diagnostics</div><div class="gf-tool-panel-sub">Copy this if attendance stays empty.</div></div><button class="gf-tool-btn" id="gf-attendance-copy-debug">Copy debug</button></div>
-    <div class="gf-att-debug">${[...debugFallback, ...debugLines].length ? [...debugFallback, ...debugLines].map(line => `<div>${Esc(line)}</div>`).join('') : `<div>No debug attempts yet. Click Refresh attendance.</div>`}</div>
+  const debugText = [`GradeFlow attendance debug`, `at: ${debug?.at || 'not started'}`, `running: ${debug?.running || S.attendanceRefreshing ? 'yes' : 'no'}`, `total: ${debug?.total || 0}`, ...workingLines.map(line => `working: ${line}`), ...debugLines].join('\n');
+  const debugPanel = debug || S.attendanceRefreshing ? `<section class="gf-tool-panel gf-att-debug-panel">
+    <div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">Attendance diagnostics</div><div class="gf-tool-panel-sub">The working route is the line marked items.</div></div><button class="gf-tool-btn" id="gf-attendance-copy-debug">Copy debug</button></div>
+    <div class="gf-att-debug">${[...debugFallback, ...debugAttempts.map((item, index) => ({ line: debugLines[index], hit: item.status === 'items' }))].length ? [...debugFallback.map(line => ({ line, hit: false })), ...debugAttempts.map((item, index) => ({ line: debugLines[index], hit: item.status === 'items' }))].map(item => `<div${item.hit ? ' class="is-hit"' : ''}>${Esc(item.line)}</div>`).join('') : `<div>No debug attempts yet. Click Refresh attendance.</div>`}</div>
   </section>` : '';
   const rows = items.length ? items.map(item => {
     const type = AttendanceType(item);

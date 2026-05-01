@@ -526,6 +526,7 @@ body { font-family: var(--sans); color: var(--text-0); display: flex; height: 10
   color: var(--text-2); background: var(--bg-0);
 }
 .gf-att-debug div { overflow-wrap: anywhere; }
+.gf-att-debug .is-hit { color: #4ade80; font-weight: 800; }
 .gf-tool-panel {
   border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1); overflow: hidden;
 }
