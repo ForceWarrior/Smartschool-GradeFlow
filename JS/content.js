@@ -524,7 +524,6 @@ const gradeflowCache = {
 
 const _GF_PLANNER_KEY = 'gradeflow-planner-items';
 const _GF_ATTENDANCE_KEY = 'gradeflow-attendance-items';
-const _GF_ATTENDANCE_DEBUG_KEY = 'gradeflow-attendance-debug';
 
 function LoadManualHours() {
   try {
@@ -772,25 +771,6 @@ const _GF_ATTENDANCE_URLS = [
   '/?module=Absences&file=index&function=main',
 ];
 let _gfAttendanceRefreshPromise = null;
-let _gfAttendanceDebug = null;
-
-function _GfResetAttendanceDebug(urls) {
-  _gfAttendanceDebug = { at: new Date().toISOString(), urls: urls || [], attempts: [], total: 0, running: true };
-}
-
-function _GfPushAttendanceDebug(mode, url, status, items = [], note = '') {
-  if (!_gfAttendanceDebug) _GfResetAttendanceDebug([]);
-  _gfAttendanceDebug.attempts.push({ mode, url, status, count: (items || []).length, note });
-  _gfAttendanceDebug.total = Math.max(_gfAttendanceDebug.total || 0, (items || []).length);
-  _GfStoreAttendanceDebug(null, false);
-}
-
-function _GfStoreAttendanceDebug(items = null, finished = false) {
-  if (!_gfAttendanceDebug) return;
-  if (Array.isArray(items)) _gfAttendanceDebug.total = items.length;
-  _gfAttendanceDebug.running = !finished;
-  try { chrome.storage.local.set({ [_GF_ATTENDANCE_DEBUG_KEY]: JSON.stringify(_gfAttendanceDebug) }); } catch (_) {}
-}
 
 function _GfNormalizeAttendanceUrl(raw) {
   const value = String(raw || '').trim().replace(/&amp;/g, '&');
@@ -953,13 +933,12 @@ async function _GfFetchAttendanceItems() {
   for (const url of _GfAttendanceUrls()) {
     try {
       const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) { _GfPushAttendanceDebug('fetch', url, `HTTP ${res.status}`); continue; }
+      if (!res.ok) continue;
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
       const items = _GfExtractAttendanceItemsFromDom(doc, url);
-      _GfPushAttendanceDebug('fetch', url, items.length ? 'items' : 'empty', items, `${html.length} chars`);
       if (items.length) found.push(items);
-    } catch (err) { _GfPushAttendanceDebug('fetch', url, 'error', [], String(err?.message || err || 'error').slice(0, 90)); }
+    } catch (_) {}
   }
   return _GfMergeAttendanceItems(...found);
 }
@@ -968,7 +947,6 @@ async function _GfRenderAttendanceItems() {
   const found = [];
   for (const url of _GfAttendanceUrls()) {
     const items = await _GfLoadAttendanceItemsInFrame(url);
-    _GfPushAttendanceDebug('frame', url, items.length ? 'items' : 'empty', items);
     if (items.length) {
       found.push(items);
       _GfStoreAttendanceItems(_GfMergeAttendanceItems(...found));
@@ -986,18 +964,13 @@ function _GfStoreAttendanceItems(items) {
 async function _GfRefreshAttendanceItems() {
   if (_gfAttendanceRefreshPromise) return _gfAttendanceRefreshPromise;
   _gfAttendanceRefreshPromise = (async () => {
-    const urls = _GfAttendanceUrls();
-    _GfResetAttendanceDebug(urls);
-    _GfStoreAttendanceDebug(null, false);
     const domItems = _GfExtractAttendanceItemsFromDom();
-    _GfPushAttendanceDebug('dom', location.pathname + location.search, domItems.length ? 'items' : 'empty', domItems);
     if (domItems.length) _GfStoreAttendanceItems(domItems);
     const renderedItems = await _GfRenderAttendanceItems();
     const fetchedItems = renderedItems.length ? [] : await _GfFetchAttendanceItems();
     if (fetchedItems.length) _GfStoreAttendanceItems(fetchedItems);
     const items = _GfMergeAttendanceItems(domItems, renderedItems, fetchedItems);
     if (items.length) _GfStoreAttendanceItems(items);
-    _GfStoreAttendanceDebug(items, true);
     return items;
   })().finally(() => { _gfAttendanceRefreshPromise = null; });
   return _gfAttendanceRefreshPromise;

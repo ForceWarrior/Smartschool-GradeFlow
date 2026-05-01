@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GradeFlow",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Improve SmartSchool with grade overviews, weighted averages, period filters, chat, and arcade games.",
   "permissions": ["storage", "tabs", "offscreen", "alarms", "notifications"],
   "host_permissions": ["https://*.smartschool.be/*"],
