@@ -1526,9 +1526,18 @@ function RenderTabs() {
       RenderMainContent(false);
       UpdateTopbar();
       UpdateBottomBar();
+      if (S.activeView === 'attendance') RequestAttendanceRefresh();
       if (typeof _GfApplyPressToAll === 'function') _GfApplyPressToAll(bar);
     });
   });
+}
+
+let _gfAttendanceRequestAt = 0;
+function RequestAttendanceRefresh() {
+  const now = Date.now();
+  if (now - _gfAttendanceRequestAt < 2500) return;
+  _gfAttendanceRequestAt = now;
+  try { window.parent.postMessage({ type: 'gf-refresh-attendance' }, '*'); } catch (_) {}
 }
 
 function RenderMainContent(animated = true) {
@@ -1884,7 +1893,7 @@ function RenderAttendanceView() {
     <section class="gf-tool-panel"><div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('attendance_recent')}</div><div class="gf-tool-panel-sub">${Translate('attendance_hint')}</div></div><span class="gf-planner-count">${items.length}</span></div><div class="gf-att-list">${rows}</div></section>
   </div>`;
   wrap.querySelector('#gf-attendance-refresh')?.addEventListener('click', () => {
-    window.parent.postMessage({ type: 'gf-refresh-attendance' }, '*');
+    RequestAttendanceRefresh();
     ShowToast(Translate('attendance_refreshing'), '', 'info');
   });
 }
