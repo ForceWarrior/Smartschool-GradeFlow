@@ -524,6 +524,7 @@ const gradeflowCache = {
 
 const _GF_PLANNER_KEY = 'gradeflow-planner-items';
 const _GF_ATTENDANCE_KEY = 'gradeflow-attendance-items';
+const _GF_ATTENDANCE_DEBUG_KEY = 'gradeflow-attendance-debug';
 
 function LoadManualHours() {
   try {
@@ -685,6 +686,10 @@ function _GfRefreshPlannerItems() {
 
 function _GfAttendanceDateFromText(text) {
   const raw = String(text || '');
+  const yearFirst = raw.match(/\b(20\d{2})[\/.-](\d{1,2})[\/.-](\d{1,2})\b/);
+  if (yearFirst) {
+    return { text: yearFirst[0], value: `${Number(yearFirst[3])}/${Number(yearFirst[2])}/${yearFirst[1]}`, day: Number(yearFirst[3]), month: Number(yearFirst[2]), year: Number(yearFirst[1]) };
+  }
   const numeric = raw.match(/\b(?:ma|di|wo|do|vr|za|zo)?\s*(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?\b/i);
   if (numeric) {
     let year = numeric[3] ? Number(numeric[3]) : new Date().getFullYear();
@@ -766,6 +771,23 @@ const _GF_ATTENDANCE_URLS = [
   '/?module=Absences&file=index&function=main',
 ];
 let _gfAttendanceRefreshPromise = null;
+let _gfAttendanceDebug = null;
+
+function _GfResetAttendanceDebug(urls) {
+  _gfAttendanceDebug = { at: new Date().toISOString(), urls: urls || [], attempts: [], total: 0 };
+}
+
+function _GfPushAttendanceDebug(mode, url, status, items = [], note = '') {
+  if (!_gfAttendanceDebug) _GfResetAttendanceDebug([]);
+  _gfAttendanceDebug.attempts.push({ mode, url, status, count: (items || []).length, note });
+  _gfAttendanceDebug.total = Math.max(_gfAttendanceDebug.total || 0, (items || []).length);
+}
+
+function _GfStoreAttendanceDebug(items = []) {
+  if (!_gfAttendanceDebug) return;
+  _gfAttendanceDebug.total = (items || []).length;
+  try { chrome.storage.local.set({ [_GF_ATTENDANCE_DEBUG_KEY]: JSON.stringify(_gfAttendanceDebug) }); } catch (_) {}
+}
 
 function _GfNormalizeAttendanceUrl(raw) {
   const value = String(raw || '').trim().replace(/&amp;/g, '&');
@@ -928,13 +950,13 @@ async function _GfFetchAttendanceItems() {
   for (const url of _GfAttendanceUrls()) {
     try {
       const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) continue;
+      if (!res.ok) { _GfPushAttendanceDebug('fetch', url, `HTTP ${res.status}`); continue; }
       const html = await res.text();
-      if (!/afwezig|te laat|doktersattest|absence|studentcard|leerling/i.test(html)) continue;
       const doc = new DOMParser().parseFromString(html, 'text/html');
       const items = _GfExtractAttendanceItemsFromDom(doc, url);
+      _GfPushAttendanceDebug('fetch', url, items.length ? 'items' : 'empty', items, `${html.length} chars`);
       if (items.length) found.push(items);
-    } catch (_) {}
+    } catch (err) { _GfPushAttendanceDebug('fetch', url, 'error', [], String(err?.message || err || 'error').slice(0, 90)); }
   }
   return _GfMergeAttendanceItems(...found);
 }
@@ -943,6 +965,7 @@ async function _GfRenderAttendanceItems() {
   const found = [];
   for (const url of _GfAttendanceUrls()) {
     const items = await _GfLoadAttendanceItemsInFrame(url);
+    _GfPushAttendanceDebug('frame', url, items.length ? 'items' : 'empty', items);
     if (items.length) found.push(items);
   }
   return _GfMergeAttendanceItems(...found);
@@ -957,12 +980,16 @@ function _GfStoreAttendanceItems(items) {
 async function _GfRefreshAttendanceItems() {
   if (_gfAttendanceRefreshPromise) return _gfAttendanceRefreshPromise;
   _gfAttendanceRefreshPromise = (async () => {
+    const urls = _GfAttendanceUrls();
+    _GfResetAttendanceDebug(urls);
     const fetchedItems = await _GfFetchAttendanceItems();
     if (fetchedItems.length) _GfStoreAttendanceItems(fetchedItems);
     const renderedItems = await _GfRenderAttendanceItems();
     const domItems = _GfExtractAttendanceItemsFromDom();
+    _GfPushAttendanceDebug('dom', location.pathname + location.search, domItems.length ? 'items' : 'empty', domItems);
     const items = _GfMergeAttendanceItems(fetchedItems, renderedItems, domItems);
     if (items.length) _GfStoreAttendanceItems(items);
+    _GfStoreAttendanceDebug(items);
     return items;
   })().finally(() => { _gfAttendanceRefreshPromise = null; });
   return _gfAttendanceRefreshPromise;
