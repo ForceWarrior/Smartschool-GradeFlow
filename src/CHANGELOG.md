@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.1] - 2026-05-01
+
+### Fixed
+- Small patch fix for attendance loading: GradeFlow now prioritizes SmartSchool's Studentcard route and removes temporary attendance diagnostics from the panel.
+
 ## [1.2.0] - 2026-05-01
 
 ### Added
