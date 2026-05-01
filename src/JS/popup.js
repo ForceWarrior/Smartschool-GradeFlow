@@ -18,6 +18,8 @@ const KEY_THEME = 'gradeflow-theme';
 
 // State
 let pageTheme = 'light';
+let popupExternalThemeVars = null;
+let popupThemePoll = 0;
 
 // DOM refs
 const toggleBtn  = document.getElementById('theme-toggle');
@@ -25,9 +27,31 @@ const presetBtns = document.querySelectorAll('.preset-btn');
 
 // Popup appearance
 function ApplyPopupAppearance(base) {
-  document.documentElement.setAttribute('data-theme', base === 'dark' ? 'dark' : '');
+  const root = document.documentElement;
+  if (popupExternalThemeVars) {
+    root.setAttribute('data-theme-source', 'smpp');
+    root.setAttribute('data-theme', popupExternalThemeVars.isDark ? 'dark' : '');
+    root.style.setProperty('--bg-0', popupExternalThemeVars.bg);
+    root.style.setProperty('--bg-1', popupExternalThemeVars.surface);
+    root.style.setProperty('--bg-2', popupExternalThemeVars.surface2);
+    root.style.setProperty('--text-0', popupExternalThemeVars.text);
+    root.style.setProperty('--text-2', popupExternalThemeVars.muted || popupExternalThemeVars.text);
+    root.style.setProperty('--orange', popupExternalThemeVars.accent);
+    root.style.setProperty('--border', popupExternalThemeVars.border);
+    root.style.setProperty('--orange-dim', `color-mix(in srgb, ${popupExternalThemeVars.accent} 16%, transparent)`);
+    root.style.setProperty('--orange-glow', `color-mix(in srgb, ${popupExternalThemeVars.accent} 26%, transparent)`);
+    root.style.setProperty('--shadow', popupExternalThemeVars.isDark ? '0 8px 32px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.35)' : '0 8px 32px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.07)');
+    toggleBtn.innerHTML = popupExternalThemeVars.isDark ? SUN_SVG : MOON_SVG;
+    toggleBtn.title = 'Smartschool++ controls this theme';
+    toggleBtn.disabled = true;
+    return;
+  }
+  root.removeAttribute('data-theme-source');
+  ['--bg-0', '--bg-1', '--bg-2', '--text-0', '--text-2', '--orange', '--border', '--orange-dim', '--orange-glow', '--shadow'].forEach(name => root.style.removeProperty(name));
+  root.setAttribute('data-theme', base === 'dark' ? 'dark' : '');
   toggleBtn.innerHTML = base === 'dark' ? SUN_SVG : MOON_SVG;
   toggleBtn.title = base === 'dark' ? 'Switch to Smartschool theme' : 'Switch to Dark theme';
+  toggleBtn.disabled = false;
 }
 
 // Preset highlight
@@ -46,7 +70,7 @@ function ActivatePreset(preset) {
 }
 
 // Header buttons
-toggleBtn.addEventListener('click', () => ActivatePreset(pageTheme === 'dark' ? 'light' : 'dark'));
+toggleBtn.addEventListener('click', () => { if (!popupExternalThemeVars) ActivatePreset(pageTheme === 'dark' ? 'light' : 'dark'); });
 presetBtns.forEach(btn => btn.addEventListener('click', () => ActivatePreset(btn.dataset.preset)));
 
 // Load state
@@ -55,6 +79,18 @@ chrome.storage.local.get(KEY_THEME, res => {
   ApplyPopupAppearance(pageTheme);
   UpdatePresetHighlight();
 });
+
+function ApplyExternalThemeResponse(res) {
+  popupExternalThemeVars = res?.theme === 'smpp' && res.vars ? res.vars : null;
+  ApplyPopupAppearance(pageTheme);
+}
+
+function RequestTabTheme(tabId) {
+  chrome.tabs.sendMessage(tabId, { type: 'getTheme' }, res => {
+    if (chrome.runtime.lastError) return;
+    ApplyExternalThemeResponse(res);
+  });
+}
 
 // Version
 document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
@@ -75,6 +111,9 @@ chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
     } else {
       statusEl.textContent = _PopupText('popup_status_active') + ' ' + new URL(tab.url).hostname;
       statusEl.className = 'active';
+      RequestTabTheme(tab.id);
+      clearInterval(popupThemePoll);
+      popupThemePoll = setInterval(() => RequestTabTheme(tab.id), 700);
     }
   });
 });

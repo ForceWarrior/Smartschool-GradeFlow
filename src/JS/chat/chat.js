@@ -58,6 +58,19 @@
     head.appendChild(link);
   }
 
+  function _syncThemeState() {
+    if (!root) return;
+    const doc = document.documentElement;
+    const source = doc.getAttribute('data-gf-theme-source') === 'smpp' ? 'smpp' : 'gradeflow';
+    const isDark = source === 'smpp'
+      ? doc.getAttribute('data-gf-external-dark') === '1'
+      : doc.getAttribute('data-gf-theme') === 'dark';
+    root.dataset.themeSource = source;
+    root.dataset.theme = isDark ? 'dark' : 'light';
+    root.classList.toggle('is-smpp', source === 'smpp');
+    root.classList.toggle('is-glass', source === 'smpp' && doc.getAttribute('data-gf-external-glass') === '1');
+  }
+
   function _ensureRoot() {
     _ensureCssAttached();
     if (!root) {
@@ -65,6 +78,7 @@
       root.id = 'gf-chat-root';
       root.className = overlayMounted ? '' : 'gf-chat-hidden';
     }
+    _syncThemeState();
     if (document.body && !document.body.contains(root)) document.body.appendChild(root);
     return root;
   }
@@ -74,18 +88,25 @@
     if (root && document.body && !document.body.contains(root)) {
       document.body.appendChild(root);
     }
+    _syncThemeState();
   }
 
   function _installPersistenceObservers() {
-    if (!bodyObserver) {
+    if (!bodyObserver && document.body) {
+      // Only watch direct children of body for removals, vastly cheaper than
+      // a deep subtree observer. Our chat root is a direct child of body, so
+      // this catches every case where it gets removed.
       bodyObserver = new MutationObserver(_reattach);
-      bodyObserver.observe(document.documentElement, { childList: true, subtree: true });
+      bodyObserver.observe(document.body, { childList: true, subtree: false });
     }
     if (!themeObserver) {
-      themeObserver = new MutationObserver(() => { if (overlayMounted) render(); });
+      themeObserver = new MutationObserver(() => {
+        _syncThemeState();
+        if (overlayMounted) render();
+      });
       themeObserver.observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ['data-gf-theme', 'data-theme'],
+        attributeFilter: ['data-gf-theme', 'data-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'data-gf-external-glass', 'style'],
       });
     }
   }
@@ -268,6 +289,7 @@
   function _showOverlayDom() {
     _ensureRoot();
     _installPersistenceObservers();
+    _syncThemeState();
     root.classList.remove('gf-chat-hidden');
   }
   function _hideOverlayDom() {

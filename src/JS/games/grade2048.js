@@ -245,9 +245,12 @@
   /* THEME */
   function ApplyTheme() {
     const el = document.getElementById('gf-2048'); if (!el) return;
-    const dark = document.documentElement.getAttribute('data-gf-theme') === 'dark';
-    el.style.filter  = dark ? 'invert(1) hue-rotate(180deg)' : '';
-    el.dataset.theme = dark ? 'dark' : 'light';
+    if (typeof window._GfApplyThemeToHost === 'function') window._GfApplyThemeToHost(el);
+    else {
+      const isDark = document.documentElement.getAttribute('data-gf-theme') === 'dark';
+      el.style.filter  = isDark ? 'invert(1) hue-rotate(180deg)' : '';
+      el.dataset.theme = isDark ? 'dark' : 'light';
+    }
   }
   const _tobs = new MutationObserver(ApplyTheme);
 
@@ -322,7 +325,7 @@
     const el = document.getElementById('gf-2048');
     el.style.display = 'flex';
     ApplyTheme();
-    _tobs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme'] });
+    _tobs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'style'] });
     AttachKeys();
     if (!G) NewGame(); else RenderBoard();
   }

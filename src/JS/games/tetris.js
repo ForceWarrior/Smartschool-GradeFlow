@@ -454,9 +454,12 @@
   function ApplyInvertFix() {
     const el = document.getElementById('gf-tetris');
     if (!el) return;
-    const dark = document.documentElement.getAttribute('data-gf-theme') === 'dark';
-    el.style.filter = dark ? 'invert(1) hue-rotate(180deg)' : '';
-    el.dataset.theme = dark ? 'dark' : 'light';
+    if (typeof window._GfApplyThemeToHost === 'function') window._GfApplyThemeToHost(el);
+    else {
+      const isDark = document.documentElement.getAttribute('data-gf-theme') === 'dark';
+      el.style.filter = isDark ? 'invert(1) hue-rotate(180deg)' : '';
+      el.dataset.theme = isDark ? 'dark' : 'light';
+    }
   }
   const _themeWatcher = new MutationObserver(ApplyInvertFix);
 
@@ -586,7 +589,7 @@
     else if (GT.status === 'paused') ShowScreen('gf-ts-pause');
     ApplyInvertFix();
     AttachKeys();
-    _themeWatcher.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme'] });
+    _themeWatcher.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'style'] });
   }
 
   function ToggleGradeTetris(grades) {

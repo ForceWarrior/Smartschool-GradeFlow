@@ -8,8 +8,74 @@ const SMSC_CDN_HOSTS = [
 // Personalization cache
 const GF_SETTINGS_KEY = 'gf-personalization';
 const GF_PFP_KEY      = 'gf-profile-picture';
+const GF_STUDY_KEY    = 'gradeflow-study-sessions';
+const GF_STUDY_ALARM_PREFIX = 'gf-study:';
 let _cachedSettings = null;
 let _cachedPfp      = null;
+
+function _GfStudySessionsFrom(raw) {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(item => item && item.id && item.startAt);
+  } catch (_) { return []; }
+}
+
+function _GfStudyFutureSessions(sessions) {
+  const now = Date.now();
+  return _GfStudySessionsFrom(sessions).filter(session => new Date(session.startAt).getTime() > now);
+}
+
+function _GfStudyAlarmName(id) {
+  return `${GF_STUDY_ALARM_PREFIX}${id}`;
+}
+
+function _GfStudyScheduleSession(session) {
+  const startTime = new Date(session.startAt).getTime();
+  if (!Number.isFinite(startTime) || startTime <= Date.now()) return;
+  chrome.alarms.create(_GfStudyAlarmName(session.id), { when: startTime });
+}
+
+function _GfStudyScheduleAll() {
+  chrome.storage.local.get(GF_STUDY_KEY, result => {
+    if (chrome.runtime.lastError) return;
+    const storedSessions = _GfStudySessionsFrom(result?.[GF_STUDY_KEY]);
+    const futureSessions = _GfStudyFutureSessions(storedSessions);
+    if (futureSessions.length !== storedSessions.length) {
+      chrome.storage.local.set({ [GF_STUDY_KEY]: futureSessions });
+      return;
+    }
+    chrome.alarms.getAll(alarms => {
+      for (const alarm of alarms || []) {
+        if (alarm.name.startsWith(GF_STUDY_ALARM_PREFIX)) chrome.alarms.clear(alarm.name);
+      }
+      for (const session of futureSessions) _GfStudyScheduleSession(session);
+    });
+  });
+}
+
+function _GfStudyNotify(session) {
+  const duration = Number(session.durationMin) || 0;
+  const title = session.subject ? `Study: ${session.subject}` : 'Study reminder';
+  const bits = [];
+  if (session.topic) bits.push(session.topic);
+  if (duration > 0) bits.push(`${duration} min`);
+  chrome.notifications.create(`gradeflow-study-${session.id}`, {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('Assets/icon.png'),
+    title,
+    message: bits.join(' • ') || 'Time to study.',
+    priority: 1,
+  }, () => { void chrome.runtime.lastError; });
+}
+
+function _GfStudyRemoveSession(id) {
+  chrome.storage.local.get(GF_STUDY_KEY, result => {
+    const sessions = _GfStudySessionsFrom(result?.[GF_STUDY_KEY]);
+    const next = sessions.filter(session => session.id !== id);
+    chrome.storage.local.set({ [GF_STUDY_KEY]: next });
+  });
+}
 
 chrome.storage.sync.get(GF_SETTINGS_KEY, res => {
   if (!chrome.runtime.lastError) _cachedSettings = res[GF_SETTINGS_KEY] || null;
@@ -27,6 +93,21 @@ chrome.storage.onChanged.addListener((changes, area) => {
     _cachedPfp = changes[GF_PFP_KEY].newValue || null;
     if (_cachedSettings?.pfpChanger) _PushPfpToAllSmartSchoolTabs();
   }
+  if (area === 'local' && changes[GF_STUDY_KEY]) _GfStudyScheduleAll();
+});
+
+chrome.runtime.onInstalled.addListener(_GfStudyScheduleAll);
+chrome.runtime.onStartup.addListener(_GfStudyScheduleAll);
+
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (!alarm.name.startsWith(GF_STUDY_ALARM_PREFIX)) return;
+  const id = alarm.name.slice(GF_STUDY_ALARM_PREFIX.length);
+  chrome.storage.local.get(GF_STUDY_KEY, result => {
+    const session = _GfStudySessionsFrom(result?.[GF_STUDY_KEY]).find(item => item.id === id);
+    if (!session) return;
+    _GfStudyNotify(session);
+    _GfStudyRemoveSession(id);
+  });
 });
 
 function _PushToAllSmartSchoolTabs() {
@@ -88,6 +169,31 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === 'gf-study-sync') {
+    _GfStudyScheduleAll();
+    try { sendResponse({ ok: true }); } catch (_) {}
+    return false;
+  }
+
+  if (msg?.type === 'gf-notify') {
+    try {
+      chrome.notifications.create(msg.id || `gradeflow-${Date.now()}`, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('Assets/icon.png'),
+        title: String(msg.title || 'GradeFlow'),
+        message: String(msg.message || ''),
+        priority: 1,
+      }, () => {
+        void chrome.runtime.lastError;
+        try { sendResponse({ ok: true }); } catch (_) {}
+      });
+      return true;
+    } catch (e) {
+      try { sendResponse({ ok: false, error: String(e?.message || e) }); } catch (_) {}
+      return false;
+    }
+  }
+
   if (msg.type !== 'gf-fetch-svg') return false;
   const val = msg.value;
   (async () => {
