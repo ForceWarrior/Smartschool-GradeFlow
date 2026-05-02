@@ -12,8 +12,15 @@
   }
 
 
-function runHostHandshake(masterKey, channel, send, myPeerId) {
-    return new Promise(async (resolve, reject) => {
+  async function runHostHandshake(masterKey, channel, send, myPeerId) {
+    let hsKey;
+    try { hsKey = await getHsKey(masterKey); }
+    catch (e) {
+      try { channel.close(); } catch (_) {}
+      throw new Error('handshake-key-derivation: ' + (e.message || e));
+    }
+
+    return new Promise((resolve, reject) => {
       let settled = false;
       const cleanup = () => {
         clearTimeout(timer);
@@ -30,10 +37,6 @@ function runHostHandshake(masterKey, channel, send, myPeerId) {
       const timer = setTimeout(() => fail('handshake-timeout'), HS_TIMEOUT_MS);
       const nonce = C.generateNonce(32);
       const hostPeerId = myPeerId || C.bytesToB64(C.generateNonce(8));
-
-      let hsKey;
-      try { hsKey = await getHsKey(masterKey); }
-      catch (e) { return fail('handshake-key-derivation: ' + (e.message || e)); }
 
       const onMsg = async (ev) => {
         if (settled) return;
@@ -65,8 +68,15 @@ const ackTag = await C.hmacSign(hsKey, C.enc.encode('host:' + hostPeerId + ':' +
     });
   }
 
-  function runJoinerHandshake(masterKey, channel, send, myPeerId) {
-    return new Promise(async (resolve, reject) => {
+  async function runJoinerHandshake(masterKey, channel, send, myPeerId) {
+    let hsKey;
+    try { hsKey = await getHsKey(masterKey); }
+    catch (e) {
+      try { channel.close(); } catch (_) {}
+      throw new Error('handshake-key-derivation: ' + (e.message || e));
+    }
+
+    return new Promise((resolve, reject) => {
       let settled = false;
       let nonce = null;
       const cleanup = () => {
@@ -83,10 +93,6 @@ const ackTag = await C.hmacSign(hsKey, C.enc.encode('host:' + hostPeerId + ':' +
 
       const timer = setTimeout(() => fail('handshake-timeout'), HS_TIMEOUT_MS);
       const joinerPeerId = myPeerId || C.bytesToB64(C.generateNonce(8));
-
-      let hsKey;
-      try { hsKey = await getHsKey(masterKey); }
-      catch (e) { return fail('handshake-key-derivation: ' + (e.message || e)); }
 
       const onMsg = async (ev) => {
         if (settled) return;

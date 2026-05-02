@@ -105,6 +105,24 @@ GradeFlow reads grades from SmartSchool's own API and stores everything locally 
 
 Available on the [Chrome Web Store](https://chromewebstore.google.com).
 
+## Development
+
+Useful checks from the repository root:
+
+```sh
+npm run check
+```
+
+This validates release versions, checks JavaScript syntax, runs ESLint, and runs the Node test suite.
+
+The release version lives in the root `package.json`. After changing it, run:
+
+```sh
+npm run sync:version
+```
+
+That updates `src/manifest.json` and the update modal release id/version. `npm run validate:versions` fails if those spots drift apart.
+
 ## License
 
 Source available. You can use, modify, and share the code, but you can't publish it on any browser extension store. See [LICENSE](LICENSE) for details.
