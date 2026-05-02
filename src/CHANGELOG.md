@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.5] - 2026-05-02
+
+### Fixed
+- Patch fix for small bugs and the latest release fixes.
+
 ## [1.2.1] - 2026-05-01
 
 ### Fixed

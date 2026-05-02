@@ -393,6 +393,8 @@
     update_feat_smpp_desc: 'GradeFlow werkt nu mee met Smartschool++: SPP-thema\'s, glass, layout en overlays nemen netjes de leiding wanneer SPP actief is.',
     update_feat_polish: 'UX en performance',
     update_feat_polish_desc: 'Duidelijkere scores, betere toasts, F6 opent de echte GradeFlow URL, minder lag en nettere spacing door de hele extensie.',
+    update_feat_patch: 'Patch fix',
+    update_feat_patch_desc: 'Kleine bugs opgelost en de nieuwste fixes meegenomen.',
   },
 
   en: {
@@ -789,6 +791,8 @@
     update_feat_smpp_desc: 'GradeFlow now works with Smartschool++: SPP themes, glass, layout, and overlays take the lead whenever SPP is active.',
     update_feat_polish: 'UX and performance',
     update_feat_polish_desc: 'Clearer scores, better toasts, F6 opens the real GradeFlow URL, less lag, and cleaner spacing across the extension.',
+    update_feat_patch: 'Patch fix',
+    update_feat_patch_desc: 'Fixed small bugs and included the latest fixes.',
   },
 
   fr: {
@@ -1186,6 +1190,8 @@
     update_feat_smpp_desc: 'GradeFlow fonctionne maintenant avec Smartschool++ : les thèmes SPP, le glass, la mise en page et les overlays prennent le relais quand SPP est actif.',
     update_feat_polish: 'UX et performance',
     update_feat_polish_desc: 'Scores plus clairs, meilleurs toasts, F6 ouvre la vraie URL GradeFlow, moins de latence et espacement plus propre.',
+    update_feat_patch: 'Patch fix',
+    update_feat_patch_desc: 'Petits bugs corrigés et derniers correctifs inclus.',
   },
 };
 

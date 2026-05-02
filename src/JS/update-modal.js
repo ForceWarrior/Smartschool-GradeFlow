@@ -12,11 +12,11 @@
    *  │ FALSE so it never fires again until the next release.   │
    *  └────────────────────────────────────────────────────────────┘ */
   const SHOW_UPDATE = true;
-  const GF_UPDATE_ALWAYS_SHOW_FOR_TESTING = true;
+  const GF_UPDATE_ALWAYS_SHOW_FOR_TESTING = false;
 
   const GF_UPDATE = {
-    id: 'v1.2.0',               // unique id per update, change each release
-    version: '1.2.0',
+    id: 'v1.2.5',               // unique id per update, change each release
+    version: '1.2.5',
     image: '',
     features: [
       { icon: '📊', titleKey: 'update_feat_dashboard', descKey: 'update_feat_dashboard_desc' },
@@ -28,6 +28,7 @@
       { icon: '🎨', titleKey: 'update_feat_theme',     descKey: 'update_feat_theme_desc'     },
       { icon: '🧩', titleKey: 'update_feat_smpp',      descKey: 'update_feat_smpp_desc'      },
       { icon: '⚡', titleKey: 'update_feat_polish',    descKey: 'update_feat_polish_desc'    },
+      { icon: '🔧', titleKey: 'update_feat_patch',     descKey: 'update_feat_patch_desc'     },
     ],
   };
   /* ───────────────────────────────────────────────────────────── */
@@ -173,7 +174,41 @@
     return typeof _GfTranslate === 'function' ? _GfTranslate(key) : key;
   }
 
-  function ShouldShow() {
+  function GetLocalDismissedUpdate() {
+    try { return localStorage.getItem(STORAGE_KEY); }
+    catch (_) { return null; }
+  }
+
+  function GetStoredDismissedUpdate() {
+    return new Promise(resolve => {
+      try {
+        if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+          resolve(GetLocalDismissedUpdate());
+          return;
+        }
+
+        chrome.storage.local.get(STORAGE_KEY, result => {
+          if (chrome.runtime.lastError) {
+            resolve(GetLocalDismissedUpdate());
+            return;
+          }
+
+          resolve(result?.[STORAGE_KEY] || GetLocalDismissedUpdate());
+        });
+      } catch (_) {
+        resolve(GetLocalDismissedUpdate());
+      }
+    });
+  }
+
+  function StoreDismissedUpdate() {
+    try { localStorage.setItem(STORAGE_KEY, GF_UPDATE.id); } catch (_) {}
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) chrome.storage.local.set({ [STORAGE_KEY]: GF_UPDATE.id });
+    } catch (_) {}
+  }
+
+  async function ShouldShow() {
     // 1. Developer kill-switch, if false, never show
     if (!SHOW_UPDATE) return false;
 
@@ -182,15 +217,13 @@
     if (path !== '/' && path !== '' && !/^\/index/i.test(path) && !/^\/?$/.test(path)) return false;
 
     // 3. Already dismissed this specific update id → stay gone
-    try {
-      const dismissed = localStorage.getItem(STORAGE_KEY);
-      if (!GF_UPDATE_ALWAYS_SHOW_FOR_TESTING && dismissed === GF_UPDATE.id) return false;
-    } catch (_) {}
+    const dismissed = await GetStoredDismissedUpdate();
+    if (!GF_UPDATE_ALWAYS_SHOW_FOR_TESTING && dismissed === GF_UPDATE.id) return false;
     return true;
   }
 
   function Dismiss() {
-    try { localStorage.setItem(STORAGE_KEY, GF_UPDATE.id); } catch (_) {}
+    StoreDismissedUpdate();
     clearInterval(_gfUpdateThemeTimer);
     const el = document.getElementById('gf-update-overlay');
     if (el) {
@@ -306,8 +339,8 @@ html[data-gf-theme="dark"] #gf-update-overlay[data-theme-source="smpp"]{filter:n
 `;
   }
 
-  function Init() {
-    if (!ShouldShow()) return;
+  async function Init() {
+    if (!(await ShouldShow())) return;
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => setTimeout(Build, 600), { once: true });
     } else {
