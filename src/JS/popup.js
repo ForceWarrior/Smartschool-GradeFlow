@@ -15,6 +15,7 @@ const SUN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fil
 
 // Storage key
 const KEY_THEME = 'gradeflow-theme';
+const KEY_HOME_SUMMARY = 'gradeflow-home-summary-enabled';
 
 // State
 let pageTheme = 'light';
@@ -24,6 +25,7 @@ let popupThemePoll = 0;
 // DOM refs
 const toggleBtn  = document.getElementById('theme-toggle');
 const presetBtns = document.querySelectorAll('.preset-btn');
+const homeSummaryToggle = document.getElementById('home-summary-toggle');
 
 // Popup appearance
 function ApplyPopupAppearance(base) {
@@ -78,6 +80,17 @@ chrome.storage.local.get(KEY_THEME, res => {
   pageTheme = res[KEY_THEME] ?? 'light';
   ApplyPopupAppearance(pageTheme);
   UpdatePresetHighlight();
+});
+
+chrome.storage.local.get(KEY_HOME_SUMMARY, res => {
+  if (homeSummaryToggle) homeSummaryToggle.checked = res[KEY_HOME_SUMMARY] !== false && res[KEY_HOME_SUMMARY] !== '0' && res[KEY_HOME_SUMMARY] !== 'false';
+});
+
+homeSummaryToggle?.addEventListener('change', () => {
+  const enabled = !!homeSummaryToggle.checked;
+  chrome.storage.local.set({ [KEY_HOME_SUMMARY]: enabled });
+  NotifyHomeSummaryTabs(enabled);
+  ShowStatusMessage(_PopupText('popup_auto_saved'), 'success');
 });
 
 function ApplyExternalThemeResponse(res) {
@@ -300,6 +313,18 @@ function NotifySmartschoolTabs(settings, pfpDataUrl) {
   });
 }
 
+function NotifyHomeSummaryTabs(enabled) {
+  chrome.tabs.query({ url: '*://*.smartschool.be/*' }, tabs => {
+    if (chrome.runtime.lastError) return;
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      chrome.tabs.sendMessage(tab.id, { type: 'setHomeSummaryEnabled', enabled }, () => {
+        void chrome.runtime.lastError;
+      });
+    }
+  });
+}
+
 function ReloadSmartschoolTabs() {
   chrome.tabs.query({ url: '*://*.smartschool.be/*' }, tabs => {
     if (chrome.runtime.lastError) return;
@@ -373,8 +398,10 @@ async function ResetAllSettings() {
       fakeNotifCounter: false, notifCounterValue: 0,
       fakeNewsCounter: false, newsCounterValue: 0,
     });
+    await new Promise(r => chrome.storage.local.set({ [KEY_HOME_SUMMARY]: true }, r));
     await new Promise(r => chrome.storage.local.remove(GF_PFP_KEY, r));
 
+    if (homeSummaryToggle) homeSummaryToggle.checked = true;
     nameToggle.checked = false;
     nameSection.classList.add('hidden');
     customNameInput.value = '';

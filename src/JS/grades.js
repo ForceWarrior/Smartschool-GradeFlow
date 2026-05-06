@@ -26,6 +26,17 @@ function SaveGradeDecimals(val) {
   try { localStorage.setItem('gradeflow-grade-dec-v1', val); } catch (_) {}
 }
 
+const GF_HOME_SUMMARY_ENABLED_KEY = 'gradeflow-home-summary-enabled';
+
+function IsHomeSummaryEnabledValue(value) {
+  return value !== false && value !== '0' && value !== 'false';
+}
+
+function SaveHomeSummaryEnabled(value) {
+  S.homeSummaryEnabled = !!value;
+  try { chrome.storage?.local?.set({ [GF_HOME_SUMMARY_ENABLED_KEY]: !!value }); } catch (_) {}
+}
+
 // Mode persistence
 function LoadWeightMode() {
   try {
@@ -223,12 +234,23 @@ chrome.storage.local.get('gradeflow-theme', ({ 'gradeflow-theme': saved }) => {
   ApplyGradeTheme(th);
 });
 
+chrome.storage.local.get(GF_HOME_SUMMARY_ENABLED_KEY, result => {
+  S.homeSummaryEnabled = IsHomeSummaryEnabledValue(result?.[GF_HOME_SUMMARY_ENABLED_KEY]);
+  const overlay = document.getElementById('gf-settings-overlay');
+  if (overlay?.classList.contains('is-open')) RenderSettings();
+});
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes['gradeflow-theme']) {
     const th = changes['gradeflow-theme'].newValue;
     if (_gfParentThemeSource === 'smpp' && th !== 'smpp') return;
     S.theme = th;
     ApplyGradeTheme(th);
+    const overlay = document.getElementById('gf-settings-overlay');
+    if (overlay?.classList.contains('is-open')) RenderSettings();
+  }
+  if (area === 'local' && changes[GF_HOME_SUMMARY_ENABLED_KEY]) {
+    S.homeSummaryEnabled = IsHomeSummaryEnabledValue(changes[GF_HOME_SUMMARY_ENABLED_KEY].newValue);
     const overlay = document.getElementById('gf-settings-overlay');
     if (overlay?.classList.contains('is-open')) RenderSettings();
   }
@@ -882,7 +904,9 @@ function BuildClassComparisonCode() {
 }
 function NormalizeClassPeer(payload) {
   if (!payload || typeof payload !== 'object') return null;
-  const rawSubjects = payload.s && typeof payload.s === 'object' ? payload.s : {};
+  const rawSubjects = payload.s && typeof payload.s === 'object'
+    ? payload.s
+    : (payload.subjects && typeof payload.subjects === 'object' ? payload.subjects : {});
   const subjects = {};
   for (const [subject, score] of Object.entries(rawSubjects)) {
     const scored = Number(score?.o);
@@ -891,15 +915,17 @@ function NormalizeClassPeer(payload) {
     subjects[String(subject).trim()] = { o: Math.round(scored * 10) / 10, m: Math.round(max * 10) / 10 };
   }
   if (!Object.keys(subjects).length) return null;
-  const name = String(payload.n || Translate('comparison_peer')).trim().slice(0, 80);
-  const uid = String(payload.u || '').trim().slice(0, 80).replace(/[^a-z0-9_-]/gi, '');
+  const name = String(payload.n || payload.name || Translate('comparison_peer')).trim().slice(0, 80);
+  const storedId = String(payload.id || '').trim();
+  const rawUid = payload.u || payload.uid || (storedId.startsWith('u:') ? storedId.slice(2) : '');
+  const uid = String(rawUid || '').trim().slice(0, 80).replace(/[^a-z0-9_-]/gi, '');
   const nameKey = name.toLowerCase().replace(/\s+/g, ' ').trim() || Translate('comparison_peer').toLowerCase();
   const timestamp = Number(payload.ts) || Date.now();
   return {
     id: uid ? `u:${uid}` : `n:${nameKey}`,
     uid,
     name,
-    picture: SanitizedClassComparisonPicture(payload.p),
+    picture: SanitizedClassComparisonPicture(payload.p || payload.picture),
     period: String(payload.period || '').trim(),
     ts: timestamp,
     subjects,
@@ -916,9 +942,18 @@ function NormalizeClassPeers(raw) {
 }
 function DecodeClassComparisonCodes(text) {
   const raw = String(text || '').trim();
-  const matches = [...raw.matchAll(/SSCOMP:([A-Za-z0-9_-]+)/g)].map(match => match[1]);
-  const chunks = matches.length ? matches : [raw.replace(/^SSCOMP:/i, '')].filter(Boolean);
-  return chunks.map(chunk => NormalizeClassPeer(Base64UrlDecodeJson(chunk))).filter(Boolean);
+  if (!raw) return [];
+  const matches = [...raw.matchAll(/SSCOMP\s*:\s*([A-Za-z0-9_-]+)/gi)].map(match => match[1]);
+  const bare = raw.replace(/^SSCOMP\s*:\s*/i, '').trim();
+  const chunks = matches.length ? matches : (/^[A-Za-z0-9_-]+$/.test(bare) ? [bare] : []);
+  const peers = [];
+  for (const chunk of chunks) {
+    try {
+      const peer = NormalizeClassPeer(Base64UrlDecodeJson(chunk));
+      if (peer) peers.push(peer);
+    } catch (_) {}
+  }
+  return peers;
 }
 function SaveClassPeers(peers) {
   S.classPeers = NormalizeClassPeers(peers);
@@ -1044,6 +1079,7 @@ const S = {
   customLang: LoadCustomLang(),
   decimalSep: LoadDecimalSep(),
   gradeDecimals: LoadGradeDecimals(),
+  homeSummaryEnabled: true,
   subjectIcons: LoadSubjectIcons(),
   iconRules: LoadIconRules(),
   courseIcons: {},
@@ -1355,6 +1391,16 @@ function RenderSettings() {
       ${S.lang === 'custom' ? BuildCustomLangEditor() : ''}
     </div>
 
+    <!-- Homepage summary -->
+    <div class="gf-sett-section">
+      <div class="gf-sett-label">${Translate('home_summary_setting')}</div>
+      <div class="gf-sett-toggle-row">
+        <button class="gf-sett-opt${S.homeSummaryEnabled ? ' active' : ''}" data-sett-action="homeSummary" data-sett-val="1">${Translate('formula_on')}</button>
+        <button class="gf-sett-opt${!S.homeSummaryEnabled ? ' active' : ''}" data-sett-action="homeSummary" data-sett-val="0">${Translate('formula_off')}</button>
+      </div>
+      <div class="gf-mode-desc" style="margin-top:6px;">${Translate('home_summary_desc')}</div>
+    </div>
+
     <!-- Decimal separator -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('decimal_sep')}</div>
@@ -1437,6 +1483,9 @@ function RenderSettings() {
         SaveUseFormula(val === '1');
         S.formulaOpen = val === '1';
         RenderSettings(); Render();
+      } else if (action === 'homeSummary') {
+        SaveHomeSummaryEnabled(val === '1');
+        RenderSettings();
       } else if (action === 'bestMode') {
         S.bestSubjectMode = val; RenderSettings();
         RenderBestSubjectWidget(GetBestSubject(S.store ? GetPeriodData(S.store, S.activePeriod) : {}));
@@ -1829,7 +1878,10 @@ function BindComparisonEvents(root) {
     if (shareNote) shareNote.textContent = Translate('comparison_share_note').replace('{name}', ClassComparisonName());
   };
   aliasInput?.addEventListener('input', refreshShareCode);
-  shareNameInput?.addEventListener('change', () => RenderComparisonView());
+  shareNameInput?.addEventListener('change', () => {
+    SaveClassComparisonShareName(!!shareNameInput.checked);
+    RenderComparisonView();
+  });
   root.querySelector('#gf-compare-copy')?.addEventListener('click', async () => {
     try {
       refreshShareCode();

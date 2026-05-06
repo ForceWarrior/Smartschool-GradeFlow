@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.6] - 2026-05-06
+
+### Added
+- New toggles for turning the GradeFlow homepage summary on or off from the popup and GradeFlow settings.
+
+### Fixed
+- Small patch fixes for classmate sharing, update modal texts, and SmartSchool dark mode handling for images, icons, and older module pages.
+
 ## [1.2.5] - 2026-05-02
 
 ### Fixed
