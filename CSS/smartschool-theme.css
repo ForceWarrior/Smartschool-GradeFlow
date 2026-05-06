@@ -72,10 +72,64 @@ html[data-gf-theme="dark"] body {
   background-color: #ffffff !important;
 }
 
-
+html[data-gf-theme="dark"] img,
+html[data-gf-theme="dark"] svg,
 html[data-gf-theme="dark"] video,
-html[data-gf-theme="dark"] canvas {
+html[data-gf-theme="dark"] canvas,
+html[data-gf-theme="dark"] object,
+html[data-gf-theme="dark"] embed,
+html[data-gf-theme="dark"] [role="img"],
+html[data-gf-theme="dark"] .gf-dark-media-protected,
+html[data-gf-theme="dark"] [class*="avatar" i],
+html[data-gf-theme="dark"] [class*="profile-pic" i],
+html[data-gf-theme="dark"] [class*="profilepic" i],
+html[data-gf-theme="dark"] [class*="userpic" i],
+html[data-gf-theme="dark"] [class*="user-picture" i],
+html[data-gf-theme="dark"] [class*="userpicture" i],
+html[data-gf-theme="dark"] [class*="logo" i],
+html[data-gf-theme="dark"] .smsc-column-nav__button,
+html[data-gf-theme="dark"] .smsc_cm_body_row_block,
+html[data-gf-theme="dark"] .smsc_cm_no_items,
+html[data-gf-theme="dark"] .icon-label[class*="smsc-svg" i],
+html[data-gf-theme="dark"] .homepage__google-apps__link,
+html[data-gf-theme="dark"] .datepicker__navigation__previous,
+html[data-gf-theme="dark"] .datepicker__navigation__next {
   filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[data-gf-theme="dark"] #gradeflow-panel-host img,
+html[data-gf-theme="dark"] #gradeflow-panel-host svg,
+html[data-gf-theme="dark"] #gradeflow-panel-host video,
+html[data-gf-theme="dark"] #gradeflow-panel-host canvas,
+html[data-gf-theme="dark"] #gradeflow-panel-host object,
+html[data-gf-theme="dark"] #gradeflow-panel-host embed,
+html[data-gf-theme="dark"] #gradeflow-panel-host iframe,
+html[data-gf-theme="dark"] #gradeflow-panel-host .gf-dark-media-protected,
+html[data-gf-theme="dark"] #gf-chat-root img,
+html[data-gf-theme="dark"] #gf-chat-root svg,
+html[data-gf-theme="dark"] #gf-chat-root video,
+html[data-gf-theme="dark"] #gf-chat-root canvas,
+html[data-gf-theme="dark"] #gf-chat-root object,
+html[data-gf-theme="dark"] #gf-chat-root embed,
+html[data-gf-theme="dark"] #gf-chat-root iframe,
+html[data-gf-theme="dark"] #gf-chat-root .gf-dark-media-protected,
+html[data-gf-theme="dark"] #gf-update-overlay img,
+html[data-gf-theme="dark"] #gf-update-overlay svg,
+html[data-gf-theme="dark"] #gf-update-overlay video,
+html[data-gf-theme="dark"] #gf-update-overlay canvas,
+html[data-gf-theme="dark"] #gf-update-overlay object,
+html[data-gf-theme="dark"] #gf-update-overlay embed,
+html[data-gf-theme="dark"] #gf-update-overlay iframe,
+html[data-gf-theme="dark"] #gf-update-overlay .gf-dark-media-protected,
+html[data-gf-theme="dark"] #gf-home-summary img,
+html[data-gf-theme="dark"] #gf-home-summary svg,
+html[data-gf-theme="dark"] #gf-home-summary video,
+html[data-gf-theme="dark"] #gf-home-summary canvas,
+html[data-gf-theme="dark"] #gf-home-summary object,
+html[data-gf-theme="dark"] #gf-home-summary embed,
+html[data-gf-theme="dark"] #gf-home-summary iframe,
+html[data-gf-theme="dark"] #gf-home-summary .gf-dark-media-protected {
+  filter: none !important;
 }
 
 html[data-gf-theme="dark"] smsc-svg,
@@ -83,6 +137,103 @@ html[data-gf-theme="dark"] smsc-icon,
 html[data-gf-theme="dark"] [class*="smsc-svg"],
 html[data-gf-theme="dark"] [class*="smsc-icon"] {
   filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[data-gf-theme="dark"] .gf-dark-media-protected :where(img, svg, video, canvas, object, embed, iframe),
+html[data-gf-theme="dark"] [role="img"] :where(img, svg, video, canvas, object, embed, iframe),
+html[data-gf-theme="dark"] smsc-svg :where(img, svg, video, canvas, object, embed, iframe),
+html[data-gf-theme="dark"] smsc-icon :where(img, svg, video, canvas, object, embed, iframe),
+html[data-gf-theme="dark"] [class*="smsc-svg"] :where(img, svg, video, canvas, object, embed, iframe),
+html[data-gf-theme="dark"] [class*="smsc-icon"] :where(img, svg, video, canvas, object, embed, iframe),
+html[data-gf-theme="dark"] .homepage__google-apps__link :where(img, svg, video, canvas, object, embed, iframe) {
+  filter: none !important;
+}
+
+html[data-gf-theme="dark"] iframe.gf-dark-media-protected,
+html[data-gf-theme="dark"] .icon-label-btn--no-icon .icon-label[class*="smsc-svg--undefined" i] {
+  filter: none !important;
+  color: #111111 !important;
+}
+
+html[data-gf-theme="dark"] .topnav__menu,
+html[data-gf-theme="dark"] .topnav__menu--links,
+html[data-gf-theme="dark"] .topnav__menu--shortcuts,
+html[data-gf-theme="dark"] .shortcut-wrapper {
+  color: #111111 !important;
+}
+
+html[data-gf-theme="dark"] .topnav__menu__title,
+html[data-gf-theme="dark"] .topnav__menu--courses .course-ico,
+html[data-gf-theme="dark"] .topnav__menu--courses .course-link[class*="smsc-svg" i],
+html[data-gf-theme="dark"] .topnav__menu--courses .favourite-button[class*="smsc-svg" i] {
+  filter: invert(1) hue-rotate(180deg) !important;
+  color: #e7e5e4 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+  transition: none !important;
+}
+
+html[data-gf-theme="dark"] .topnav__menu--courses .course-ico,
+html[data-gf-theme="dark"] .topnav__menu--courses .course-link[class*="smsc-svg" i] > span {
+  color: #111111 !important;
+  filter: invert(1) hue-rotate(180deg) !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+  transition: none !important;
+}
+
+html[data-gf-theme="dark"] .topnav__menu .topnav__menuitem.gf-dark-media-protected,
+html[data-gf-theme="dark"] .topnav__menu .shortcut.gf-dark-media-protected,
+html[data-gf-theme="dark"] .topnav__menu .topnav__menu--links.gf-dark-media-protected > .topnav__menuitem {
+  color: #e7e5e4 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+html[data-gf-theme="dark"] .topnav__menu .topnav__menuitem.gf-dark-media-protected > span,
+html[data-gf-theme="dark"] .topnav__menu .shortcut.gf-dark-media-protected > span {
+  color: #111111 !important;
+  filter: invert(1) hue-rotate(180deg) !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+html[data-gf-theme="dark"] .topnav__menu .topnav__menuitem.gf-dark-media-protected:hover > span,
+html[data-gf-theme="dark"] .topnav__menu .shortcut.gf-dark-media-protected:hover > span,
+html[data-gf-theme="dark"] .topnav__menu .topnav__menuitem.gf-dark-media-protected:focus-visible > span,
+html[data-gf-theme="dark"] .topnav__menu .shortcut.gf-dark-media-protected:focus-visible > span {
+  color: #000000 !important;
+}
+
+html[data-gf-theme="dark"] .topnav__menu .topnav__menuitem.gf-dark-media-protected:hover,
+html[data-gf-theme="dark"] .topnav__menu .shortcut.gf-dark-media-protected:hover,
+html[data-gf-theme="dark"] .topnav__menu .topnav__menuitem.gf-dark-media-protected:focus-visible,
+html[data-gf-theme="dark"] .topnav__menu .shortcut.gf-dark-media-protected:focus-visible {
+  color: #ffffff !important;
+}
+
+html[data-gf-theme="dark"] .smsc-column-nav__button,
+html[data-gf-theme="dark"] .smsc_cm_body_row_block,
+html[data-gf-theme="dark"] .smsc_cm_body_row_block .name,
+html[data-gf-theme="dark"] .smsc_cm_body_row_block .smsc_cm_link,
+html[data-gf-theme="dark"] .smsc_cm_no_items,
+html[data-gf-theme="dark"] .icon-label[class*="smsc-svg" i] {
+  color: #e7e5e4 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+html[data-gf-theme="dark"] .smsc_cm_no_items .smsc_cm_no_items_txt {
+  color: #111111 !important;
+  filter: invert(1) hue-rotate(180deg) !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+html[data-gf-theme="dark"] .courses-view__courses .icon-label-btn.course {
+  background: #ffffff !important;
+  border-color: #d6d3d1 !important;
+  box-shadow: none !important;
 }
 
 html[data-gf-theme="dark"] [class*="bullet_ball"],

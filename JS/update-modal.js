@@ -15,20 +15,12 @@
   const GF_UPDATE_ALWAYS_SHOW_FOR_TESTING = false;
 
   const GF_UPDATE = {
-    id: 'v1.2.5',               // unique id per update, change each release
-    version: '1.2.5',
+    id: 'v1.2.6',               // unique id per update, change each release
+    version: '1.2.6',
     image: '',
     features: [
-      { icon: '📊', titleKey: 'update_feat_dashboard', descKey: 'update_feat_dashboard_desc' },
-      { icon: '🧮', titleKey: 'update_feat_tools',     descKey: 'update_feat_tools_desc'     },
-      { icon: '📅', titleKey: 'update_feat_planner',   descKey: 'update_feat_planner_desc'   },
-      { icon: '👥', titleKey: 'update_feat_compare',   descKey: 'update_feat_compare_desc'   },
-      { icon: '🏠', titleKey: 'update_feat_home',      descKey: 'update_feat_home_desc'      },
-      { icon: '🎮', titleKey: 'update_feat_arcade',    descKey: 'update_feat_arcade_desc'    },
-      { icon: '🎨', titleKey: 'update_feat_theme',     descKey: 'update_feat_theme_desc'     },
-      { icon: '🧩', titleKey: 'update_feat_smpp',      descKey: 'update_feat_smpp_desc'      },
-      { icon: '⚡', titleKey: 'update_feat_polish',    descKey: 'update_feat_polish_desc'    },
-      { icon: '🔧', titleKey: 'update_feat_patch',     descKey: 'update_feat_patch_desc'     },
+      { icon: '⚙️', titleKey: 'update_feat_toggles',   descKey: 'update_feat_toggles_desc'   },
+      { icon: '🌙', titleKey: 'update_feat_darkfix',   descKey: 'update_feat_darkfix_desc'   },
     ],
   };
   /* ───────────────────────────────────────────────────────────── */
