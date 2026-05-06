@@ -126,3 +126,7 @@ That updates `src/manifest.json` and the update modal release id/version. `npm r
 ## License
 
 Source available. You can use, modify, and share the code, but you can't publish it on any browser extension store. See [LICENSE](LICENSE) for details.
+
+## Notes
+
+- AI assistance was used
