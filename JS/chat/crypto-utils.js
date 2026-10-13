@@ -7,7 +7,6 @@
   const enc = new TextEncoder();
   const dec = new TextDecoder();
 
-
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
   function bytesToBase32(bytes) {
@@ -55,7 +54,6 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     return out;
   }
 
-
   function ctEqual(a, b) {
     if (!(a instanceof Uint8Array) || !(b instanceof Uint8Array)) return false;
     if (a.length !== b.length) return false;
@@ -64,20 +62,17 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     return diff === 0;
   }
 
-
 function wipe(buf) {
     if (buf && buf.byteLength) {
       try { crypto.getRandomValues(new Uint8Array(buf.buffer || buf)); } catch (_) {}
     }
   }
 
-
   function generateRoomCodeBytes() {
     const bytes = new Uint8Array(16);
     crypto.getRandomValues(bytes);
     return bytes;
   }
-
 
   function formatRoomCode(bytes) {
     const raw = bytesToBase32(bytes);
@@ -93,7 +88,6 @@ function wipe(buf) {
     crypto.getRandomValues(n);
     return n;
   }
-
 
 async function deriveRoomKey(roomCodeBytes, passwordStrOrBytes) {
     if (!(roomCodeBytes instanceof Uint8Array) || roomCodeBytes.length < 16) {
@@ -129,7 +123,6 @@ material = new Uint8Array(roomCodeBytes.length + 1 + pwBytes.length);
     );
   }
 
-
   async function deriveHmacKey(masterHkdfKey, label, salt = new Uint8Array(0)) {
     return subtle.deriveKey(
       { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode(label) },
@@ -139,7 +132,6 @@ material = new Uint8Array(roomCodeBytes.length + 1 + pwBytes.length);
       ['sign', 'verify']
     );
   }
-
 
   async function deriveBits(masterHkdfKey, label, salt, lengthBits) {
     return subtle.deriveBits(
@@ -153,7 +145,6 @@ material = new Uint8Array(roomCodeBytes.length + 1 + pwBytes.length);
     const sig = await subtle.sign('HMAC', hmacKey, data);
     return new Uint8Array(sig);
   }
-
 
 async function hmacVerify(hmacKey, data, tag) {
     return subtle.verify('HMAC', hmacKey, tag, data);

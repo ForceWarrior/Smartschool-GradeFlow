@@ -3,7 +3,6 @@
 
   const _GameText = typeof _GfTranslate === 'function' ? _GfTranslate : k => k;
 
-  /* CONFIG */
   const DIFFICULTIES = [
     { id: 'beginner',     label: () => _GameText('game_beginner'),     cols: 9,  rows: 9,  mines: 10, cell: 32 },
     { id: 'intermediate', label: () => _GameText('game_intermediate'), cols: 12, rows: 10, mines: 20, cell: 26 },
@@ -13,7 +12,6 @@
   const FAIL_LABELS = ['2/20','3/20','4/20','5/20','6/20','7/20','8/20','9/20'];
   const LS_BEST = 'gf-sweep-best';
 
-  /* PERSISTENCE */
   function LoadBests() { try { return JSON.parse(localStorage.getItem(LS_BEST)) || {}; } catch(_){ return {}; } }
   function SaveBestScore(id, secs) {
     const b = LoadBests();
@@ -21,12 +19,11 @@
   }
   function GetBestScore(id) { return LoadBests()[id] || null; }
 
-  /* STATE */
-  let G = null; // game state
+  let G = null;
   let _diffId  = 'beginner';
   let _timerInterval = null;
   let _timerStart    = null;
-  let _timerElapsed  = 0; // ms accumulated before current start (for boss-key pause)
+  let _timerElapsed  = 0;
 
   function GetDifficulty() { return DIFFICULTIES.find(d => d.id === _diffId) || DIFFICULTIES[0]; }
 
@@ -47,10 +44,10 @@
     }
     G = {
       diff: d, board,
-      status:     'idle',   // idle | playing | won | lost
+      status:     'idle',
       firstClick: true,
       flagsLeft:  d.mines,
-      elapsed:    0,        // seconds shown
+      elapsed:    0,
     };
     _timerElapsed = 0;
     BuildBoard();
@@ -58,7 +55,6 @@
     HideOverlays();
   }
 
-  /* MINE PLACEMENT (post first click) */
   function PlaceMines(safeR, safeC) {
     const d = G.diff;
     const excluded = new Set();
@@ -70,7 +66,6 @@
     for (let r = 0; r < d.rows; r++) for (let c = 0; c < d.cols; c++)
       if (!excluded.has(`${r},${c}`)) pool.push([r, c]);
 
-    // Shuffle pool
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -81,7 +76,6 @@
       G.board[r][c].isMine = true;
     }
 
-    // Compute adjacency
     for (let r = 0; r < d.rows; r++) for (let c = 0; c < d.cols; c++) {
       if (G.board[r][c].isMine) continue;
       let count = 0;
@@ -99,7 +93,6 @@
     }
   }
 
-  /* REVEAL LOGIC */
   function Reveal(r, c) {
     if (!G || G.status === 'won' || G.status === 'lost') return;
     const cell = G.board[r][c];
@@ -182,7 +175,6 @@
     UpdateHUD();
   }
 
-  /* TIMER */
   function StartTimer() {
     _timerStart = Date.now();
     _timerInterval = setInterval(() => {
@@ -203,7 +195,6 @@
     }
   }
 
-  /* DOM BOARD */
   function BuildBoard() {
     const d    = G.diff;
     const gap  = 2;
@@ -255,7 +246,6 @@
     }
   }
 
-  /* HUD */
   function SetText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
 
   function UpdateHUD() {
@@ -267,7 +257,6 @@
     });
   }
 
-  /* OVERLAYS */
   function HideOverlays() {
     ['gf-sw-ovr-win','gf-sw-ovr-lose'].forEach(id => {
       const el = document.getElementById(id); if (el) el.style.display = 'none';
@@ -300,7 +289,6 @@
     document.getElementById('gf-sw-lose-again')?.addEventListener('click', NewGame);
   }
 
-  /* INPUT */
   let _longPressTimer = null;
   function OnBoardPointerDown(e) {
     const r = +e.target.dataset.r, c = +e.target.dataset.c;
@@ -338,7 +326,6 @@
   function AttachKeys() { if (!_kh) { _kh = OnKey; document.addEventListener('keydown', _kh, true); } }
   function DetachKeys()  { if (_kh)  { document.removeEventListener('keydown', _kh, true); _kh = null; } }
 
-  /* THEME */
   function ApplyTheme() {
     const el = document.getElementById('gf-sweep'); if (!el) return;
     if (typeof window._GfApplyThemeToHost === 'function') window._GfApplyThemeToHost(el);
@@ -350,7 +337,6 @@
   }
   const _tobs = new MutationObserver(ApplyTheme);
 
-  /* BUILD OVERLAY */
   function BuildOverlay() {
     if (document.getElementById('gf-sweep')) return;
     InjectCSS();
@@ -395,7 +381,6 @@
     brd.addEventListener('touchstart',  OnBoardPointerDown, { passive: true });
     brd.addEventListener('touchend',    OnBoardPointerUp,   { passive: true });
 
-    // Difficulty buttons
     document.getElementById('gf-sw-diff').addEventListener('click', e => {
       const btn = e.target.closest('[data-diff]'); if (!btn) return;
       _diffId = btn.dataset.diff;
@@ -407,7 +392,6 @@
     document.getElementById('gf-sweep')?.addEventListener('click', e => { if (e.target.id === 'gf-sweep') BossKeySweeper(); });
   }
 
-  /* PUBLIC API */
   function OpenGradeSweeper() {
     if (!document.getElementById('gf-sweep')) BuildOverlay();
     const el = document.getElementById('gf-sweep');
@@ -483,7 +467,6 @@
 .gf-sw-diff-active{border-color:#60a5fa!important;color:#60a5fa!important;background:rgba(96,165,250,.12)!important;}
 #gf-sw-board-wrap{position:relative;margin:12px;border-radius:8px;overflow:hidden;flex-shrink:0;}
 #gf-sw-board{display:grid;gap:2px;background:var(--sw-brd2);border-radius:6px;overflow:hidden;}
-/* Cells */
 .gf-sw-cell{display:flex;align-items:center;justify-content:center;font-weight:700;border-radius:3px;cursor:pointer;transition:transform .08s,background .08s,box-shadow .06s;user-select:none;-webkit-user-select:none;line-height:1;}
 .gf-sw-hidden{background:var(--sw-cell-hidden);box-shadow:inset -2px -2px 0 rgba(0,0,0,.25),inset 2px 2px 0 rgba(255,255,255,.5);}
 .gf-sw-hidden:hover{background:var(--sw-cell-hover);transform:scale(.92);}
@@ -495,7 +478,6 @@
 .gf-sw-mine.gf-sw-mine-hit{background:#ff2020;box-shadow:0 0 0 2px #fff,0 0 0 4px #ff2020;z-index:2;position:relative;}
 @keyframes sw-mine-pop{0%{transform:scale(.55);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
 @keyframes sw-appear{0%{transform:scale(.8);opacity:.4}100%{transform:scale(1);opacity:1}}
-/* Overlays */
 #gf-sw-ovr-win,#gf-sw-ovr-lose{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--sw-ovr);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:24px;border-radius:8px;text-align:center;}
 .gf-sw-ovr-icon{font-size:36px;line-height:1;}
 .gf-sw-ovr-title{font-size:22px;font-weight:800;letter-spacing:-.5px;color:var(--sw-txt);}

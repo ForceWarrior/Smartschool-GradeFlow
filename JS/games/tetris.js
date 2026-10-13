@@ -25,7 +25,6 @@
     '"Cijfers ingediend"', '"Stack overflow"', '"Definitief geblokkeerd"',
   ];
 
-  // Highscore
   const GF_HI_KEY = 'gradeflow-tetris-hi';
   function LoadHiScore() {
     try { return parseInt(localStorage.getItem(GF_HI_KEY)) || 0; } catch (_) { return 0; }
@@ -34,7 +33,6 @@
     try { localStorage.setItem(GF_HI_KEY, String(n)); } catch (_) {}
   }
 
-  // Grade helpers
   function NormalizeGrades(raw) {
     if (!Array.isArray(raw) || !raw.length) return GetFallbackGrades();
     return raw.map((g, i) => {
@@ -78,7 +76,6 @@
     });
   }
 
-  // Tetromino helpers
   function RotateMatrix(m, dir) {
     const R = m.length, C = m[0].length;
     return dir === 1
@@ -95,7 +92,6 @@
     return b;
   }
 
-  // Game state
   let GT = null;
 
   function NewGradeTile(grades) {
@@ -141,7 +137,6 @@
     return true;
   }
 
-  // Game actions
   function Spawn(gs) {
     if (!gs.nxt) {
       gs.cur = CreatePiece(PullFromBag(gs), gs.nextGrade());
@@ -207,7 +202,6 @@
     LockCur(gs);
   }
 
-  // Game loop
   function StartLoop(gs) {
     function Tick(ts) {
       if (!GT || GT.status !== 'playing') return;
@@ -225,7 +219,6 @@
     gs.raf = requestAnimationFrame(Tick);
   }
 
-  // Rendering
   function DrawFrame() { DrawBoard(); DrawNext(); UpdateHUD(); }
 
   function DrawCell(ctx, x, y, sz, color, label) {
@@ -324,7 +317,6 @@
 
   function SetText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
 
-  // Screens
   const SCREEN_IDS = ['gf-ts-start', 'gf-ts-gameover', 'gf-ts-pause'];
   function ShowScreen(id) {
     SCREEN_IDS.forEach(sid => { const el = document.getElementById(sid); if (el) el.style.display = sid === id ? 'flex' : 'none'; });
@@ -341,7 +333,6 @@
     ShowScreen('gf-ts-gameover');
   }
 
-  // Overlay HTML
   function BuildOverlay() {
     if (document.getElementById('gf-tetris')) return;
     InjectCSS();
@@ -356,7 +347,7 @@
       <span id="gf-tt-badge">BETA</span>
     </div>
     <div id="gf-tt-hr">
-      <span id="gf-tt-hint">F8</span>
+      <span id="gf-tt-hint">${window.GfKeys ? GfKeys.label('arcade') : 'F8'}</span>
       <button id="gf-tt-pause" title="${_GameText('game_pause_p')}">⏸</button>
       <button id="gf-tt-close" title="${_GameText('game_close_esc')}">✕</button>
     </div>
@@ -470,13 +461,12 @@
       : { boardBg: '#f0f0f0', grid: '#d0d0d0', nextBg: '#e4e4e4' };
   }
 
-  // Flow control
   function DoStart() {
     if (!GT) return;
     if (GT.raf) { cancelAnimationFrame(GT.raf); GT.raf = null; }
     const grades = GT.grades, hi = GT.hiScore;
     Object.assign(GT, NewGradeTile(grades));
-    GT.hiScore = hi; // preserve hi score across games
+    GT.hiScore = hi;
     GT.status = 'playing';
     ShowScreen(null);
     Spawn(GT); DrawFrame(); StartLoop(GT);
@@ -501,7 +491,6 @@
     if (document.hidden && GT?.status === 'playing') DoPause();
   }
 
-  // Keyboard
   function OnKey(e) {
     if (!GT || !document.getElementById('gf-tetris')) return;
 
@@ -568,7 +557,6 @@
     document.removeEventListener('visibilitychange', OnVisibilityChange);
   }
 
-  // Public API
   function OpenGradeTetris(grades) {
     if (!document.getElementById('gf-tetris')) BuildOverlay();
     if (!GT) {
@@ -621,7 +609,6 @@
     const s = document.createElement('style');
     s.id = 'gf-tetris-css';
     s.textContent = `
-/* ── GradeStack – theme tokens ───────────────────────────────────────────── */
 #gf-tetris {
   --gs-modal:   #ffffff;
   --gs-hdr:     #f5f5f5;
@@ -653,7 +640,6 @@
   --gs-scroll:  #2a2a2a;
 }
 
-/* ── GradeStack overlay ──────────────────────────────────────────────────── */
 #gf-tetris {
   position: fixed;
   inset: 0;
@@ -681,7 +667,6 @@
   max-width: calc(100vw - 32px);
 }
 
-/* ── Header ──────────────────────────────────────────────────────────────── */
 #gf-tt-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px;
@@ -716,11 +701,9 @@
 #gf-tt-pause:hover { border-color: #f97316; color: #f97316; background: rgba(249,115,22,0.10); }
 #gf-tt-close:hover { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.10); }
 
-/* ── Body layout ─────────────────────────────────────────────────────────── */
 #gf-tt-body { display: flex; position: relative; overflow: hidden; }
 #gf-tb-board { flex-shrink: 0; border-right: 1px solid var(--gs-brd); line-height: 0; }
 
-/* ── HUD sidebar ─────────────────────────────────────────────────────────── */
 #gf-tb-hud {
   width: 158px; flex-shrink: 0;
   display: flex; flex-direction: column;
@@ -760,7 +743,6 @@
 }
 .gf-tc-row span { font-size: 8px; color: var(--gs-txt3); }
 
-/* ── Overlay screens ─────────────────────────────────────────────────────── */
 .gf-ts {
   position: absolute; inset: 0; z-index: 10;
   display: flex; flex-direction: column; align-items: center; justify-content: center;

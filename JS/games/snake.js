@@ -78,14 +78,14 @@
       snake, PrevSnake: snake.map(s => ({ ...s })),
       dir: { x: 1, y: 0 }, nextDir: { x: 1, y: 0 },
       apples: [],
-      growthBuffer: 0,   // float, resolved ±1 per Step
+      growthBuffer: 0,
       score: 0, applesEaten: 0,
       status: 'start',
       lastEaten: null,
-      flash: null,       // { x, y, color, t 0→1 }
-      moveT: 0,          // linear 0->1 between logical steps
+      flash: null,
+      moveT: 0,
       lastFrameTs: 0,
-      toxicity: 0,       // 0=green, 1=red; rises on negative grades, decays over time
+      toxicity: 0,
     };
   }
 
@@ -143,7 +143,6 @@
     const nx = gs.snake[0].x + gs.dir.x;
     const ny = gs.snake[0].y + gs.dir.y;
 
-    // Wall
     if (nx < 0 || nx >= gs.N || ny < 0 || ny >= gs.N) {
       gs.PrevSnake = gs.snake.map(s => ({ x: s.x, y: s.y }));
       gs.snake.unshift({ x: nx, y: ny });
@@ -151,7 +150,6 @@
       return;
     }
 
-    // Self-collision: skip tail segments that will be freed this step
     const tailsFreed = gs.growthBuffer >= 1 ? 0 : gs.growthBuffer <= -1 ? 2 : 1;
     for (let i = 0; i < gs.snake.length; i++) {
       if (i >= gs.snake.length - tailsFreed) continue;
@@ -167,7 +165,6 @@
 
     gs.snake.unshift({ x: nx, y: ny });
 
-    // Apple eaten?
     const ai = gs.apples.findIndex(a => a.x === nx && a.y === ny);
     if (ai >= 0) {
       const apple = gs.apples.splice(ai, 1)[0];
@@ -192,10 +189,10 @@
       gs.growthBuffer -= 1;
     } else if (gs.growthBuffer <= -1) {
       gs.growthBuffer += 1;
-      gs.snake.pop(); // normal tail move
-      if (gs.snake.length > MIN_LEN) gs.snake.pop(); // extra shrink
+      gs.snake.pop();
+      if (gs.snake.length > MIN_LEN) gs.snake.pop();
     } else {
-      gs.snake.pop(); // neutral move
+      gs.snake.pop();
     }
 
     if (!gs.lvl.freePlay && gs.score >= gs.lvl.target) gs.status = 'win';
@@ -207,14 +204,14 @@
     _raf = requestAnimationFrame(function Frame(ts) {
       if (!GS || GS.status !== 'playing') return;
 
-      const dt = Math.min(ts - (GS.lastFrameTs || ts), 80); // cap to avoid jumps
+      const dt = Math.min(ts - (GS.lastFrameTs || ts), 80);
       GS.lastFrameTs = ts;
 
       GS.moveT += dt / GetSpeed(GS);
       GS.toxicity = Math.max(0, GS.toxicity - dt * 0.00018);
 
       if (GS.moveT >= 1) {
-        GS.moveT = 0; // snap no leftover carry, keeps timing tight
+        GS.moveT = 0;
         Step(GS);
         if (GS.status === 'gameover') { StopLoop(); ShowGameOver(); return; }
         if (GS.status === 'win')      { StopLoop(); ShowWin();      return; }
@@ -248,9 +245,8 @@
     const ctx = cv.getContext('2d');
     const N = GS.N, CW = CV / N, CH = CV / N;
     const cc = GetCanvasColors();
-    const t  = GS.moveT; // linear: 0 = just stepped, 1 = about to Step
+    const t  = GS.moveT;
 
-    // Background + grid
     ctx.fillStyle = cc.bg; ctx.fillRect(0, 0, CV, CV);
     ctx.strokeStyle = cc.grid; ctx.lineWidth = 0.5;
     for (let i = 0; i <= N; i++) {
@@ -258,7 +254,6 @@
       ctx.beginPath(); ctx.moveTo(0,  i * CH); ctx.lineTo(CV,  i * CH); ctx.stroke();
     }
 
-    // Eat flash
     if (GS.flash) {
       ctx.globalAlpha = (1 - GS.flash.t) * 0.4;
       ctx.fillStyle = GS.flash.color;
@@ -274,25 +269,21 @@
       ctx.fillRect(0, CV - 3, CV * prog, 3);
     }
 
-    // Apples
     const now = performance.now();
     for (const a of GS.apples) {
       const pulse = 0.88 + 0.12 * Math.sin((now - a.born) / 420 * Math.PI * 2);
       const ax = a.x * CW + CW / 2, ay = a.y * CH + CH / 2;
       const r  = Math.min(CW, CH) * 0.37 * pulse;
 
-      // Soft glow
       const grd = ctx.createRadialGradient(ax, ay, 0, ax, ay, r * 1.7);
       grd.addColorStop(0, a.color + '88'); grd.addColorStop(1, a.color + '00');
       ctx.fillStyle = grd;
       ctx.beginPath(); ctx.arc(ax, ay, r * 1.7, 0, Math.PI * 2); ctx.fill();
 
-      // Body
       ctx.fillStyle = a.color; ctx.globalAlpha = 0.95;
       ctx.beginPath(); ctx.arc(ax, ay, r, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
 
-      // Grade % label
       if (CW >= 15) {
         ctx.fillStyle = 'rgba(0,0,0,0.72)';
         ctx.font = `700 ${Math.max(7, Math.floor(CW * 0.27))}px "IBM Plex Mono",monospace`;
@@ -300,7 +291,6 @@
         ctx.fillText(a.grade.Pct != null ? `${Math.round(a.grade.Pct)}` : '?', ax, ay);
       }
 
-      // ± badge
       if (CW >= 12) {
         const eff = GradeEffect(a.grade.Pct);
         ctx.fillStyle = eff > 0 ? '#4ade80' : '#f87171';
@@ -325,7 +315,7 @@
       const ry = (p ? p.y + (cur.y - p.y) * t : cur.y) * CH;
 
       const isHead = i === 0;
-      const segT   = i / Math.max(slen - 1, 1); // 0=head 1=tail
+      const segT   = i / Math.max(slen - 1, 1);
       const alpha  = isHead ? 1 : Math.max(0.45, 1 - segT * 0.4);
 
       ctx.globalAlpha = alpha;
@@ -337,7 +327,6 @@
         ctx.fillRect(rx + pad, ry + pad, CW - pad * 2, CH - pad * 2);
       }
 
-      // Sheen
       ctx.fillStyle = 'rgba(255,255,255,0.12)';
       ctx.fillRect(rx + pad, ry + pad, CW - pad * 2, (CH - pad * 2) * 0.36);
       ctx.globalAlpha = 1;
@@ -441,7 +430,6 @@
     ShowScreen('gf-sns-win'); Draw();
   }
 
-  /* Level selector */
   function BuildLevelSelect() {
     const el = document.getElementById('gf-sn-lvl-sel');
     if (!el) return;
@@ -475,12 +463,11 @@
     el.querySelectorAll('[data-lvl]').forEach(btn => {
       btn.addEventListener('click', () => {
         _lvlId = parseInt(btn.dataset.lvl);
-        DoStart(); // click = start immediately
+        DoStart();
       });
     });
   }
 
-  /* Modifiers */
   function BuildModsScreen() {
     const el = document.getElementById('gf-sns-mods');
     if (!el) return;
@@ -524,7 +511,6 @@
     document.getElementById('gfm-back')?.addEventListener('click', ShowStartScreen);
   }
 
-  /* FLOW */
   function DoStart() {
     StopLoop();
     GS = NewGameState(_lvlId); SyncApples(GS);
@@ -596,7 +582,7 @@
       <span id="gf-sn-badge">BETA</span>
     </div>
     <div class="gf-sn-hr">
-      <span id="gf-sn-hint">F8</span>
+      <span id="gf-sn-hint">${window.GfKeys ? GfKeys.label('arcade') : 'F8'}</span>
       <button id="gf-sn-pause-btn" title="${_GameText('game_pause_p')}">⏸</button>
       <button id="gf-sn-close-btn" title="${_GameText('game_close_esc')}">✕</button>
     </div>
@@ -738,7 +724,6 @@
     const el = document.getElementById('gf-snake');
     if (!el) return false;
     if (el.dataset.bossHidden === '1') {
-      // Restore
       el.style.display = 'flex';
       delete el.dataset.bossHidden;
       if (GS?._bossHidden) {

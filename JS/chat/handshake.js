@@ -11,7 +11,6 @@
     return C.deriveHmacKey(masterKey, HS_LABEL);
   }
 
-
   async function runHostHandshake(masterKey, channel, send, myPeerId) {
     let hsKey;
     try { hsKey = await getHsKey(masterKey); }
@@ -49,7 +48,6 @@
           const tag = C.b64ToBytes(msg.tag);
           const ok = await C.hmacVerify(hsKey, nonce, tag);
           if (!ok) return fail('handshake-bad-tag');
-
 
 const ackTag = await C.hmacSign(hsKey, C.enc.encode('host:' + hostPeerId + ':' + msg.peerId));
           send({ t: 'hs-ack', peerId: hostPeerId, tag: C.bytesToB64(ackTag) });

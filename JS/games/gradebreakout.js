@@ -61,7 +61,6 @@
 
   function IsPositive(g) { return g.Pct == null || g.Pct >= 50; }
 
-  /* ── Particles ── */
   let _particles = [];
 
   function SpawnParticles(x, y, color, count) {
@@ -102,7 +101,6 @@
     ctx.globalAlpha = 1;
   }
 
-  /* ── Ball Trail ── */
   let _trail = [];
   const TRAIL_MAX = 12;
 
@@ -125,7 +123,6 @@
     ctx.globalAlpha = 1;
   }
 
-  /* ── Power-ups ── */
   const PU_TYPES = [
     { type: 'wide',  symbol: 'W', color: '#22d3ee', desc: 'Wide Paddle'   },
     { type: 'multi', symbol: 'M', color: '#c084fc', desc: 'Multi Ball'    },
@@ -135,7 +132,6 @@
   const PU_SPEED = 1.2;
   const PU_DURATION = 8000;
 
-  /* ── State ── */
   let GS = null, _el = null, _grades = [], _lvlId = 1, _raf = null;
 
   function MakeBricks(lvl) {
@@ -214,7 +210,6 @@
     _trail = [];
   }
 
-  /* ── Physics ── */
   function UpdateBalls(gs, dt) {
     const speedMult = gs.activePU.slow ? 0.55 : 1;
     const dtF = dt * 0.06;
@@ -231,32 +226,27 @@
       ball.x += ball.vx * dtF * speedMult;
       ball.y += ball.vy * dtF * speedMult;
 
-      // Wall collisions
       if (ball.x - ball.r <= 0)  { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
       if (ball.x + ball.r >= CV) { ball.x = CV - ball.r; ball.vx = -Math.abs(ball.vx); }
       if (ball.y - ball.r <= 0)  { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
 
-      // Paddle collision
       const p = gs.paddle;
       if (ball.vy > 0 &&
           ball.y + ball.r >= p.y && ball.y + ball.r <= p.y + p.h + 4 &&
           ball.x >= p.x - 2 && ball.x <= p.x + p.w + 2) {
         ball.y = p.y - ball.r;
-        const hitPos = (ball.x - p.x) / p.w; // 0..1
-        const angle = -Math.PI * 0.15 - hitPos * Math.PI * 0.7; // spread
+        const hitPos = (ball.x - p.x) / p.w;
+        const angle = -Math.PI * 0.15 - hitPos * Math.PI * 0.7;
         const spd = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
         ball.vx = Math.cos(angle) * spd;
         ball.vy = Math.sin(angle) * spd;
-        // Ensure upward
         if (ball.vy > -0.5) ball.vy = -Math.abs(ball.vy) - 0.5;
         gs.combo = 0;
       }
 
-      // Brick collision
       for (const brick of gs.bricks) {
         if (!brick.alive) continue;
         const bx = brick.x + 1, by = brick.y, bw = brick.w, bh = brick.h;
-        // AABB vs circle
         const closestX = Math.max(bx, Math.min(ball.x, bx + bw));
         const closestY = Math.max(by, Math.min(ball.y, by + bh));
         const dx = ball.x - closestX;
@@ -274,7 +264,6 @@
             gs.score += basePts * comboMult;
           } else {
             gs.score = Math.max(0, gs.score - Math.round(basePts * 0.5));
-            // Shrink paddle briefly for bad grades
             if (!gs.activePU.wide) {
               gs.paddle.w = Math.max(28, gs.paddle.baseW * 0.65);
               clearTimeout(gs._shrinkTimer);
@@ -284,7 +273,6 @@
             }
           }
 
-          // Power-up drop
           if (Math.random() < PU_DROP_CHANCE && IsPositive(brick.grade)) {
             const puType = PU_TYPES[Math.floor(Math.random() * PU_TYPES.length)];
             gs.powerUps.push({
@@ -294,21 +282,18 @@
             });
           }
 
-          // Bounce ball
           if (Math.abs(dx) > Math.abs(dy)) ball.vx = -ball.vx;
           else ball.vy = -ball.vy;
 
-          break; // one brick per frame
+          break;
         }
       }
 
-      // Ball lost (below paddle)
       if (ball.y - ball.r > CV + 10) {
         gs.balls.splice(bi, 1);
       }
     }
 
-    // If no balls left, lose a life
     if (gs.balls.length === 0) {
       gs.lives--;
       if (gs.lives <= 0) {
@@ -318,10 +303,8 @@
       }
     }
 
-    // Win check
     if (gs.bricks.every(b => !b.alive)) {
       if (gs.lvl.freePlay) {
-        // Rebuild bricks for endless play
         gs.bricks = MakeBricks(gs.lvl);
       } else {
         gs.status = 'win';
@@ -335,7 +318,6 @@
       const pu = gs.powerUps[i];
       pu.y += pu.vy * dtF;
 
-      // Catch by paddle
       const p = gs.paddle;
       if (pu.y >= p.y && pu.y <= p.y + p.h + 6 &&
           pu.x >= p.x - 4 && pu.x <= p.x + p.w + 4) {
@@ -382,7 +364,6 @@
     }
   }
 
-  /* ── Drawing ── */
   function GetCanvasColors() {
     const dark = document.getElementById('gf-bo')?.dataset.theme === 'dark';
     return dark
@@ -396,11 +377,9 @@
     const ctx = cv.getContext('2d');
     const cc = GetCanvasColors();
 
-    // Background
     ctx.fillStyle = cc.bg;
     ctx.fillRect(0, 0, CV, CV);
 
-    // Bricks
     for (const brick of GS.bricks) {
       if (!brick.alive) continue;
       const bx = brick.x + 1, by = brick.y;
@@ -411,12 +390,10 @@
       } else {
         ctx.fillRect(bx, by, brick.w, brick.h);
       }
-      // Sheen
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.fillRect(bx, by, brick.w, brick.h * 0.4);
       ctx.globalAlpha = 1;
 
-      // Grade text
       if (brick.w > 20) {
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.font = '600 8px "IBM Plex Mono",monospace';
@@ -430,7 +407,6 @@
     }
     ctx.textAlign = 'left';
 
-    // Power-ups (falling)
     for (const pu of GS.powerUps) {
       ctx.fillStyle = pu.color;
       ctx.globalAlpha = 0.9;
@@ -446,14 +422,11 @@
     }
     ctx.textAlign = 'left';
 
-    // Ball trail
     if (GS.balls.length > 0) {
       DrawTrail(ctx, GS.balls[0].r);
     }
 
-    // Balls
     for (const ball of GS.balls) {
-      // Glow
       const grd = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, ball.r * 3);
       grd.addColorStop(0, 'rgba(96,165,250,0.25)');
       grd.addColorStop(1, 'rgba(96,165,250,0)');
@@ -462,22 +435,18 @@
       ctx.arc(ball.x, ball.y, ball.r * 3, 0, Math.PI * 2);
       ctx.fill();
 
-      // Body
       ctx.fillStyle = '#e0e7ff';
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
       ctx.fill();
 
-      // Highlight
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
       ctx.beginPath();
       ctx.arc(ball.x - ball.r * 0.25, ball.y - ball.r * 0.25, ball.r * 0.45, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Paddle
     const p = GS.paddle;
-    // Glow
     ctx.shadowColor = cc.paddleGlow;
     ctx.shadowBlur = 12;
     ctx.fillStyle = cc.paddleBody;
@@ -487,7 +456,6 @@
       ctx.fillRect(p.x, p.y, p.w, p.h);
     }
     ctx.shadowBlur = 0;
-    // Paddle sheen
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     if (ctx.roundRect) {
       ctx.beginPath(); ctx.roundRect(p.x + 2, p.y, p.w - 4, p.h * 0.45, 2); ctx.fill();
@@ -495,7 +463,6 @@
       ctx.fillRect(p.x + 2, p.y, p.w - 4, p.h * 0.45);
     }
 
-    // Active PU indicators
     const puActive = [];
     if (GS.activePU.wide)  puActive.push({ symbol: 'W', color: '#22d3ee' });
     if (GS.activePU.multi) puActive.push({ symbol: 'M', color: '#c084fc' });
@@ -514,10 +481,8 @@
       ctx.globalAlpha = 1;
     }
 
-    // Particles
     DrawParticles(ctx);
 
-    // Lives indicator (bottom right)
     ctx.fillStyle = '#f87171';
     ctx.font = '700 9px "IBM Plex Mono",monospace';
     ctx.textAlign = 'right';
@@ -525,7 +490,6 @@
     ctx.fillText('♥'.repeat(Math.max(0, GS.lives)), CV - 4, CV - 3);
     ctx.textAlign = 'left';
 
-    // Level progress bar (very bottom)
     if (!GS.lvl.freePlay) {
       const prog = Math.min(1, GS.score / GS.lvl.target);
       ctx.fillStyle = 'rgba(74,222,128,0.18)';
@@ -547,7 +511,6 @@
     SetText('gf-bo-lives', '♥'.repeat(Math.max(0, GS.lives)));
   }
 
-  /* ── Screens ── */
   const SCREEN_IDS = ['gf-bos-start','gf-bos-pause','gf-bos-gameover','gf-bos-win'];
   function ShowScreen(id) {
     SCREEN_IDS.forEach(sid => { const e = document.getElementById(sid); if (e) e.style.display = sid === id ? 'flex' : 'none'; });
@@ -572,7 +535,6 @@
     ShowScreen('gf-bos-win'); Draw();
   }
 
-  /* ── Level selector ── */
   function BuildLevelSelect() {
     const el = document.getElementById('gf-bo-lvl-sel');
     if (!el) return;
@@ -607,7 +569,6 @@
     });
   }
 
-  /* ── Game loop ── */
   function StartLoop() {
     _raf = requestAnimationFrame(function Frame(ts) {
       if (!GS || GS.status !== 'playing') return;
@@ -615,7 +576,6 @@
       const dt = Math.min(ts - (GS.lastFrameTs || ts), 80);
       GS.lastFrameTs = ts;
 
-      // Trail
       GS.trailTimer += dt;
       if (GS.trailTimer > 18 && GS.balls.length > 0 && !GS.balls[0].attached) {
         PushTrail(GS.balls[0].x, GS.balls[0].y);
@@ -637,7 +597,6 @@
 
   function StopLoop() { if (_raf) { cancelAnimationFrame(_raf); _raf = null; } }
 
-  /* ── Flow ── */
   function DoStart() {
     StopLoop();
     _particles = [];
@@ -664,7 +623,6 @@
     BuildLevelSelect(); Draw(); ShowScreen('gf-bos-start');
   }
 
-  /* ── Input ── */
   let _kh = null, _moveDir = 0;
 
   function OnKey(e) {
@@ -693,7 +651,6 @@
       return;
     }
 
-    // Held-key tracking, actual movement happens per-frame for smoothness
     if (e.key === 'ArrowLeft')  _keysHeld.add('left');
     if (e.key === 'ArrowRight') _keysHeld.add('right');
     if (e.key === 'a' || e.key === 'A') _keysHeld.add('left');
@@ -712,7 +669,6 @@
 
   function UpdatePaddle(gs, dt) {
     if (!gs || gs.status !== 'playing') return;
-    // 360 px/sec, smooth 60fps movement, dt-scaled so it's framerate-independent
     const speed = 360 * (dt / 1000);
     if (_keysHeld.has('left'))  gs.paddle.x -= speed;
     if (_keysHeld.has('right')) gs.paddle.x += speed;
@@ -734,7 +690,6 @@
   }
   function _ClearHeldKeys() { _keysHeld.clear(); }
 
-  /* Touch support */
   let _touchHandler = null;
   function AttachTouch() {
     if (_touchHandler) return;
@@ -765,7 +720,6 @@
 
   function OnVisibilityChange() { if (document.hidden && GS?.status === 'playing') DoPause(); }
 
-  /* ── Theme ── */
   function ApplyTheme() {
     const el = document.getElementById('gf-bo');
     if (!el) return;
@@ -778,7 +732,6 @@
   }
   const _tobs = new MutationObserver(ApplyTheme);
 
-  /* ── Overlay ── */
   function BuildOverlay() {
     if (document.getElementById('gf-bo')) return;
     InjectCSS();
@@ -894,7 +847,6 @@
     });
   }
 
-  /* ── Public API ── */
   function OpenGradeBreakout(grades) {
     if (grades?.length) _grades = NormalizeGrades(grades);
     if (!document.getElementById('gf-bo')) BuildOverlay();
@@ -953,7 +905,6 @@
   W.ToggleGradeBreakout     = ToggleGradeBreakout;
   W.BossKeyBreakout         = BossKeyBreakout;
 
-  /* ── CSS ── */
   function InjectCSS() {
     if (document.getElementById('gf-breakout-css')) return;
     const s = document.createElement('style');

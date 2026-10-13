@@ -5,12 +5,6 @@
 
   const CV = 320;
 
-  // AI tuning notes:
-  //  - aiSpeed: max paddle speed in px/frame at 60fps (dt-scaled in Update)
-  //  - aiReact: proportion of distance-to-ball it closes per frame (lower = laggier AI)
-  //  - aiMiss : 0..1 random vertical jitter applied to its target, makes it human-flawed
-  //  - aiTrack: 0..1 fraction of incoming ball trajectory it actually tracks
-  //             (the rest of the time it drifts toward center), gives players an opening
   const LEVELS = [
     { id: 1, aiSpeed: 1.6, aiReact: 0.06, aiMiss: 36, aiTrack: 0.55, winScore: 5, labelKey: 'pong_lvl_beginner' },
     { id: 2, aiSpeed: 2.1, aiReact: 0.10, aiMiss: 24, aiTrack: 0.70, winScore: 5, labelKey: 'pong_lvl_easy'     },
@@ -27,10 +21,9 @@
   const PADDLE_H  = 50;
   const BALL_R    = 5;
   const WALL_PAD  = 14;
-  // Ball velocities are stored in px-per-frame at 60fps, then dt-scaled in Update
-  const BALL_INIT = 2.4;   // was 3.0, felt too fast
-  const BALL_MAX  = 5.5;   // was 7.5
-  const BALL_RAMP = 0.10;  // was 0.15
+  const BALL_INIT = 2.4;
+  const BALL_MAX  = 5.5;
+  const BALL_RAMP = 0.10;
   const ORB_R     = 10;
   const ORB_INTERVAL = 6000;
   const EFFECT_DUR   = 4000;
@@ -43,7 +36,6 @@
   function LoadScores()    { return StorageGet(LS_SCORES, {}); }
   function SaveScore(l, s) { const sc = LoadScores(); if (s > (sc[l] || 0)) { sc[l] = s; StorageSet(LS_SCORES, sc); } }
 
-  /* GRADE HELPERS */
   function NormalizeGrades(raw) {
     if (!Array.isArray(raw) || !raw.length) return FallbackGrades();
     return raw.map((g, i) => {
@@ -72,7 +64,6 @@
 
   function IsPositive(g) { return g.Pct == null || g.Pct >= 50; }
 
-  /* STATE */
   let GS = null, _el = null, _grades = [], _lvlId = 1, _raf = null;
 
   function PickGrade() {
@@ -87,36 +78,29 @@
       status: 'start',
       _bossHidden: false,
 
-      // paddles: y = center
       playerY: CV / 2,
       aiY: CV / 2,
       playerH: PADDLE_H,
       aiH: PADDLE_H,
       playerSpeed: 5,
 
-      // ball
       ballX: CV / 2, ballY: CV / 2,
       ballVX: 0, ballVY: 0,
       ballSpeed: BALL_INIT,
       ballTrail: [],
 
-      // scores
       playerScore: 0,
       aiScore: 0,
       totalHits: 0,
 
-      // grade orb
       orb: null,
       orbTimer: 0,
 
-      // active effects
       effects: [],
 
-      // serve flow
       servePause: 0,
       queuedServe: null,
 
-      // visual
       shake: 0,
       scoreFlash: null,
       lastTs: 0,
@@ -124,7 +108,7 @@
   }
 
   function LaunchBall(gs, towardsPlayer) {
-    const angle = (Math.random() * 0.8 - 0.4); // ±0.4 rad from horizontal
+    const angle = (Math.random() * 0.8 - 0.4);
     const dir = towardsPlayer ? -1 : 1;
     gs.ballX = CV / 2;
     gs.ballY = CV / 2;
@@ -136,7 +120,6 @@
     gs.queuedServe = null;
   }
 
-  // Centers the ball, freezes it briefly, then serves with a queued velocity.
   function QueueServe(gs, towardsPlayer) {
     const angle = (Math.random() * 0.8 - 0.4);
     const dir = towardsPlayer ? -1 : 1;
@@ -150,17 +133,9 @@
       vx: Math.cos(angle) * BALL_INIT * dir,
       vy: Math.sin(angle) * BALL_INIT,
     };
-    gs.servePause = 750; // ms
+    gs.servePause = 750;
   }
 
-  /* EFFECT SYSTEM
-   *
-   * Effects are owner-targeted: when the ball hits an orb, the effect lands on
-   * whichever paddle last struck the ball ('player' or 'ai').
-   *  • good grade  → buff for the owner   (big own paddle / shrink opponent)
-   *  • bad grade   → debuff for the owner (small own paddle / boost opponent speed)
-   * If nobody has hit the ball yet (orb collected on initial serve) we pick a
-   * random side so neither player has an unfair advantage. */
   function ApplyEffect(gs, grade, owner) {
     const good = IsPositive(grade);
     if (!owner) owner = Math.random() < 0.5 ? 'player' : 'ai';
@@ -172,7 +147,6 @@
       type = ['smallSelf', 'fastOpp'][0 | Math.random() * 2];
     }
 
-    // Replace existing effect of same type+owner
     gs.effects = gs.effects.filter(e => !(e.type === type && e.owner === owner));
     gs.effects.push({ type, owner, grade, start: performance.now(), dur: EFFECT_DUR });
     RecalcEffects(gs);
@@ -186,11 +160,9 @@
     for (const e of gs.effects) {
       const sIsPlayer = e.owner === 'player';
       switch (e.type) {
-        // Buffs for the owner
         case 'bigSelf':    if (sIsPlayer) pH = PADDLE_H * 1.5; else aH = PADDLE_H * 1.5; break;
         case 'shrinkOpp':  if (sIsPlayer) aH = PADDLE_H * 0.6; else pH = PADDLE_H * 0.6; break;
         case 'slowOpp':    if (sIsPlayer) aiMult = 0.5;        else plMult = 0.5;        break;
-        // Debuffs for the owner
         case 'smallSelf':  if (sIsPlayer) pH = PADDLE_H * 0.6; else aH = PADDLE_H * 0.6; break;
         case 'fastOpp':    if (sIsPlayer) aiMult = 1.5;        else plMult = 1.5;        break;
       }
@@ -201,12 +173,8 @@
     gs._playerSpeedMult = plMult;
   }
 
-  /* ORB
-   * Orbs can spawn anywhere across the playfield (player side, centre, or
-   * AI side), so debuffs and buffs alike can land on either player. */
   function SpawnOrb(gs) {
     const g = PickGrade();
-    // 0.10..0.90 of CV horizontally, covers both halves
     gs.orb = {
       x: CV * 0.10 + Math.random() * CV * 0.80,
       y: CV * 0.15 + Math.random() * CV * 0.70,
@@ -216,33 +184,27 @@
     };
   }
 
-  /* GAME LOOP */
   function Update(gs, dt) {
     if (gs.status !== 'playing') return;
     const dtS = dt / 1000;
 
-    // Decay shake
     if (gs.shake > 0) gs.shake = Math.max(0, gs.shake - dt * 0.008);
 
-    // Expire effects
     RecalcEffects(gs);
 
-    // Orb timer
     gs.orbTimer += dt;
     if (!gs.orb && gs.orbTimer > ORB_INTERVAL) {
       SpawnOrb(gs);
       gs.orbTimer = 0;
     }
 
-    // Move ball, dt-scaled so motion is identical at 60Hz / 120Hz / 144Hz
     gs.ballTrail.push({ x: gs.ballX, y: gs.ballY, t: performance.now() });
     if (gs.ballTrail.length > 12) gs.ballTrail.shift();
 
-    const stepScale = dt / 16.6667; // 1.0 at 60fps, 0.5 at 120fps
+    const stepScale = dt / 16.6667;
     gs.ballX += gs.ballVX * stepScale;
     gs.ballY += gs.ballVY * stepScale;
 
-    // Wall bounce (top/bottom)
     if (gs.ballY - BALL_R <= 0) {
       gs.ballY = BALL_R;
       gs.ballVY = Math.abs(gs.ballVY);
@@ -252,7 +214,6 @@
       gs.ballVY = -Math.abs(gs.ballVY);
     }
 
-    // Paddle collision - player (left)
     const pTop = gs.playerY - gs.playerH / 2;
     const pBot = gs.playerY + gs.playerH / 2;
     if (gs.ballVX < 0 &&
@@ -260,8 +221,8 @@
         gs.ballX - BALL_R >= WALL_PAD - 2 &&
         gs.ballY >= pTop - BALL_R && gs.ballY <= pBot + BALL_R) {
       gs.ballX = WALL_PAD + PADDLE_W + BALL_R;
-      const relY = (gs.ballY - gs.playerY) / (gs.playerH / 2); // -1 to 1
-      const angle = relY * (Math.PI / 4); // max 45 deg
+      const relY = (gs.ballY - gs.playerY) / (gs.playerH / 2);
+      const angle = relY * (Math.PI / 4);
       gs.ballSpeed = Math.min(BALL_MAX, gs.ballSpeed + BALL_RAMP);
       gs.ballVX =  Math.cos(angle) * gs.ballSpeed;
       gs.ballVY =  Math.sin(angle) * gs.ballSpeed;
@@ -269,7 +230,6 @@
       gs.lastHit = 'player';
     }
 
-    // Paddle collision - AI (right)
     const aTop = gs.aiY - gs.aiH / 2;
     const aBot = gs.aiY + gs.aiH / 2;
     if (gs.ballVX > 0 &&
@@ -286,7 +246,6 @@
       gs.lastHit = 'ai';
     }
 
-    // Orb collision with ball
     if (gs.orb) {
       const dx = gs.ballX - gs.orb.x, dy = gs.ballY - gs.orb.y;
       if (dx * dx + dy * dy < (BALL_R + ORB_R) * (BALL_R + ORB_R)) {
@@ -296,8 +255,6 @@
       }
     }
 
-    // Resolve serve-pause: after a goal, ball sits still in the middle for a
-    // moment, then the queued velocity is applied so the player can react.
     if (gs.servePause > 0) {
       gs.servePause = Math.max(0, gs.servePause - dt);
       if (gs.servePause === 0 && gs.queuedServe) {
@@ -307,15 +264,13 @@
       }
     }
 
-    // Score - ball past left edge (only check when ball isn't frozen for serve)
     if (gs.servePause === 0 && gs.ballX < -BALL_R * 2) {
       gs.aiScore++;
       gs.shake = 6;
       gs.scoreFlash = { side: 'ai', t: performance.now() };
       if (CheckWin(gs)) return;
-      QueueServe(gs, true);                 // ball sits in center, then serves left
+      QueueServe(gs, true);
     }
-    // Score - ball past right edge
     else if (gs.servePause === 0 && gs.ballX > CV + BALL_R * 2) {
       gs.playerScore++;
       gs.shake = 6;
@@ -324,21 +279,14 @@
       QueueServe(gs, false);
     }
 
-    // AI movement, humanized:
-    //   - only tracks ball some of the time (aiTrack), otherwise drifts to centre
-    //   - perturbs the target with a slow-moving sine + random jitter so it
-    //     doesn't lock onto the ball perfectly
-    //   - dt-scaled so 144Hz monitors don't make the AI superhuman
     const aiReact = gs.lvl.aiReact;
     const aiSpd   = gs.lvl.aiSpeed * (gs._aiSpeedMult || 1);
     const aiMiss  = gs.lvl.aiMiss  ?? 10;
     const aiTrack = gs.lvl.aiTrack ?? 0.85;
 
-    // refresh AI's "intended" target periodically rather than every frame so it
-    // can't reactively counter every paddle-tilt
     gs._aiThinkT = (gs._aiThinkT || 0) - dt;
     if (gs._aiThinkT <= 0) {
-      gs._aiThinkT = 90 + Math.random() * 80;       // re-decide every ~90-170ms
+      gs._aiThinkT = 90 + Math.random() * 80;
       const ballApproaching = gs.ballVX > 0;
       if (ballApproaching && Math.random() < aiTrack) {
         const wobble = Math.sin(performance.now() * 0.003) * aiMiss * 0.6;
@@ -401,24 +349,20 @@
     return false;
   }
 
-  /* RENDER */
   function Draw() {
     const cv = document.getElementById('gf-po-canvas');
     if (!cv || !GS) return;
     const ctx = cv.getContext('2d');
     const dark = document.getElementById('gf-po')?.dataset.theme === 'dark';
 
-    // Shake offset
     const sx = GS.shake > 0 ? (Math.random() - 0.5) * GS.shake : 0;
     const sy = GS.shake > 0 ? (Math.random() - 0.5) * GS.shake : 0;
     ctx.save();
     ctx.translate(sx, sy);
 
-    // Background
     ctx.fillStyle = dark ? '#0a0a0a' : '#f0f0f0';
     ctx.fillRect(-4, -4, CV + 8, CV + 8);
 
-    // Center dashed line
     ctx.strokeStyle = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 6]);
@@ -428,14 +372,12 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Center circle
     ctx.strokeStyle = dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(CV / 2, CV / 2, 40, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Score flash
     if (GS.scoreFlash) {
       const elapsed = performance.now() - GS.scoreFlash.t;
       if (elapsed < 400) {
@@ -450,7 +392,6 @@
       }
     }
 
-    // Active effects indicator
     const now = performance.now();
     for (const e of GS.effects) {
       const remaining = 1 - (now - e.start) / e.dur;
@@ -461,11 +402,9 @@
       }
     }
 
-    // Paddle glow + paddles
     DrawPaddle(ctx, WALL_PAD, GS.playerY, PADDLE_W, GS.playerH, '#4ade80', dark);
     DrawPaddle(ctx, CV - WALL_PAD - PADDLE_W, GS.aiY, PADDLE_W, GS.aiH, '#f87171', dark);
 
-    // Ball trail
     for (let i = 0; i < GS.ballTrail.length; i++) {
       const t = GS.ballTrail[i];
       const age = now - t.t;
@@ -478,7 +417,6 @@
       ctx.fill();
     }
 
-    // Ball
     ctx.fillStyle = '#fff';
     ctx.shadowColor = 'rgba(255,255,255,0.6)';
     ctx.shadowBlur = 8;
@@ -487,12 +425,10 @@
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Grade orb
     if (GS.orb) {
       const pulse = 0.85 + 0.15 * Math.sin((now - GS.orb.born) / 400 * Math.PI * 2);
       const orbR = ORB_R * pulse;
 
-      // Glow
       const grd = ctx.createRadialGradient(GS.orb.x, GS.orb.y, 0, GS.orb.x, GS.orb.y, orbR * 2);
       grd.addColorStop(0, GS.orb.color + '66');
       grd.addColorStop(1, GS.orb.color + '00');
@@ -501,7 +437,6 @@
       ctx.arc(GS.orb.x, GS.orb.y, orbR * 2, 0, Math.PI * 2);
       ctx.fill();
 
-      // Body
       ctx.fillStyle = GS.orb.color;
       ctx.globalAlpha = 0.9;
       ctx.beginPath();
@@ -509,13 +444,11 @@
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      // Sheen
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.beginPath();
       ctx.arc(GS.orb.x - orbR * 0.25, GS.orb.y - orbR * 0.25, orbR * 0.4, 0, Math.PI * 2);
       ctx.fill();
 
-      // Label
       ctx.fillStyle = dark ? '#fff' : '#000';
       ctx.font = '700 7px "IBM Plex Mono",monospace';
       ctx.textAlign = 'center';
@@ -523,7 +456,6 @@
       ctx.fillText(GS.orb.grade.Pct != null ? `${Math.round(GS.orb.grade.Pct)}%` : '?', GS.orb.x, GS.orb.y);
     }
 
-    // Effect timers bar at top
     let barX = 4;
     for (const e of GS.effects) {
       const remaining = 1 - (now - e.start) / e.dur;
@@ -541,7 +473,6 @@
 
   function DrawPaddle(ctx, x, cy, w, h, color, dark) {
     const top = cy - h / 2;
-    // Glow
     ctx.shadowColor = color;
     ctx.shadowBlur = 10;
     ctx.fillStyle = color;
@@ -553,12 +484,10 @@
       ctx.fillRect(x, top, w, h);
     }
     ctx.shadowBlur = 0;
-    // Sheen
     ctx.fillStyle = 'rgba(255,255,255,0.18)';
     ctx.fillRect(x, top, w, h * 0.35);
   }
 
-  /* GAME LOOP */
   function StartLoop() {
     _raf = requestAnimationFrame(function Frame(ts) {
       if (!GS) return;
@@ -573,7 +502,6 @@
   }
   function StopLoop() { if (_raf) { cancelAnimationFrame(_raf); _raf = null; } }
 
-  /* HUD */
   function SetText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
 
   function UpdateHUD() {
@@ -583,25 +511,20 @@
     SetText('gf-po-level', GS.lvl.freePlay ? 'Free' : `Lv ${GS.lvl.id}`);
   }
 
-  /* SCREENS */
   const SCREEN_IDS = ['gf-pos-start','gf-pos-pause','gf-pos-gameover','gf-pos-win'];
   function ShowScreen(id) {
     SCREEN_IDS.forEach(sid => { const e = document.getElementById(sid); if (e) e.style.display = sid === id ? 'flex' : 'none'; });
   }
 
-  /* INPUT */
-  let _inputY = null; // for mouse/touch continuous input
+  let _inputY = null;
   let _keysDown = {};
 
   function OnKey(e) {
     if (!GS || !document.getElementById('gf-po')) return;
 
-    // Always track held-key state on both keydown and keyup
     if (e.type === 'keydown') _keysDown[e.key] = true;
     if (e.type === 'keyup')   delete _keysDown[e.key];
 
-    // Action keys (Escape / Enter / Space), keydown only, otherwise the
-    // matching keyup event would re-fire DoPause() / DoStart() and cancel it.
     if (e.type !== 'keydown') return;
 
     if (e.key === 'Escape') {
@@ -623,14 +546,10 @@
     }
   }
 
-  // Player paddle update, dt-scaled, runs from the game loop instead of a
-  // 16ms setInterval. Honours `_playerSpeedMult` so a "fastOpp" effect from
-  // the AI's side actually slows the player down.
   function UpdatePlayerPaddle(dt) {
     if (!GS || GS.status !== 'playing') return;
     const stepScale = dt / 16.6667;
     const mult = GS._playerSpeedMult || 1;
-    // mult > 1 → opponent boosted *their* fastOpp effect → player paddle slows
     const speed = (GS.playerSpeed || 5) / mult * stepScale;
     if (_keysDown['ArrowUp']   || _keysDown['w'] || _keysDown['W']) GS.playerY -= speed;
     if (_keysDown['ArrowDown'] || _keysDown['s'] || _keysDown['S']) GS.playerY += speed;
@@ -652,7 +571,6 @@
 
   function OnVisibilityChange() { if (document.hidden && GS?.status === 'playing') DoPause(); }
 
-  /* FLOW */
   function DoStart() {
     StopLoop();
     GS = NewGameState(_lvlId);
@@ -683,7 +601,6 @@
     ShowScreen('gf-pos-start');
   }
 
-  /* LEVEL SELECT */
   function BuildLevelSelect() {
     const el = document.getElementById('gf-po-lvl-sel');
     if (!el) return;
@@ -719,8 +636,6 @@
     });
   }
 
-  /* THEME: content.js applies a page-wide invert filter in dark mode, so we
-   * counter-invert the modal here to match Snake/Tetris/etc. */
   function ApplyTheme() {
     const el = document.getElementById('gf-po');
     if (!el) return;
@@ -733,7 +648,6 @@
   }
   const _tobs = new MutationObserver(ApplyTheme);
 
-  /* BUILD OVERLAY */
   function BuildOverlay() {
     if (document.getElementById('gf-po')) return;
     InjectCSS();
@@ -748,7 +662,7 @@
       <span id="gf-po-badge">BETA</span>
     </div>
     <div class="gf-po-hr">
-      <span id="gf-po-hint">F8</span>
+      <span id="gf-po-hint">${window.GfKeys ? GfKeys.label('arcade') : 'F8'}</span>
       <button id="gf-po-pause-btn" title="Pause (Esc)">⏸</button>
       <button id="gf-po-close" title="Close (Esc)">✕</button>
     </div>
@@ -781,7 +695,7 @@
         <div class="gf-po-ctrl-row"><kbd>↑ ↓</kbd><span>${_GameText('po_move')}</span></div>
         <div class="gf-po-ctrl-row"><kbd>W / S</kbd><span>${_GameText('po_move')}</span></div>
         <div class="gf-po-ctrl-row"><kbd>Esc</kbd><span>${_GameText('po_pause')}</span></div>
-        <div class="gf-po-ctrl-row"><kbd>F8</kbd><span>${_GameText('po_boss')}</span></div>
+        <div class="gf-po-ctrl-row"><kbd>${window.GfKeys ? GfKeys.label('arcade') : 'F8'}</kbd><span>${_GameText('po_boss')}</span></div>
       </div>
     </div>
 
@@ -842,7 +756,6 @@
       else CloseGradePong();
     });
 
-    // Touch support on canvas
     const cv = document.getElementById('gf-po-canvas');
     if (cv) {
       cv.addEventListener('touchmove', e => {
@@ -860,7 +773,6 @@
     }
   }
 
-  /* PUBLIC API */
   function OpenGradePong(grades) {
     if (grades?.length) _grades = NormalizeGrades(grades);
     if (!document.getElementById('gf-po')) BuildOverlay();
@@ -919,7 +831,6 @@
   W.ToggleGradePong = ToggleGradePong;
   W.BossKeyPong     = BossKeyPong;
 
-  /* CSS */
   function InjectCSS() {
     if (document.getElementById('gf-pong-css')) return;
     const s = document.createElement('style');

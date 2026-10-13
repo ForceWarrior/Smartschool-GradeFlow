@@ -3,27 +3,22 @@
 
   if (window.self !== window.top) return;
 
-  /* ─────────────────────────────────────────────────────────────
-  *  UPDATE CONTENT: edit this block for each new release
-   * ───────────────────────────────────────────────────────────── */
-  /*  ┌─ SHOW_UPDATE ────────────────────────────────────────────┐
-   *  │ Set to TRUE when you want the modal to appear for this  │
-   *  │ release.  Once every user has dismissed it, set back to │
-   *  │ FALSE so it never fires again until the next release.   │
-   *  └────────────────────────────────────────────────────────────┘ */
   const SHOW_UPDATE = true;
   const GF_UPDATE_ALWAYS_SHOW_FOR_TESTING = false;
 
   const GF_UPDATE = {
-    id: 'v1.2.6',               // unique id per update, change each release
-    version: '1.2.6',
+    id: 'v1.3.0',
+    version: '1.3.0',
     image: '',
     features: [
-      { icon: '⚙️', titleKey: 'update_feat_toggles',   descKey: 'update_feat_toggles_desc'   },
-      { icon: '🌙', titleKey: 'update_feat_darkfix',   descKey: 'update_feat_darkfix_desc'   },
+      { icon: '🎨', titleKey: 'update_feat_v13_theme', descKey: 'update_feat_v13_theme_desc' },
+      { icon: '🕹️', titleKey: 'update_feat_v13_games', descKey: 'update_feat_v13_games_desc' },
+      { icon: '📡', titleKey: 'update_feat_v13_lan', descKey: 'update_feat_v13_lan_desc' },
+      { icon: '🏷️', titleKey: 'update_feat_v13_ratings', descKey: 'update_feat_v13_ratings_desc' },
+      { icon: '⌨️', titleKey: 'update_feat_v13_keys', descKey: 'update_feat_v13_keys_desc' },
+      { icon: '🩹', titleKey: 'update_feat_v13_fixes', descKey: 'update_feat_v13_fixes_desc' },
     ],
   };
-  /* ───────────────────────────────────────────────────────────── */
 
   const STORAGE_KEY = 'gf-update-dismissed';
   let _gfUpdateThemeTimer = 0;
@@ -58,7 +53,7 @@
 
   function ReadRootBridgeTheme() {
     const root = document.documentElement;
-    if (root.getAttribute('data-gf-theme-source') !== 'smpp') return null;
+    if (!/^(smpp|custom)$/.test(root.getAttribute('data-gf-theme-source') || '')) return null;
     const accent = CssVar('--gf-ext-accent');
     const text = CssVar('--gf-ext-text');
     const bg = CssVar('--gf-ext-bg');
@@ -142,7 +137,7 @@
     if (smpp) return { source: 'smpp', dark: smpp.isDark, glass: !!smpp.glass, vars: smpp };
 
     const root = document.documentElement;
-    const source = root.getAttribute('data-gf-theme-source') === 'smpp' ? 'smpp' : 'gradeflow';
+    const source = /^(smpp|custom)$/.test(root.getAttribute('data-gf-theme-source') || '') ? 'smpp' : 'gradeflow';
     const dark = source === 'smpp'
       ? root.getAttribute('data-gf-external-dark') === '1'
       : (root.getAttribute('data-gf-theme') === 'dark' || localStorage.getItem('gf-theme-cache') === 'dark');
@@ -201,14 +196,11 @@
   }
 
   async function ShouldShow() {
-    // 1. Developer kill-switch, if false, never show
     if (!SHOW_UPDATE) return false;
 
-    // 2. Only on SmartSchool home page
     const path = location.pathname;
     if (path !== '/' && path !== '' && !/^\/index/i.test(path) && !/^\/?$/.test(path)) return false;
 
-    // 3. Already dismissed this specific update id → stay gone
     const dismissed = await GetStoredDismissedUpdate();
     if (!GF_UPDATE_ALWAYS_SHOW_FOR_TESTING && dismissed === GF_UPDATE.id) return false;
     return true;
@@ -300,7 +292,7 @@
     s.textContent = `
 #gf-update-overlay{position:fixed;inset:0;z-index:2147483639;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.64);font-family:"IBM Plex Mono","SF Mono",monospace;opacity:0;transition:opacity .2s ease;}
 html[data-gf-theme="dark"] #gf-update-overlay{filter:invert(1) hue-rotate(180deg)!important;background:rgba(0,0,0,.68);}
-html[data-gf-theme-source="smpp"] #gf-update-overlay,#gf-update-overlay[data-theme-source="smpp"]{filter:none!important;background:var(--upd-overlay,var(--gf-ext-overlay,rgba(0,0,0,.44)));}
+html[data-gf-theme-source="smpp"] #gf-update-overlay,html[data-gf-theme-source="custom"] #gf-update-overlay,#gf-update-overlay[data-theme-source="smpp"]{filter:none!important;background:var(--upd-overlay,var(--gf-ext-overlay,rgba(0,0,0,.44)));}
 html[data-gf-theme="dark"] #gf-update-overlay[data-theme-source="smpp"]{filter:none!important;background:var(--upd-overlay,var(--gf-ext-overlay,rgba(0,0,0,.44)));}
 #gf-upd-modal{--upd-bg:#fff;--upd-surf:#f7f7f7;--upd-surf-2:#fff;--upd-brd:#dedede;--upd-txt:#171717;--upd-txt2:#525252;--upd-txt3:#737373;--upd-acc:#f97316;--upd-acc-2:#ea580c;--upd-acc-soft:rgba(249,115,22,.12);--upd-on-acc:#111;--upd-hero-bg:#fff;--upd-hero-txt:#171717;--upd-close-bg:#f5f5f5;--upd-close-txt:#525252;position:relative;width:min(560px,calc(100vw - 40px));max-height:calc(100vh - 40px);background:var(--upd-bg);border:1px solid var(--upd-brd);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.35);overflow:hidden;display:flex;flex-direction:column;color:var(--upd-txt);}
 #gf-upd-modal[data-theme="dark"]{--upd-bg:#101010;--upd-surf:#171717;--upd-surf-2:#121212;--upd-brd:#2b2b2b;--upd-txt:#f4f4f5;--upd-txt2:#c7c7c7;--upd-txt3:#9a9a9a;--upd-on-acc:#111;--upd-hero-bg:#101010;--upd-hero-txt:#f4f4f5;--upd-close-bg:#1f1f1f;--upd-close-txt:#d4d4d4;box-shadow:0 24px 80px rgba(0,0,0,.55);}

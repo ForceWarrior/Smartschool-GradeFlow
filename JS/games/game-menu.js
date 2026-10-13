@@ -16,7 +16,56 @@
 
   const GAMES = [
     {
+      id: 'gradeio',
+      file: 'JS/games/gradeio.js',
+      title: 'Grade.io',
+      descKey: 'game_gradeio_desc',
+      accent: '#38bdf8',
+      ready: true,
+      isNew: true,
+      buildPreview: PreviewAgar,
+      launch(gr) { CloseGameMenu(); W.OpenGradeIo?.(gr); },
+      stop()     { W.CloseGradeIo?.(); },
+    },
+    {
+      id: 'gradecross',
+      file: 'JS/games/gradecross.js',
+      title: 'Crossy Grade',
+      descKey: 'game_gradecross_desc',
+      accent: '#22c55e',
+      ready: true,
+      isNew: true,
+      buildPreview: PreviewCross,
+      launch(gr) { CloseGameMenu(); W.OpenGradeCross?.(gr); },
+      stop()     { W.CloseGradeCross?.(); },
+    },
+    {
+      id: 'gradesurfers',
+      file: 'JS/games/gradesurfers.js',
+      title: 'Grade Surfers',
+      descKey: 'game_gradesurfers_desc',
+      accent: '#f59e0b',
+      ready: true,
+      isNew: true,
+      buildPreview: PreviewSurfers,
+      launch(gr) { CloseGameMenu(); W.OpenGradeSurfers?.(gr); },
+      stop()     { W.CloseGradeSurfers?.(); },
+    },
+    {
+      id: 'gradehook',
+      file: 'JS/games/gradehook.js',
+      title: 'Grade Hook',
+      descKey: 'game_gradehook_desc',
+      accent: '#ec4899',
+      ready: true,
+      isNew: true,
+      buildPreview: PreviewHook,
+      launch(gr) { CloseGameMenu(); W.OpenGradeHook?.(gr); },
+      stop()     { W.CloseGradeHook?.(); },
+    },
+    {
       id: 'gradestack',
+      file: 'JS/games/tetris.js',
       title: 'GradeStack',
       descKey: 'game_gradestack_desc',
       desc: 'Classic block stacking powered by your grades',
@@ -28,6 +77,7 @@
     },
     {
       id: 'gradesnake',
+      file: 'JS/games/snake.js',
       title: 'GradeSnake',
       descKey: 'game_gradesnake_desc',
       desc: 'Guide the snake through your report card',
@@ -39,6 +89,7 @@
     },
     {
       id: 'grade2048',
+      file: 'JS/games/grade2048.js',
       title: 'Grade 2048',
       descKey: 'game_grade2048_desc',
       desc: 'Merge weak grades into stronger ones - reach 20/20!',
@@ -50,6 +101,7 @@
     },
     {
       id: 'gradesweeper',
+      file: 'JS/games/gradesweeper.js',
       title: 'GradeSweeper',
       descKey: 'game_gradesweeper_desc',
       desc: 'Reveal all safe grades without uncovering a fail',
@@ -61,6 +113,7 @@
     },
     {
       id: 'gradememory',
+      file: 'JS/games/gradememory.js',
       title: 'GradeMemory',
       descKey: 'game_gradememory_desc',
       desc: 'Flip grade cards and match every pair from memory',
@@ -72,6 +125,7 @@
     },
     {
       id: 'gradeshooter',
+      file: 'JS/games/gradeshooter.js',
       title: 'GradeShooter',
       descKey: 'game_gradeshooter_desc',
       desc: 'Fire grade bubbles and match 3+ of the same band to clear',
@@ -83,6 +137,7 @@
     },
     {
       id: 'gradebreakout',
+      file: 'JS/games/gradebreakout.js',
       title: 'GradeBreakout',
       descKey: 'game_gradebreakout_desc',
       desc: 'Smash grade bricks with the ball and rack up points',
@@ -94,6 +149,7 @@
     },
     {
       id: 'gradepong',
+      file: 'JS/games/gradepong.js',
       title: 'GradePong',
       descKey: 'game_gradepong_desc',
       desc: 'Beat the AI in a grade-powered game of pong',
@@ -105,6 +161,7 @@
     },
     {
       id: 'gradeflappy',
+      file: 'JS/games/gradeflappy.js',
       title: 'GradeFlappy',
       descKey: 'game_gradeflappy_desc',
       desc: 'Fly through the pipes and dodge bad grades',
@@ -116,6 +173,7 @@
     },
     {
       id: 'graderunner',
+      file: 'JS/games/graderunner.js',
       title: 'GradeRunner',
       descKey: 'game_graderunner_desc',
       desc: 'Sprint, jump, and slide through a grade-powered endless run',
@@ -127,6 +185,7 @@
     },
     {
       id: 'gradetower',
+      file: 'JS/games/gradetower.js',
       title: 'GradeTower',
       descKey: 'game_gradetower_desc',
       desc: 'Build tiny grade towers and defend your report path',
@@ -142,18 +201,17 @@
 
   let _el = null, _grades = [], _activeId = null, _kh = null;
 
-  /* Shared preview loop: all previews share one RAF at ~12 fps */
   const _previewTicks = [];
   let _previewRaf = null;
   let _previewLastTs = 0;
-  const PREVIEW_INTERVAL = 33; // ~30 fps, smooth enough for previews
+  const PREVIEW_INTERVAL = 33;
 
   function _PreviewLoop(ts) {
     _previewRaf = null;
     if (!_previewTicks.length) return;
     const elapsed = ts - _previewLastTs;
     if (elapsed >= PREVIEW_INTERVAL) {
-      _previewLastTs = ts - (elapsed % PREVIEW_INTERVAL); // keep cadence steady
+      _previewLastTs = ts - (elapsed % PREVIEW_INTERVAL);
       for (let i = _previewTicks.length - 1; i >= 0; i--) {
         if (!_previewTicks[i](ts)) _previewTicks.splice(i, 1);
       }
@@ -171,7 +229,6 @@
     if (_previewRaf) { cancelAnimationFrame(_previewRaf); _previewRaf = null; }
   }
 
-  /* Utilities */
   function RandomInt(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
 
   function CreateCanvas(el, w, h) {
@@ -182,7 +239,6 @@
     return cv;
   }
 
-  /* Theme */
   function SyncTheme() {
     if (!_el) return;
     if (typeof W._GfApplyThemeToHost === 'function') W._GfApplyThemeToHost(_el);
@@ -195,7 +251,6 @@
 
   const _tobs = new MutationObserver(SyncTheme);
 
-  /* Build menu DOM */
   function Build() {
     if (_el) return;
     InjectCSS();
@@ -208,7 +263,7 @@
       <div class="gf-gc${g.ready ? '' : ' gf-gc-soon'}" data-gid="${g.id}">
         <div class="gf-gc-prev" id="gf-gp-${g.id}"></div>
         <div class="gf-gc-body">
-          <div class="gf-gc-title" style="color:${g.accent}">${g.title}</div>
+          <div class="gf-gc-title" style="color:${g.accent}">${g.title}${g.isNew ? `<span class="gf-gc-new">${_GameText('game_new')}</span>` : ''}</div>
           <div class="gf-gc-desc">${g.descKey ? _GameText(g.descKey) : g.desc}</div>
         </div>
         <button class="gf-gc-play" data-play="${g.id}"${g.ready ? '' : ' disabled'}>
@@ -225,7 +280,7 @@
           <span id="gf-arc-badge">${playable} ${_GameText('game_games')}</span>
         </div>
         <div class="gf-arc-hr">
-          <kbd class="gf-arc-key">F8</kbd>
+          <kbd class="gf-arc-key">${W.GfKeys ? W.GfKeys.label('arcade') : 'F8'}</kbd>
           <button id="gf-arc-x" title="${_GameText('game_close_esc')}">✕</button>
         </div>
       </div>
@@ -255,8 +310,6 @@
       g.buildPreview(c, g.accent);
     }
   }
-
-  /* CANVAS PREVIEW ANIMATIONS */
 
   function PreviewTetris(el, accent) {
     const W = 160, H = 105;
@@ -292,13 +345,12 @@
       return b;
     }
 
-    // Piece shapes
     const PIECES = [
-      { cells: [[0,0],[1,0],[2,0],[1,1]], color: accent },       // T
-      { cells: [[0,0],[1,0],[1,1],[2,1]], color: '#a78bfa' },    // S
-      { cells: [[0,1],[1,1],[2,1],[2,0]], color: '#60a5fa' },    // L
-      { cells: [[0,0],[1,0],[2,0],[3,0]], color: '#4ade80' },    // I
-      { cells: [[0,0],[0,1],[1,1],[1,0]], color: '#fbbf24' },    // O
+      { cells: [[0,0],[1,0],[2,0],[1,1]], color: accent },
+      { cells: [[0,0],[1,0],[1,1],[2,1]], color: '#a78bfa' },
+      { cells: [[0,1],[1,1],[2,1],[2,0]], color: '#60a5fa' },
+      { cells: [[0,0],[1,0],[2,0],[3,0]], color: '#4ade80' },
+      { cells: [[0,0],[0,1],[1,1],[1,0]], color: '#fbbf24' },
     ];
 
     let board = MakeBoard();
@@ -404,7 +456,6 @@
     RegisterPreview(Tick);
   }
 
-  // GradeSnake
   function PreviewSnake(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -495,7 +546,6 @@
 
       if (deathFlash>0){ctx.globalAlpha=(deathFlash/28)*0.35;ctx.fillStyle='#f87171';ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;}
 
-      // Food grade
       const now = performance.now();
       for (const f of foods) {
         const pulse = 0.88+0.12*Math.sin(now/420*Math.PI*2);
@@ -530,7 +580,7 @@
         ctx.fillStyle='rgba(255,255,255,0.12)';
         ctx.fillRect(rx+pad,ry+pad,CW-pad*2,(CH-pad*2)*0.36);
         ctx.globalAlpha=1;
-        if (i===0) { // eyes
+        if (i===0) {
           const d=dir, hx=rx+CW/2, hy=ry+CH/2, er=Math.max(1,CW*0.1);
           const fw=d.x!==0?CW*0.14:CH*0.14, pf=d.x!==0?CH*0.22:CW*0.22;
           ctx.fillStyle='rgba(0,0,0,0.85)';
@@ -543,7 +593,6 @@
     RegisterPreview(Tick);
   }
 
-  // Grade 2048
   function Preview2048(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -654,7 +703,6 @@
     RegisterPreview(Tick);
   }
 
-  // GradeSweeper
   function PreviewMinesweeper(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -782,7 +830,6 @@
     RegisterPreview(Tick);
   }
 
-  // GradeMemory
   function PreviewMemory(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -829,7 +876,6 @@
       ctx.save();
       ctx.translate(x, y);
 
-      // Back face
       if (backAlpha > 0.01) {
         ctx.globalAlpha = backAlpha;
         const backBg = dark ? '#2d3748' : '#475569';
@@ -842,7 +888,6 @@
         ctx.fillText('?', CW/2, CH/2);
       }
 
-      // Front face
       if (frontAlpha > 0.01) {
         ctx.globalAlpha = frontAlpha;
         ctx.fillStyle = g.bg;
@@ -1104,7 +1149,6 @@
     RegisterPreview(Tick);
   }
 
-  // ── GradeBreakout preview ──
   function PreviewBreakout(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -1130,19 +1174,16 @@
     function Tick() {
       if (!cv.isConnected) return false;
 
-      // AI paddle
       px += (bx - px - PW/2) * 0.12;
       px = Math.max(0, Math.min(W-PW, px));
 
       bx += bvx; by += bvy;
       if (bx <= 2 || bx >= W-2) bvx = -bvx;
       if (by <= 2) bvy = Math.abs(bvy);
-      // paddle bounce
       if (by >= H-12-PH && by <= H-10 && bx >= px && bx <= px+PW) {
         bvy = -Math.abs(bvy);
         bvx += (bx - px - PW/2) * 0.06;
       }
-      // brick hit
       for (const b of bricks) {
         if (!b.alive) continue;
         if (bx >= b.x && bx <= b.x+b.w && by >= b.y && by <= b.y+b.h) {
@@ -1151,7 +1192,6 @@
           break;
         }
       }
-      // respawn
       if (by > H+5 || !bricks.some(b=>b.alive)) { respawnT++; if (respawnT > 40) Reset(); }
 
       particles = particles.map(p => ({...p, x:p.x+p.vx, y:p.y+p.vy, vy:p.vy+.15, t:p.t-.04})).filter(p => p.t > 0);
@@ -1168,16 +1208,13 @@
         ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(b.x+1,b.y,b.w,b.h*.4);
       }
 
-      // ball
       ctx.fillStyle = '#f43f5e'; ctx.beginPath(); ctx.arc(bx,by,3.5,0,Math.PI*2); ctx.fill();
       ctx.fillStyle = 'rgba(244,63,94,.25)'; ctx.beginPath(); ctx.arc(bx-bvx*2,by-bvy*2,5,0,Math.PI*2); ctx.fill();
 
-      // paddle
       ctx.fillStyle = dark ? '#e5e7eb' : '#374151';
       if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(px,H-12,PW,PH,2); ctx.fill(); }
       else ctx.fillRect(px,H-12,PW,PH);
 
-      // particles
       for (const p of particles) { ctx.globalAlpha=p.t; ctx.fillStyle=p.clr; ctx.fillRect(p.x-1.5,p.y-1.5,3,3); } ctx.globalAlpha=1;
 
       return true;
@@ -1185,7 +1222,6 @@
     RegisterPreview(Tick);
   }
 
-  // ── GradePong preview ──
   function PreviewPong(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -1206,7 +1242,6 @@
     function Tick() {
       if (!cv.isConnected) return false;
 
-      // AI paddles
       ly += (by - ly - PH/2) * 0.08;
       ry += (by - ry - PH/2) * 0.11;
       ly = Math.max(0, Math.min(H-PH, ly));
@@ -1218,12 +1253,10 @@
       bx += bvx; by += bvy;
       if (by <= 0 || by >= H) bvy = -bvy;
 
-      // left paddle
       if (bx <= 10+PW && by >= ly && by <= ly+PH && bvx < 0) {
         bvx = Math.abs(bvx) * 1.03;
         bvy += (by - ly - PH/2) * 0.08;
       }
-      // right paddle
       if (bx >= W-10-PW && by >= ry && by <= ry+PH && bvx > 0) {
         bvx = -Math.abs(bvx) * 1.03;
         bvy += (by - ry - PH/2) * 0.08;
@@ -1238,17 +1271,14 @@
       ctx.fillStyle = dark ? '#0a0a0a' : '#f0f0f0';
       ctx.fillRect(0,0,W,H);
 
-      // center line
       ctx.strokeStyle = dark ? '#222' : '#ccc'; ctx.lineWidth = 1; ctx.setLineDash([3,4]);
       ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke(); ctx.setLineDash([]);
 
-      // scores
       ctx.fillStyle = dark ? '#333' : '#ddd';
       ctx.font = 'bold 22px "IBM Plex Mono",monospace'; ctx.textAlign = 'center';
       ctx.fillText(lScore, W/2-20, 24);
       ctx.fillText(rScore, W/2+20, 24);
 
-      // paddles
       ctx.fillStyle = '#06b6d4';
       if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(8,ly,PW,PH,2); ctx.fill(); }
       else ctx.fillRect(8,ly,PW,PH);
@@ -1256,14 +1286,11 @@
       if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(W-8-PW,ry,PW,PH,2); ctx.fill(); }
       else ctx.fillRect(W-8-PW,ry,PW,PH);
 
-      // trail
       for (const t of trail) { ctx.globalAlpha=t.t*.2; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(t.x,t.y,2.5,0,Math.PI*2); ctx.fill(); }
       ctx.globalAlpha=1;
 
-      // ball
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(bx,by,3.5,0,Math.PI*2); ctx.fill();
 
-      // flash
       if (flashT > 0) {
         ctx.globalAlpha = flashT*.15;
         ctx.fillStyle = flashSide > 0 ? '#06b6d4' : '#f43f5e';
@@ -1276,7 +1303,6 @@
     RegisterPreview(Tick);
   }
 
-  // ── GradeFlappy preview ──
   function PreviewFlappy(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -1292,7 +1318,6 @@
     function Tick() {
       if (!cv.isConnected) return false;
 
-      // auto flap
       flapTimer++;
       const nextPipe = pipes.find(p => p.x + PW > 30);
       if (nextPipe) {
@@ -1309,7 +1334,6 @@
       if (birdY < 5) { birdY = 5; birdVy = 0; }
       if (birdY > H-15) { birdY = H/2; birdVy = 0; pipes.forEach(p => p.x = W + Math.random()*60); }
 
-      // pipes
       for (const p of pipes) p.x -= SPEED;
       if (pipes[0].x < -PW) { pipes.shift(); pipes.push({x: pipes[pipes.length-1].x + 65 + Math.random()*20, gapY: 15+Math.random()*(H-GAP-30)}); }
 
@@ -1319,25 +1343,20 @@
       ctx.fillStyle = dark ? '#0a0a0a' : '#e8f4f8';
       ctx.fillRect(0,0,W,H);
 
-      // pipes
       for (const p of pipes) {
         const pClr = p.gapY > H/2-10 ? '#4ade80' : '#f97316';
         ctx.fillStyle = pClr;
-        // top pipe
         ctx.fillRect(p.x, 0, PW, p.gapY);
         if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(p.x-2, p.gapY-5, PW+4, 5, 2); ctx.fill(); }
-        // bottom pipe
         ctx.fillRect(p.x, p.gapY+GAP, PW, H-p.gapY-GAP-10);
         if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(p.x-2, p.gapY+GAP, PW+4, 5, 2); ctx.fill(); }
       }
 
-      // ground
       ctx.fillStyle = dark ? '#1a1a1a' : '#c8b07a';
       ctx.fillRect(0, H-10, W, 10);
       ctx.strokeStyle = dark ? '#333' : '#a09060'; ctx.lineWidth = 1;
       for (let gx = groundX; gx < W; gx += 8) { ctx.beginPath(); ctx.moveTo(gx, H-10); ctx.lineTo(gx+4, H); ctx.stroke(); }
 
-      // bird
       ctx.save();
       ctx.translate(30, birdY);
       ctx.rotate(birdRot);
@@ -1345,10 +1364,8 @@
       if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-6,-6,12,12,3); ctx.fill(); }
       else ctx.fillRect(-6,-6,12,12);
       ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(-6,-6,12,5);
-      // eye
       ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(3, -2, 1.8, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(3.5, -2.5, 0.7, 0, Math.PI*2); ctx.fill();
-      // beak
       ctx.fillStyle = '#f59e0b';
       ctx.beginPath(); ctx.moveTo(6,0); ctx.lineTo(10,-1); ctx.lineTo(10,2); ctx.closePath(); ctx.fill();
       ctx.restore();
@@ -1358,7 +1375,6 @@
     RegisterPreview(Tick);
   }
 
-  // GradeRunner preview
   function PreviewRunner(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -1443,7 +1459,6 @@
     RegisterPreview(Tick);
   }
 
-  // GradeTower preview
   function PreviewTower(el) {
     const W = 160, H = 105;
     const cv = CreateCanvas(el, W, H);
@@ -1529,8 +1544,165 @@
     RegisterPreview(Tick);
   }
 
+  function PreviewAgar(el) {
+    const W = 160, H = 105;
+    const cv = CreateCanvas(el, W, H);
+    const ctx = cv.getContext('2d');
+    const COLORS = ['#f43f5e', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#06b6d4', '#f97316'];
+    const pellets = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: Math.random() * H, c: COLORS[RandomInt(0, COLORS.length - 1)] }));
+    const cells = Array.from({ length: 5 }, (_, i) => ({ x: Math.random() * W, y: Math.random() * H, r: 6 + i * 3, a: Math.random() * 6.28, c: COLORS[i] }));
+    function Tick() {
+      if (!cv.isConnected) return false;
+      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
+      ctx.fillStyle = dark ? '#111318' : '#f8fafc';
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = dark ? '#1f232b' : '#e2e8f0';
+      ctx.lineWidth = 1;
+      for (let x = 0.5; x < W; x += 12) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0.5; y < H; y += 12) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      for (const p of pellets) { ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, 6.28); ctx.fill(); }
+      for (const c of cells) {
+        c.a += (Math.random() - 0.5) * 0.25;
+        const sp = 1.6 / Math.sqrt(c.r / 6);
+        c.x = (c.x + Math.cos(c.a) * sp + W) % W;
+        c.y = (c.y + Math.sin(c.a) * sp + H) % H;
+        for (const p of pellets) if ((p.x - c.x) ** 2 + (p.y - c.y) ** 2 < c.r * c.r) { p.x = Math.random() * W; p.y = Math.random() * H; c.r = Math.min(20, c.r + 0.15); }
+        if (c.r > 19) c.r = 6;
+        ctx.fillStyle = c.c;
+        ctx.strokeStyle = 'rgba(0,0,0,.22)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, 6.28); ctx.fill(); ctx.stroke();
+      }
+      return true;
+    }
+    RegisterPreview(Tick);
+  }
 
-  /* Launch game */
+  function PreviewCross(el) {
+    const W = 160, H = 105;
+    const cv = CreateCanvas(el, W, H);
+    const ctx = cv.getContext('2d');
+    const lanes = ['grass', 'road', 'road', 'grass', 'water', 'road', 'grass'];
+    const LH = 15;
+    const cars = lanes.map((t, i) => t === 'road' ? { x: Math.random() * W, v: (i % 2 ? 1 : -1) * (0.8 + Math.random()), c: ['#ef4444', '#3b82f6', '#eab308'][i % 3] } : t === 'water' ? { x: Math.random() * W, v: 0.6, log: true } : null);
+    let hop = 0, row = 6;
+    function Tick() {
+      if (!cv.isConnected) return false;
+      hop++;
+      if (hop % 40 === 0) row = row > 0 ? row - 1 : 6;
+      lanes.forEach((t, i) => {
+        const y = i * LH;
+        ctx.fillStyle = t === 'grass' ? (i % 2 ? '#86d36b' : '#7cc95f') : t === 'road' ? '#4b5563' : '#38bdf8';
+        ctx.fillRect(0, y, W, LH);
+        if (t === 'road') { ctx.fillStyle = '#e5e7eb'; for (let x = 4; x < W; x += 20) ctx.fillRect(x, y + LH - 1, 10, 1); }
+        if (t === 'grass' && i % 2 === 0) { ctx.fillStyle = '#2f7d32'; ctx.fillRect(20 + i * 7, y + 3, 8, 9); ctx.fillStyle = '#6b4423'; ctx.fillRect(23 + i * 7, y + 10, 2, 3); }
+        const car = cars[i];
+        if (!car) return;
+        car.x = (car.x + car.v + W + 40) % (W + 40) - 20;
+        if (car.log) { ctx.fillStyle = '#92400e'; ctx.fillRect(car.x, y + 3, 34, 9); ctx.fillStyle = '#b45309'; ctx.fillRect(car.x, y + 3, 34, 3); }
+        else { ctx.fillStyle = car.c; ctx.fillRect(car.x, y + 3, 20, 9); ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(car.x + (car.v > 0 ? 13 : 3), y + 4, 4, 7); }
+      });
+      const t = (hop % 40) / 40;
+      const py = row * LH + 2 - (t < 0.3 ? Math.sin(t / 0.3 * Math.PI) * 5 : 0);
+      ctx.fillStyle = '#fff'; ctx.fillRect(74, py, 11, 11);
+      ctx.fillStyle = '#ef4444'; ctx.fillRect(77, py - 3, 5, 3);
+      ctx.fillStyle = '#f97316'; ctx.fillRect(84, py + 4, 3, 2);
+      ctx.fillStyle = '#111'; ctx.fillRect(81, py + 2, 2, 2);
+      return true;
+    }
+    RegisterPreview(Tick);
+  }
+
+  function PreviewSurfers(el) {
+    const W = 160, H = 105;
+    const cv = CreateCanvas(el, W, H);
+    const ctx = cv.getContext('2d');
+    const HZ = 30, CX = W / 2;
+    let z = 0, lane = 1, laneX = 1, t = 0;
+    const trains = [{ lane: 0, z: 120 }, { lane: 2, z: 60 }];
+    const P = (lx, zz) => { const s = 60 / (zz + 60); return { x: CX + lx * 46 * s, y: HZ + (H - HZ) * s, s }; };
+    function Tick() {
+      if (!cv.isConnected) return false;
+      t++;
+      z = (z + 2) % 20;
+      if (t % 70 === 0) lane = trains.some(tr => tr.lane === lane && tr.z < 60) ? (lane + 1) % 3 : RandomInt(0, 2);
+      laneX += (lane - laneX) * 0.15;
+      const sky = ctx.createLinearGradient(0, 0, 0, HZ);
+      sky.addColorStop(0, '#7dd3fc'); sky.addColorStop(1, '#fde68a');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, HZ);
+      ctx.fillStyle = '#a8a29e'; ctx.fillRect(0, HZ, W, H - HZ);
+      for (let l = -1; l <= 1; l++) {
+        for (const off of [-0.32, 0.32]) {
+          const a = P(l + off, 300), b = P(l + off, 0);
+          ctx.strokeStyle = '#57534e'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+        for (let zz = 200 - z; zz > -10; zz -= 20) {
+          const a = P(l - 0.42, zz), b = P(l + 0.42, zz);
+          ctx.strokeStyle = '#78350f'; ctx.lineWidth = Math.max(0.5, 2.4 * a.s);
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+      for (const tr of trains) {
+        tr.z -= 2;
+        if (tr.z < -40) { tr.z = 220; tr.lane = RandomInt(0, 2); }
+        if (tr.z < -10) continue;
+        const p = P(tr.lane - 1, Math.max(0, tr.z));
+        const w = 40 * p.s, h = 42 * p.s;
+        ctx.fillStyle = '#dc2626'; ctx.fillRect(p.x - w / 2, p.y - h, w, h);
+        ctx.fillStyle = '#fde047'; ctx.fillRect(p.x - w / 2, p.y - h * 0.55, w, h * 0.1);
+        ctx.fillStyle = '#1e3a8a'; ctx.fillRect(p.x - w * 0.35, p.y - h * 0.9, w * 0.7, h * 0.28);
+      }
+      const r = P(laneX - 1, -6);
+      const bob = Math.abs(Math.sin(t * 0.3)) * 2;
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(r.x, r.y, 7, 2, 0, 0, 6.28); ctx.fill();
+      ctx.fillStyle = '#2563eb'; ctx.fillRect(r.x - 5, r.y - 20 - bob, 10, 12);
+      ctx.fillStyle = '#f59e0b'; ctx.fillRect(r.x - 4, r.y - 26 - bob, 8, 6);
+      ctx.fillStyle = '#111827'; ctx.fillRect(r.x - 4 + Math.sin(t * 0.4) * 2, r.y - 8 - bob, 3, 8); ctx.fillRect(r.x + 1 - Math.sin(t * 0.4) * 2, r.y - 8 - bob, 3, 8);
+      return true;
+    }
+    RegisterPreview(Tick);
+  }
+
+  function PreviewHook(el) {
+    const W = 160, H = 105;
+    const cv = CreateCanvas(el, W, H);
+    const ctx = cv.getContext('2d');
+    const hooks = [{ x: 40, y: 22 }, { x: 95, y: 18 }, { x: 150, y: 26 }];
+    let hi = 0, ang = -1.1, vel = 0.055, len = 34, flyT = 0, fx = 0, fy = 0, fvx = 0, fvy = 0, cam = 0;
+    function Tick() {
+      if (!cv.isConnected) return false;
+      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
+      ctx.fillStyle = dark ? '#111827' : '#e0f2fe';
+      ctx.fillRect(0, 0, W, H);
+      let px, py;
+      const h = hooks[hi];
+      if (flyT > 0) {
+        fvy += 0.12; fx += fvx; fy += fvy; flyT--;
+        px = fx; py = fy;
+        if (!flyT) { hi = (hi + 1) % hooks.length; const nh = hooks[hi]; len = Math.hypot(px - nh.x, py - nh.y); ang = Math.atan2(px - nh.x, py - nh.y); vel = 0.04; if (hi === 0) cam = 0; }
+      } else {
+        vel += -Math.sin(ang) * 0.004;
+        ang += vel;
+        px = h.x + Math.sin(ang) * len; py = h.y + Math.cos(ang) * len;
+        if (ang > 0.9 && vel > 0) { flyT = 22; fx = px; fy = py; fvx = Math.cos(ang) * vel * len * 1.15; fvy = -Math.sin(ang) * vel * len * 0.9; }
+      }
+      cam += ((px - 60) - cam) * 0.08;
+      ctx.save(); ctx.translate(-Math.max(0, cam), 0);
+      ctx.fillStyle = '#f472b6'; ctx.fillRect(170, 90, 50, 6);
+      for (const k of hooks) { ctx.fillStyle = '#ec4899'; ctx.beginPath(); ctx.arc(k.x, k.y, 5, 0, 6.28); ctx.fill(); ctx.fillStyle = '#fbcfe8'; ctx.beginPath(); ctx.arc(k.x - 1.5, k.y - 1.5, 1.6, 0, 6.28); ctx.fill(); }
+      if (!flyT) { ctx.strokeStyle = dark ? '#e5e7eb' : '#1f2937'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(px, py); ctx.stroke(); }
+      const rot = flyT ? (22 - flyT) * 0.3 : ang;
+      ctx.translate(px, py); ctx.rotate(-rot * 0.6);
+      ctx.strokeStyle = dark ? '#f9fafb' : '#111827'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, 4, 3, 0, 6.28); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 7); ctx.lineTo(0, 16); ctx.moveTo(0, 9); ctx.lineTo(0, 0); ctx.moveTo(0, 10); ctx.lineTo(5, 13); ctx.moveTo(0, 16); ctx.lineTo(-4, 22); ctx.moveTo(0, 16); ctx.lineTo(4, 22); ctx.stroke();
+      ctx.restore();
+      return true;
+    }
+    RegisterPreview(Tick);
+  }
+
   const _GAME_CLOSE_SEL = {
     gradestack:   '#gf-tt-close',
     gradesnake:   '#gf-sn-close-btn',
@@ -1543,12 +1715,25 @@
     gradeflappy:   '#gf-fl-close',
     graderunner:   '#gf-rn-close',
     gradetower:    '#gf-tw-close',
+    gradeio:       '#gf-io-close',
+    gradecross:    '#gf-cr-close',
+    gradesurfers:  '#gf-ss-close',
+    gradehook:     '#gf-hk-close',
   };
 
   function LaunchGame(game) {
     _activeId = game.id;
     _Hide();
-    game.launch(_grades);
+    const load = W._GfLoadScripts ? W._GfLoadScripts([game.file]) : Promise.resolve(true);
+    load.then(ok => {
+      if (_activeId !== game.id) return;
+      if (!ok) { _activeId = null; OpenGameMenu(_grades); return; }
+      game.launch(_grades);
+      WatchClose(game);
+    });
+  }
+
+  function WatchClose(game) {
     const sel = _GAME_CLOSE_SEL[game.id];
     if (!sel) return;
     function OnGameClose(e) {
@@ -1562,7 +1747,6 @@
     document.addEventListener('click', OnGameClose, true);
   }
 
-  /* Internal helpers */
   function _Hide() {
     StopAllPreviews();
     if (_el) _el.style.display = 'none';
@@ -1583,7 +1767,6 @@
     if (_kh) { document.removeEventListener('keydown', _kh, true); _kh = null; }
   }
 
-  /* Public API */
   function OpenGameMenu(grades) {
     if (grades) _grades = grades;
     if (_activeId) {
@@ -1617,13 +1800,11 @@
   W.CloseGameMenu = CloseGameMenu;
   W.ToggleGameMenu = ToggleGameMenu;
 
-  /* CSS */
   function InjectCSS() {
     if (document.getElementById('gf-arcade-css')) return;
     const s = document.createElement('style');
     s.id = 'gf-arcade-css';
     s.textContent = `
-/* Arcade – theme tokens */
 #gf-arcade {
   --bg:#ffffff; --surf:#f5f5f5; --surf2:#ececec; --brd:#e0e0e0;
   --txt:#111; --txt2:#555; --txt3:#aaa;
@@ -1635,7 +1816,6 @@
   --sh1:rgba(0,0,0,0.3); --sh2:rgba(0,0,0,0.55);
 }
 
-/* Root NO backdrop */
 #gf-arcade {
   position:fixed; inset:0; z-index:2147483640;
   display:flex; align-items:center; justify-content:center;
@@ -1697,8 +1877,9 @@
   overflow:hidden; border-bottom:1px solid var(--brd);
 }
 .gf-gc-prev canvas { display:block; width:100%; height:100%; }
-.gf-gc-body { padding:9px 12px; flex:1; min-height:0; }
+.gf-gc-body { padding:9px 12px; flex:1; min-height:0; overflow:hidden; }
 .gf-gc-title { font-size:13px; font-weight:700; margin-bottom:2px; }
+.gf-gc-new { margin-left:6px; padding:1px 5px; border-radius:4px; background:var(--gf-game-accent,#f97316); color:#fff; font-size:8px; font-weight:800; letter-spacing:.6px; vertical-align:2px; }
 .gf-gc-desc { font-size:10px; color:var(--txt2); line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .gf-gc-play {
   display:block; width:100%; padding:8px 9px;

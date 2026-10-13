@@ -22,6 +22,16 @@
     <div id="body-scroll">
 
       <div class="section-header">
+        <span class="section-label" data-i18n="theme">Thema</span>
+      </div>
+      <div id="theme-modes">
+        <button class="theme-mode" data-mode="light" data-i18n="theme_smartschool">Smartschool</button>
+        <button class="theme-mode" data-mode="dark" data-i18n="theme_classic_dark">Klassiek donker</button>
+        <button class="theme-mode" data-mode="custom" data-i18n="theme_custom">Eigen thema</button>
+      </div>
+      <div id="theme-presets" class="hidden"></div>
+
+      <div class="section-header">
         <span class="section-label" data-i18n="popup_personalization">Aangepast</span>
       </div>
 
@@ -36,7 +46,6 @@
         </label>
       </div>
 
-      <!-- Name changer -->
       <div class="setting-row">
         <div class="setting-info">
           <span class="setting-name" data-i18n="popup_name_changer">Naam wijzigen</span>
@@ -51,7 +60,6 @@
         <input type="text" id="custom-name" class="gf-input" data-i18n-placeholder="popup_name_placeholder" placeholder="Jouw weergavenaam..." maxlength="64" autocomplete="off" spellcheck="false">
       </div>
 
-      <!-- Profile picture changer -->
       <div class="setting-row">
         <div class="setting-info">
           <span class="setting-name" data-i18n="popup_pfp_changer">Profielfoto wijzigen</span>
@@ -71,7 +79,6 @@
         <span id="pfpFileName" class="pfp-filename" data-i18n="popup_pfp_none">Geen bestand gekozen</span>
       </div>
 
-      <!-- Fake message counter -->
       <div class="setting-row">
         <div class="setting-info">
           <span class="setting-name" data-i18n="popup_msg_counter">Nep berichtenteller</span>
@@ -86,7 +93,6 @@
         <input type="number" id="msg-counter-value" class="gf-input" min="0" max="9999" value="0">
       </div>
 
-      <!-- Fake notification (bell) counter -->
       <div class="setting-row">
         <div class="setting-info">
           <span class="setting-name" data-i18n="popup_notif_counter">Nep meldingenteller</span>
@@ -101,7 +107,6 @@
         <input type="number" id="notif-counter-value" class="gf-input" min="0" max="9999" value="0">
       </div>
 
-      <!-- Fake counter -->
       <div class="setting-row">
         <div class="setting-info">
           <span class="setting-name" data-i18n="popup_news_counter">Nep nieuwsteller</span>
@@ -125,7 +130,6 @@
 
     </div>
 
-    <!-- Confirm modal -->
     <div id="confirm-modal" class="gf-modal hidden">
       <div class="gf-modal-box">
         <p id="confirm-message"></p>
@@ -137,6 +141,7 @@
     </div>
   </div>
   <script src="../JS/translations.js"></script>
+  <script src="../JS/themes.js"></script>
   <script src="../JS/popup.js"></script>
 </body>
 </html>

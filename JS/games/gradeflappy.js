@@ -13,8 +13,6 @@
   function LoadBest() { return StorageGet(LS_BEST, 0); }
   function SaveBest(s) { if (s > LoadBest()) StorageSet(LS_BEST, s); }
 
-  /* ── Grade helpers ─────────────────────────────────────── */
-
   function NormalizeGrades(raw) {
     if (!Array.isArray(raw) || !raw.length) return FallbackGrades();
     return raw.map((g, i) => {
@@ -41,26 +39,22 @@
     return '#f87171';
   }
 
-  /* ── Constants ─────────────────────────────────────────── */
-
-  const GRAVITY      = 0.0012;   // px/ms^2
-  const FLAP_VEL     = -0.38;    // px/ms upward
+  const GRAVITY      = 0.0012;
+  const FLAP_VEL     = -0.38;
   const BIRD_SIZE    = 22;
   const BIRD_X       = 55;
   const PIPE_W       = 36;
   const PIPE_CAP_H   = 8;
-  const PIPE_CAP_OV  = 4;       // overhang each side
+  const PIPE_CAP_OV  = 4;
   const BASE_GAP     = 100;
   const MIN_GAP      = 62;
-  const GAP_SHRINK   = 0.6;     // gap shrinks per point
-  const BASE_SPEED   = 0.1;     // px/ms
+  const GAP_SHRINK   = 0.6;
+  const BASE_SPEED   = 0.1;
   const MAX_SPEED    = 0.22;
-  const SPEED_INC    = 0.0008;  // per point
-  const PIPE_SPACING = 140;     // horizontal distance between pipes
+  const SPEED_INC    = 0.0008;
+  const PIPE_SPACING = 140;
   const GROUND_H     = 32;
   const CLOUD_COUNT  = 5;
-
-  /* ── Game state ────────────────────────────────────────── */
 
   let GS = null, _raf = null, _grades = [], _kh = null;
 
@@ -105,7 +99,7 @@
       clouds: MakeClouds(),
       particles: [],
       flashAlpha: 0,
-      speedMod: 0,        // temporary speed modifier (positive = faster, negative = slower)
+      speedMod: 0,
       speedModTimer: 0,
       _bossHidden: false,
       lastTs: 0,
@@ -116,8 +110,6 @@
     const base = Math.min(MAX_SPEED, BASE_SPEED + (GS ? GS.score * SPEED_INC : 0));
     return Math.max(0.04, base + (GS ? GS.speedMod : 0));
   }
-
-  /* ── Particles ─────────────────────────────────────────── */
 
   function SpawnParticles(x, y, color, count) {
     if (!GS) return;
@@ -134,8 +126,6 @@
     }
   }
 
-  /* ── Physics / update ──────────────────────────────────── */
-
   function Flap() {
     if (!GS) return;
     if (GS.status === 'gameover') return;
@@ -144,7 +134,7 @@
       GS.status = 'playing';
       GS.lastTs = performance.now();
       ShowScreen(null);
-      StartLoop();                          // Was missing, game never animated
+      StartLoop();
     }
     GS.birdVel = FLAP_VEL;
     SpawnParticles(BIRD_X, GS.birdY + BIRD_SIZE / 2, GS.birdColor, 4);
@@ -155,34 +145,27 @@
 
     const speed = GetSpeed();
 
-    // Bird physics
     GS.birdVel += GRAVITY * dt;
     GS.birdY += GS.birdVel * dt;
 
-    // Bird rotation: map velocity to angle
     const maxDown = 0.4;
     GS.birdRotation = Math.max(-0.5, Math.min(1.2, GS.birdVel / maxDown * 1.2));
 
-    // Speed modifier decay
     if (GS.speedModTimer > 0) {
       GS.speedModTimer -= dt;
       if (GS.speedModTimer <= 0) { GS.speedMod = 0; GS.speedModTimer = 0; }
     }
 
-    // Ground scrolling
     GS.groundX = (GS.groundX + speed * dt) % 24;
 
-    // Clouds
     for (const c of GS.clouds) {
       c.x -= c.speed * dt;
       if (c.x + c.w < 0) { c.x = CV_W + Math.random() * 40; c.y = 15 + Math.random() * (CV_H * 0.35); }
     }
 
-    // Pipes
     for (const p of GS.pipes) {
       p.x -= speed * dt;
 
-      // Scoring
       if (!p.scored && p.x + PIPE_W < BIRD_X) {
         p.scored = true;
         const Pct = p.grade.Pct ?? 50;
@@ -197,20 +180,17 @@
           GS.speedMod = 0.03;
           GS.speedModTimer = 800;
         }
-        // Change bird grade on passing a pipe
         GS.birdGrade = p.grade;
         GS.birdColor = p.color;
       }
     }
 
-    // Recycle pipes
     while (GS.pipes.length > 0 && GS.pipes[0].x + PIPE_W < -10) {
       GS.pipes.shift();
       const last = GS.pipes[GS.pipes.length - 1];
       GS.pipes.push(MakePipe(last.x + PIPE_SPACING));
     }
 
-    // Particles
     for (let i = GS.particles.length - 1; i >= 0; i--) {
       const p = GS.particles[i];
       p.age += dt;
@@ -220,16 +200,12 @@
       if (p.age >= p.life) GS.particles.splice(i, 1);
     }
 
-    // Flash decay
     if (GS.flashAlpha > 0) GS.flashAlpha = Math.max(0, GS.flashAlpha - dt * 0.004);
 
-    // Collision detection
     const bx = BIRD_X, by = GS.birdY, bs = BIRD_SIZE;
 
-    // Ground / ceiling
     if (by + bs >= CV_H - GROUND_H || by <= 0) { Die(); return; }
 
-    // Pipe collision
     for (const p of GS.pipes) {
       if (bx + bs < p.x || bx > p.x + PIPE_W) continue;
       if (by < p.topH || by + bs > p.topH + p.gap) { Die(); return; }
@@ -244,15 +220,12 @@
     ShowGameOver();
   }
 
-  /* ── Rendering ─────────────────────────────────────────── */
-
   function Draw() {
     const cv = document.getElementById('gf-fl-canvas');
     if (!cv || !GS) return;
     const ctx = cv.getContext('2d');
     const dark = document.getElementById('gf-fl')?.dataset.theme === 'dark';
 
-    // Sky
     const skyGrad = ctx.createLinearGradient(0, 0, 0, CV_H - GROUND_H);
     if (dark) {
       skyGrad.addColorStop(0, '#0a0f1a');
@@ -264,14 +237,12 @@
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, CV_W, CV_H - GROUND_H);
 
-    // Clouds (parallax)
     ctx.globalAlpha = dark ? 0.08 : 0.5;
     for (const c of GS.clouds) {
       ctx.fillStyle = dark ? '#334155' : '#fff';
       ctx.beginPath();
       ctx.ellipse(c.x + c.w / 2, c.y + c.h / 2, c.w / 2, c.h / 2, 0, 0, Math.PI * 2);
       ctx.fill();
-      // puff
       ctx.beginPath();
       ctx.ellipse(c.x + c.w * 0.3, c.y + c.h * 0.3, c.w * 0.3, c.h * 0.4, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -281,12 +252,10 @@
     }
     ctx.globalAlpha = 1;
 
-    // Pipes
     for (const p of GS.pipes) {
       DrawPipe(ctx, p, dark);
     }
 
-    // Particles
     for (const pt of GS.particles) {
       ctx.globalAlpha = Math.max(0, 1 - pt.age / pt.life);
       ctx.fillStyle = pt.color;
@@ -296,10 +265,8 @@
     }
     ctx.globalAlpha = 1;
 
-    // Bird
     DrawBird(ctx);
 
-    // Ground
     const gGrad = ctx.createLinearGradient(0, CV_H - GROUND_H, 0, CV_H);
     if (dark) {
       gGrad.addColorStop(0, '#1e293b');
@@ -311,7 +278,6 @@
     ctx.fillStyle = gGrad;
     ctx.fillRect(0, CV_H - GROUND_H, CV_W, GROUND_H);
 
-    // Ground pattern (scrolling dashes)
     ctx.strokeStyle = dark ? '#334155' : '#c49a5c';
     ctx.lineWidth = 1;
     const dashY = CV_H - GROUND_H + 4;
@@ -322,11 +288,9 @@
       ctx.stroke();
     }
 
-    // Ground top edge
     ctx.fillStyle = dark ? '#4ade80' : '#6dc96d';
     ctx.fillRect(0, CV_H - GROUND_H, CV_W, 3);
 
-    // Death flash
     if (GS.flashAlpha > 0) {
       ctx.globalAlpha = GS.flashAlpha;
       ctx.fillStyle = '#fff';
@@ -334,7 +298,6 @@
       ctx.globalAlpha = 1;
     }
 
-    // Update HUD
     SetText('gf-fl-score', GS.score);
     SetText('gf-fl-best', LoadBest());
   }
@@ -346,22 +309,18 @@
     const capW = PIPE_W + PIPE_CAP_OV * 2;
     const capX = p.x - PIPE_CAP_OV;
 
-    // Pipe body color
     const bodyColor = dark ? DarkenColor(p.color, 0.5) : p.color;
     const edgeColor = dark ? DarkenColor(p.color, 0.35) : DarkenColor(p.color, 0.75);
 
-    // Top pipe body
     ctx.fillStyle = bodyColor;
     if (ctx.roundRect) {
       ctx.beginPath(); ctx.roundRect(p.x, 0, PIPE_W, topH, [0, 0, 0, 0]); ctx.fill();
     } else {
       ctx.fillRect(p.x, 0, PIPE_W, topH);
     }
-    // Top pipe highlight
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillRect(p.x + 3, 0, 4, topH);
 
-    // Top pipe cap
     ctx.fillStyle = bodyColor;
     if (ctx.roundRect) {
       ctx.beginPath(); ctx.roundRect(capX, topH - PIPE_CAP_H, capW, PIPE_CAP_H, [0, 0, 5, 5]); ctx.fill();
@@ -372,7 +331,6 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(capX, topH - PIPE_CAP_H, capW, PIPE_CAP_H);
 
-    // Bottom pipe body
     ctx.fillStyle = bodyColor;
     if (ctx.roundRect) {
       ctx.beginPath(); ctx.roundRect(p.x, botY, PIPE_W, botH, [0, 0, 0, 0]); ctx.fill();
@@ -382,7 +340,6 @@
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillRect(p.x + 3, botY, 4, botH);
 
-    // Bottom pipe cap
     ctx.fillStyle = bodyColor;
     if (ctx.roundRect) {
       ctx.beginPath(); ctx.roundRect(capX, botY, capW, PIPE_CAP_H, [5, 5, 0, 0]); ctx.fill();
@@ -393,7 +350,6 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(capX, botY, capW, PIPE_CAP_H);
 
-    // Grade label on pipe gap
     const labelY = topH + p.gap / 2;
     const pct = p.grade.Pct != null ? Math.round(p.grade.Pct) : '?';
     ctx.fillStyle = p.color;
@@ -415,7 +371,6 @@
     ctx.translate(bx, by);
     ctx.rotate(GS.birdRotation);
 
-    // Bird body (rounded square)
     const hs = BIRD_SIZE / 2;
     ctx.fillStyle = GS.birdColor;
     if (ctx.roundRect) {
@@ -424,11 +379,9 @@
       ctx.fillRect(-hs, -hs, BIRD_SIZE, BIRD_SIZE);
     }
 
-    // Highlight
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.fillRect(-hs + 2, -hs + 2, BIRD_SIZE - 4, BIRD_SIZE * 0.35);
 
-    // Border
     ctx.strokeStyle = DarkenColor(GS.birdColor, 0.7);
     ctx.lineWidth = 1.2;
     if (ctx.roundRect) {
@@ -437,7 +390,6 @@
       ctx.strokeRect(-hs, -hs, BIRD_SIZE, BIRD_SIZE);
     }
 
-    // Grade label on bird
     const pct = GS.birdGrade.Pct != null ? Math.round(GS.birdGrade.Pct) : '?';
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.font = '700 8px "IBM Plex Mono",monospace';
@@ -445,7 +397,6 @@
     ctx.textBaseline = 'middle';
     ctx.fillText(pct, 0, 0);
 
-    // Eye
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(hs * 0.35, -hs * 0.25, 3, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#111';
@@ -462,8 +413,6 @@
     return `rgb(${Math.round(r * factor)},${Math.round(g * factor)},${Math.round(b * factor)})`;
   }
 
-  /* ── Game loop ─────────────────────────────────────────── */
-
   function StartLoop() {
     _raf = requestAnimationFrame(function Frame(ts) {
       if (!GS) return;
@@ -477,8 +426,6 @@
   }
 
   function StopLoop() { if (_raf) { cancelAnimationFrame(_raf); _raf = null; } }
-
-  /* ── Screens ───────────────────────────────────────────── */
 
   const SCREEN_IDS = ['gf-fl-start', 'gf-fl-pause', 'gf-fl-gameover'];
 
@@ -509,8 +456,6 @@
     Draw();
   }
 
-  /* ── Flow ──────────────────────────────────────────────── */
-
   function DoStart() {
     StopLoop();
     GS = NewGameState();
@@ -530,8 +475,6 @@
       ShowScreen(null); StartLoop();
     }
   }
-
-  /* ── Input ─────────────────────────────────────────────── */
 
   function OnKey(e) {
     if (!GS || !document.getElementById('gf-fl')) return;
@@ -569,8 +512,6 @@
   function DetachKeys() { if (_kh) { document.removeEventListener('keydown', _kh, true); _kh = null; } }
   function OnVisibilityChange() { if (document.hidden && GS?.status === 'playing') DoPause(); }
 
-  /* ── Theme ─────────────────────────────────────────────── */
-
   function ApplyTheme() {
     const el = document.getElementById('gf-fl');
     if (!el) return;
@@ -582,8 +523,6 @@
     }
   }
   const _tobs = new MutationObserver(ApplyTheme);
-
-  /* ── Overlay ───────────────────────────────────────────── */
 
   function BuildOverlay() {
     if (document.getElementById('gf-fl')) return;
@@ -661,8 +600,6 @@
       cv.addEventListener('click', OnCanvasInteract);
       cv.addEventListener('touchstart', OnCanvasInteract, { passive: false });
     }
-    // The start screen overlay sits on top of the canvas, bind click on it
-    // directly so tapping the overlay starts the game (Flap from 'start').
     const startScr = document.getElementById('gf-fl-start');
     if (startScr) {
       startScr.addEventListener('click', e => {
@@ -681,8 +618,6 @@
       else CloseGradeFlappy();
     });
   }
-
-  /* ── Public API ────────────────────────────────────────── */
 
   function OpenGradeFlappy(grades) {
     if (grades?.length) _grades = NormalizeGrades(grades);
@@ -740,8 +675,6 @@
   W.CloseGradeFlappy      = CloseGradeFlappy;
   W.ToggleGradeFlappy     = ToggleGradeFlappy;
   W.BossKeyFlappy         = BossKeyFlappy;
-
-  /* ── CSS ───────────────────────────────────────────────── */
 
   function InjectCSS() {
     if (document.getElementById('gf-fl-css')) return;

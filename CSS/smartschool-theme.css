@@ -257,7 +257,6 @@ html[data-gf-theme="dark"] #gradeflow-panel-host {
   filter: invert(1) hue-rotate(180deg) !important;
 }
 
-/* SCROLLBARS */
 html[data-gf-theme="dark"] ::-webkit-scrollbar       { width: 8px; height: 8px; }
 html[data-gf-theme="dark"] ::-webkit-scrollbar-track  { background: var(--gf-scroll-track); }
 html[data-gf-theme="dark"] ::-webkit-scrollbar-corner { background: var(--gf-scroll-track); }
@@ -272,8 +271,11 @@ html[data-gf-theme="dark"] * {
   scrollbar-width: thin;
 }
 
-/* SELECTION */
 html[data-gf-theme="dark"] ::selection {
   background-color: var(--gf-accent-dim);
   color:            var(--gf-text);
+}
+
+html[data-gf-theme="dark"] :is(#gf-arcade,#gf-tetris,#gf-snake,#gf-2048,#gf-sweep,#gf-memory,#gf-shooter,#gf-bo,#gf-po,#gf-fl,#gf-rn,#gf-tw,#gf-io,#gf-cr,#gf-ss,#gf-hk) :is(img,svg,video,canvas,object,embed,iframe,.gf-dark-media-protected) {
+  filter: none !important;
 }

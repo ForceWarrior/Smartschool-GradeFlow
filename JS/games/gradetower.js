@@ -6,11 +6,10 @@
   const CV_W = 480;
   const CV_H = 360;
   const CELL = 30;
-  const COLS = CV_W / CELL;       // 16
-  const ROWS = CV_H / CELL;       // 12
+  const COLS = CV_W / CELL;
+  const ROWS = CV_H / CELL;
   const START_LIVES = 20;
 
-  // S-shaped path through the grid (cells). End is rightmost row.
   const PATH = [
     {x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
     {x:5,y:3},{x:5,y:4},{x:5,y:5},
@@ -31,7 +30,6 @@
     { id: 4, key: 'td_diff_expert', waves: 22, hpMul: 1.65, spdMul: 1.22, money: 170, lives: 10, intervalMul: 0.70 },
   ];
 
-  // Tower archetypes, values unlocked by grade %
   const TOWER_DEFS = [
     { id: 'rapid', minPct:  0,  cost: 50,  range: 90,  damage: 6,   fireMs: 280, color: '#22d3ee', label: 'R', name: 'td_tower_rapid' },
     { id: 'sniper', minPct: 50, cost: 90,  range: 170, damage: 22,  fireMs: 900, color: '#a3e635', label: 'S', name: 'td_tower_sniper' },
@@ -41,7 +39,6 @@
 
   const LS_BEST = 'gf-tower-best';
 
-  /* ── Storage / grades ─────────────────────────────────────── */
   function StorageGet(k, d) { try { const v = localStorage.getItem(k); return v != null ? JSON.parse(v) : d; } catch (_) { return d; } }
   function StorageSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
   function LoadBest()  { return StorageGet(LS_BEST, {}); }
@@ -73,7 +70,6 @@
     return '#f87171';
   }
 
-  /* ── State ───────────────────────────────────────────────── */
   let GS = null, _grades = [], _raf = null, _kh = null, _tobs = null;
   let _diffId = 2;
 
@@ -104,8 +100,8 @@
       score: 0,
       selectedTower: null,
       hoverCell: null,
-      placePreview: null,        // { tDef, x, y } when player picked a tower in toolbar
-      betweenWaves: 2500,         // ms before next wave button or auto-start
+      placePreview: null,
+      betweenWaves: 2500,
       autoNextTimer: 0,
       lastTs: 0,
       _shake: 0,
@@ -115,7 +111,6 @@
   function CellToPx(c) { return { x: c.x * CELL + CELL / 2, y: c.y * CELL + CELL / 2 }; }
 
   function MakeWave(waveIdx, diff) {
-    // Difficulty-scaled enemy roster
     const list = [];
     const total = 6 + Math.floor(waveIdx * 1.6);
     const eliteEvery = 5;
@@ -126,7 +121,7 @@
       list.push({
         kind: isElite ? 'elite' : isFast ? 'fast' : 'basic',
         hp:   Math.round(baseHp * diff.hpMul * (isElite ? 3.2 : isFast ? 0.7 : 1)),
-        speed: 0.04 * diff.spdMul * (isElite ? 0.75 : isFast ? 1.7 : 1),  // px/ms along path
+        speed: 0.04 * diff.spdMul * (isElite ? 0.75 : isFast ? 1.7 : 1),
         bounty: isElite ? 28 : isFast ? 9 : 12,
         damage: isElite ? 3 : 1,
       });
@@ -145,11 +140,9 @@
     GS._spawnInterval = Math.max(220, interval);
   }
 
-  /* ── Update ──────────────────────────────────────────────── */
   function Update(dt) {
     if (!GS || GS.status !== 'playing') return;
 
-    // Wave spawn
     if (GS.waveActive && GS.waveQueue.length) {
       GS.spawnTimer += dt;
       if (GS.spawnTimer >= GS._spawnInterval) {
@@ -164,7 +157,6 @@
         });
       }
     } else if (GS.waveActive && !GS.waveQueue.length && GS.enemies.length === 0) {
-      // Wave cleared
       GS.waveActive = false;
       const reward = 20 + GS.wave * 4;
       GS.money += reward;
@@ -173,18 +165,15 @@
       if (GS.wave >= GS.diff.waves) { Win(); return; }
     }
 
-    // Auto-start next wave between rounds
     if (!GS.waveActive && GS.autoNextTimer > 0) {
       GS.autoNextTimer -= dt;
       if (GS.autoNextTimer <= 0) StartWave();
     }
 
-    // Enemies follow path
     for (const e of GS.enemies) {
       const cur = PATH[e.pathIdx];
       const next = PATH[e.pathIdx + 1];
       if (!next) {
-        // reached end
         GS.lives -= e.damage;
         e.dead = true;
         GS._shake = 220;
@@ -208,11 +197,9 @@
     }
     GS.enemies = GS.enemies.filter(e => !e.dead);
 
-    // Towers shoot
     for (const tw of GS.towers) {
       tw.cooldown = Math.max(0, (tw.cooldown || 0) - dt);
       if (tw.cooldown > 0) continue;
-      // Find nearest enemy in range
       let bestEnemy = null, bestD = Infinity;
       for (const e of GS.enemies) {
         const dx = e.x - tw.x, dy = e.y - tw.y;
@@ -229,7 +216,6 @@
       }
     }
 
-    // Bullets
     for (const b of GS.bullets) {
       const t = b.target;
       if (!t || t.dead || t.hp <= 0) { b.dead = true; continue; }
@@ -237,7 +223,6 @@
       const dist = Math.hypot(dx, dy);
       const move = b.speed * dt;
       if (move >= dist) {
-        // Hit
         if (b.splash > 0) {
           for (const e of GS.enemies) {
             const ex = e.x - t.x, ey = e.y - t.y;
@@ -261,7 +246,6 @@
     GS.bullets = GS.bullets.filter(b => !b.dead);
     GS.enemies = GS.enemies.filter(e => !e.dead);
 
-    // Effects
     for (const fx of GS.effects) fx.t += dt;
     GS.effects = GS.effects.filter(fx => fx.t < (fx.kind === 'splash' ? 380 : 240));
 
@@ -283,7 +267,6 @@
     ShowScreen('gf-tw-go');
   }
 
-  /* ── Draw ────────────────────────────────────────────────── */
   function Draw() {
     const cv = document.getElementById('gf-tw-canvas');
     if (!cv || !GS) return;
@@ -294,20 +277,16 @@
     const sy = GS._shake > 0 ? (Math.random() - 0.5) * 4 * (GS._shake / 220) : 0;
     ctx.save(); ctx.translate(sx, sy);
 
-    // Background
     ctx.fillStyle = dark ? '#0a0e15' : '#e8efe5';
     ctx.fillRect(0, 0, CV_W, CV_H);
 
-    // Grid
     ctx.strokeStyle = dark ? '#161b24' : '#d4dcd0';
     ctx.lineWidth = 1;
     for (let x = 0; x <= COLS; x++) { ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, CV_H); ctx.stroke(); }
     for (let y = 0; y <= ROWS; y++) { ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(CV_W, y * CELL); ctx.stroke(); }
 
-    // Path
     ctx.fillStyle = dark ? '#1f2a3a' : '#c8b889';
     for (const c of PATH) ctx.fillRect(c.x * CELL + 1, c.y * CELL + 1, CELL - 2, CELL - 2);
-    // path overlay
     ctx.strokeStyle = dark ? 'rgba(180,180,180,0.18)' : 'rgba(80,60,40,0.25)';
     ctx.lineWidth = 2;
     ctx.setLineDash([4, 6]);
@@ -317,7 +296,6 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Hover preview / range
     if (GS.placePreview && GS.hoverCell) {
       const c = GS.hoverCell;
       const cx = c.x * CELL + CELL / 2, cy = c.y * CELL + CELL / 2;
@@ -337,21 +315,16 @@
       }
     }
 
-    // Towers
     for (const tw of GS.towers) {
       const cx = tw.x, cy = tw.y;
-      // base
       ctx.fillStyle = dark ? '#1f2937' : '#37474f';
       ctx.beginPath(); ctx.arc(cx, cy, CELL * 0.42, 0, Math.PI * 2); ctx.fill();
-      // body
       ctx.fillStyle = tw.color;
       ctx.beginPath(); ctx.arc(cx, cy, CELL * 0.32, 0, Math.PI * 2); ctx.fill();
-      // letter
       ctx.fillStyle = '#0a0a0a';
       ctx.font = '700 12px "IBM Plex Mono",monospace';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(tw.label, cx, cy);
-      // range when selected
       if (GS.selectedTower === tw) {
         ctx.strokeStyle = tw.color + 'aa';
         ctx.lineWidth = 2;
@@ -362,7 +335,6 @@
       }
     }
 
-    // Bullets
     for (const b of GS.bullets) {
       ctx.fillStyle = b.color;
       ctx.beginPath(); ctx.arc(b.x, b.y, 3, 0, Math.PI * 2); ctx.fill();
@@ -370,16 +342,13 @@
       ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Enemies
     for (const e of GS.enemies) {
       const r = e.kind === 'elite' ? 11 : e.kind === 'fast' ? 7 : 9;
       const col = e.kind === 'elite' ? '#a78bfa' : e.kind === 'fast' ? '#fbbf24' : '#f87171';
-      // body
       ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
       ctx.stroke();
-      // hp bar
       const w = r * 2 + 4, h = 3;
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.fillRect(e.x - w / 2, e.y - r - 7, w, h);
@@ -387,7 +356,6 @@
       ctx.fillRect(e.x - w / 2, e.y - r - 7, w * Math.max(0, e.hp / e.maxHp), h);
     }
 
-    // Effects
     for (const fx of GS.effects) {
       if (fx.kind === 'hit') {
         const a = 1 - fx.t / 240;
@@ -409,7 +377,6 @@
 
     ctx.restore();
 
-    // Update HUD
     SetText('gf-tw-money', GS.money);
     SetText('gf-tw-lives', `${GS.lives}/${GS.maxLives}`);
     SetText('gf-tw-wave', `${GS.wave}/${GS.diff.waves}`);
@@ -434,7 +401,6 @@
     UpdateToolbarHighlight();
   }
 
-  /* ── Loop ────────────────────────────────────────────────── */
   function StartLoop() {
     StopLoop();
     _raf = requestAnimationFrame(function Frame(ts) {
@@ -449,7 +415,6 @@
   }
   function StopLoop() { if (_raf) { cancelAnimationFrame(_raf); _raf = null; } }
 
-  /* ── UI flow ─────────────────────────────────────────────── */
   const SCREENS = ['gf-tw-start', 'gf-tw-pause', 'gf-tw-go', 'gf-tw-win'];
   function ShowScreen(id) {
     SCREENS.forEach(s => { const e = document.getElementById(s); if (e) e.style.display = s === id ? 'flex' : 'none'; });
@@ -469,7 +434,7 @@
     GS = NewGameState(_diffId);
     GS.status = 'playing';
     GS.lastTs = performance.now();
-    GS.autoNextTimer = 1500;        // start first wave shortly after
+    GS.autoNextTimer = 1500;
     ShowScreen(null);
     StartLoop();
   }
@@ -480,7 +445,6 @@
     else if (GS.status === 'paused') { GS.status = 'playing'; GS.lastTs = performance.now(); ShowScreen(null); StartLoop(); }
   }
 
-  /* ── Tower placement ─────────────────────────────────────── */
   function GetPlacementState(cellX, cellY, def) {
     if (!def) return { ok: false, reason: 'none' };
     if (cellX < 0 || cellX >= COLS || cellY < 0 || cellY >= ROWS) return { ok: false, reason: 'bounds' };
@@ -536,7 +500,6 @@
     return true;
   }
 
-  /* ── Input ───────────────────────────────────────────────── */
   function CanvasMouse(e) {
     const cv = document.getElementById('gf-tw-canvas');
     if (!cv) return null;
@@ -610,7 +573,6 @@
 
   function OnVisibilityChange() { if (document.hidden && GS?.status === 'playing') DoPause(); }
 
-  /* ── Theme ───────────────────────────────────────────────── */
   function ApplyTheme() {
     const el = document.getElementById('gf-tw');
     if (!el) return;
@@ -622,7 +584,6 @@
     }
   }
 
-  /* ── Build ───────────────────────────────────────────────── */
   function RenderDiffPicker() {
     const el = document.getElementById('gf-tw-diffs');
     if (!el) return;
@@ -751,7 +712,6 @@
     });
   }
 
-  /* ── Public API ──────────────────────────────────────────── */
   function OpenGradeTower(grades) {
     if (grades?.length) _grades = NormalizeGrades(grades);
     if (!document.getElementById('gf-tw')) BuildOverlay();
@@ -797,7 +757,6 @@
   W.ToggleGradeTower = ToggleGradeTower;
   W.BossKeyTower     = BossKeyTower;
 
-  /* ── CSS ─────────────────────────────────────────────────── */
   function InjectCSS() {
     if (document.getElementById('gf-tw-css')) return;
     const s = document.createElement('style');

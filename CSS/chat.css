@@ -1,7 +1,5 @@
-﻿/* chat.css, Gradeflow LAN chat overlay. Theme-aware via GradeFlow and SPP root attributes. */
 
 #gf-chat-root {
-  /* default: light theme */
   --gfc-bg:        #ffffff;
   --gfc-bg-alt:    #f5f5f4;
   --gfc-border:    #e7e5e4;
@@ -26,10 +24,6 @@
   color: var(--gfc-text);
 }
 
-/* The GradeFlow dark theme applies filter:invert(1) hue-rotate(180deg) to <html>.
-   The chat overlay is a direct DOM child so it inherits that filter.
-   We counter-invert the overlay so the filter chain is identity, and then our
-   dark CSS variables render at face value. Same pattern as canvas in smartschool-theme.css. */
 html[data-gf-theme="dark"] #gf-chat-root {
   filter: invert(1) hue-rotate(180deg);
   --gfc-bg:        #1c1917;
@@ -47,7 +41,8 @@ html[data-gf-theme="dark"] #gf-chat-root {
   --gfc-shadow: 0 12px 40px rgba(0,0,0,0.45);
 }
 
-html[data-gf-theme-source="smpp"] #gf-chat-root {
+html[data-gf-theme-source="smpp"] #gf-chat-root,
+html[data-gf-theme-source="custom"] #gf-chat-root {
   filter: none !important;
   --gfc-bg:        var(--gf-ext-surface, #ffffff);
   --gfc-bg-alt:    var(--gf-ext-surface-2, #f5f5f4);
@@ -219,6 +214,10 @@ html[data-gf-theme-source="smpp"][data-gf-external-glass="1"] #gf-chat-root .gf-
 .gf-chat-btn-primary { background: var(--gfc-accent); color: var(--gfc-on-accent); }
 .gf-chat-btn-primary:hover { background: var(--gfc-accent-hover); }
 .gf-chat-btn-secondary { background: var(--gfc-secondary); color: var(--gfc-text); }
+.gf-chat-btn-lan { display: grid; gap: 2px; margin-top: 8px; padding: 10px 12px; text-align: left; background: color-mix(in srgb, var(--gfc-accent) 12%, var(--gfc-bg-alt)); color: var(--gfc-text); border: 1px solid color-mix(in srgb, var(--gfc-accent) 40%, var(--gfc-border)); }
+.gf-chat-btn-lan b { font-weight: 700; }
+.gf-chat-btn-lan span { font-size: 11px; font-weight: 400; color: var(--gfc-text-mute); }
+.gf-chat-btn-lan:hover { border-color: var(--gfc-accent); }
 .gf-chat-btn-secondary:hover { background: var(--gfc-secondary-hover); }
 .gf-chat-btn-ghost { background: transparent; color: var(--gfc-text); border: 1px solid var(--gfc-border); }
 .gf-chat-btn-ghost:hover { background: var(--gfc-bg-alt); }

@@ -11,7 +11,6 @@
     return C.deriveHmacKey(masterKey, SIG_LABEL);
   }
 
-
 function canonicalize(msg) {
     const parts = [
       'v1',
@@ -32,7 +31,6 @@ function canonicalize(msg) {
     return { ...msg, sig: C.bytesToB64(sig) };
   }
 
-
 async function verifyMessage(masterKey, signed, opts = {}) {
     try {
       if (!signed || typeof signed !== 'object') return null;
@@ -46,14 +44,12 @@ async function verifyMessage(masterKey, signed, opts = {}) {
       const ok = await C.hmacVerify(key, data, tag);
       if (!ok) return null;
 
-
       if (signed.ts && Math.abs(Date.now() - signed.ts) > 5 * 60_000) return null;
       return signed;
     } catch (_) {
       return null;
     }
   }
-
 
   function pack(signed) {
     return C.bytesToB64(C.enc.encode(JSON.stringify(signed)));

@@ -5,7 +5,6 @@ const SMSC_CDN_HOSTS = [
   'https://static4.smart-school.net',
 ];
 
-// Personalization cache
 const GF_SETTINGS_KEY = 'gf-personalization';
 const GF_PFP_KEY      = 'gf-profile-picture';
 const GF_STUDY_KEY    = 'gradeflow-study-sessions';
@@ -194,6 +193,26 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
   }
 
+  if (msg?.type === 'gf-load-scripts') {
+    const tabId = _sender.tab?.id;
+    const files = (msg.files || []).filter(f => /^JS\/games\/[a-z0-9-]+\.js$/.test(f));
+    if (tabId == null || !files.length) { sendResponse({ ok: false }); return false; }
+    chrome.scripting.executeScript({ target: { tabId, frameIds: [_sender.frameId || 0] }, files })
+      .then(() => sendResponse({ ok: true }), e => sendResponse({ ok: false, error: String(e?.message || e) }));
+    return true;
+  }
+
+  if (msg?.type === 'gf-fetch-css') {
+    let url;
+    try { url = new URL(msg.url); } catch (_) { sendResponse({ css: null }); return false; }
+    if (url.protocol !== 'https:' || !/(^|\.)(smartschool\.be|smart-school\.net)$/.test(url.hostname)) { sendResponse({ css: null }); return false; }
+    fetch(url.href, { credentials: 'omit' })
+      .then(res => res.ok ? res.text() : null)
+      .then(css => sendResponse({ css: css && css.length < 4000000 ? css : null }))
+      .catch(() => sendResponse({ css: null }));
+    return true;
+  }
+
   if (msg.type !== 'gf-fetch-svg') return false;
   const val = msg.value;
   (async () => {
@@ -288,6 +307,10 @@ chrome.runtime.onConnect.addListener((port) => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg) return false;
+  if (msg.type === 'gf-lan-ensure') {
+    _gfChatEnsureOffscreen().then(() => sendResponse({ ok: true }), e => sendResponse({ ok: false, error: String(e?.message || e) }));
+    return true;
+  }
   if (msg.ns === 'gf-chat-cmd') {
     (async () => {
       try {

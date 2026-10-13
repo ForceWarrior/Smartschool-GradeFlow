@@ -22,7 +22,6 @@
     return C.bytesToB64(new Uint8Array(bits));
   }
 
-
 function createSession(masterKey, peerId, onRotate) {
     let current = null;
     let bucket = -1;

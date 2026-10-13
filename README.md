@@ -1,6 +1,6 @@
 # GradeFlow
 
-A browser extension that adds a full grade dashboard directly inside SmartSchool with weighted averages, period filters, planner tools, class comparison, personalisation options, peer-to-peer chat, and 11 hidden arcade games.
+A browser extension that adds a full grade dashboard directly inside SmartSchool with weighted averages, period filters, planner tools, class comparison, a theme editor, personalisation options, peer-to-peer and network chat, and 15 hidden arcade games.
 
 > **Note:** This extension only works on SmartSchool (`*.smartschool.be`). You need to be logged in for it to access your grades.
 
@@ -11,6 +11,9 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 - All your grades across every period, sorted by subject
 - Color coded cells (green/yellow/red) so you can spot weak and strong results at a glance
 - Hover any grade to see score, contribution, and weighted details
+- Grades without points show up too: labels (Goed, Uitmuntend, A, B...), icon ratings with their goal breakdown, and ranges like 60% - 90%
+- Choose whether those count towards your average and what percentage each label is worth
+- Grades SmartSchool marks as not counting are shown but left out of your average until you click them
 - Exclude individual grades or adjust coefficients for what-if planning
 - Bottom bar with overall percentage, total points, subject count, best subject, and a progress bar
 - Disclaimer: results may differ from your official report
@@ -19,7 +22,8 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 - Overview, trends, planner, class comparison, attendance, decision help, and export tabs
 - Trend view shows whether each subject is improving, stable, or slipping
 - Study/work planner lets you add your own tasks and get one reminder at the start time
-- SmartSchool planner and attendance loaders show upcoming work, absences, and late arrivals when SmartSchool exposes that data
+- Planner reads your assignments and to-dos straight from SmartSchool's planner, so only real tasks end up under overdue
+- Attendance reads your Studentcard and only lists real absences and late arrivals, without duplicates
 - Decision help highlights safe, watchlist, and critical subjects with approximate next-score targets
 - Export grades to CSV or a print-friendly PDF report
 
@@ -34,7 +38,11 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 - Duplicates across periods handled automatically
 
 ### Appearance
-- Dark and light theme with anti-flash loading
+- Theme editor with 12 presets (Midnight, Graphite, AMOLED, Nord, Dracula, Mocha, Solarized, Forest, Ocean, Rosé, Paper, Frost) or your own colours
+- Recolours SmartSchool itself instead of inverting it, so images and photos stay normal
+- Live preview, save your own themes, share them with a GFTHEME code
+- Your theme also styles the GradeFlow panel, popup, chat, games, and grade colours
+- Classic dark mode and the normal SmartSchool look are still there
 - Smartschool++ support: when Smartschool++ is active, its theme, glass mode, layout, popup styling, chat, games, and update modal take over cleanly
 - Dutch, English, and French
 - Custom language editor with JSON import/export
@@ -56,10 +64,14 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 - Fake message, notification, and news counters (0-9999)
 
 ### Arcade (press F8)
-11 hidden grade-themed games that use your actual grades when available:
+15 hidden grade-themed games that use your actual grades when available:
 
 | Game | What it is |
 |------|-----------|
+| Grade.io | Agar.io with bots, solo or with everyone on your network |
+| Crossy Grade | Crossy Road, hop over roads, rivers, and railways |
+| Grade Surfers | Subway Surfers style endless runner with trains, power-ups, and the inspector |
+| Grade Hook | Stickman Hook, swing from hook to hook through 20+ levels |
 | GradeStack | Tetris with grade-themed pieces |
 | GradeSnake | Snake with levels, good grades grow you, bad ones shrink you |
 | Grade 2048 | Merge weak grades until you hit 20/20 |
@@ -72,7 +84,7 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 | GradeRunner | Endless runner with jumps, slides, pickups, and grade obstacles |
 | GradeTower | Micro tower defense with difficulty levels and grade-unlocked towers |
 
-All games track your personal best and have animated previews in the menu.
+All games track your personal best and have animated previews in the menu. Games only load when you open them, so SmartSchool pages stay fast.
 
 ### Peer-to-peer chat (press F7)
 Optional opt-in overlay for chatting with friends who also use GradeFlow.
@@ -85,7 +97,15 @@ Optional opt-in overlay for chatting with friends who also use GradeFlow.
 - Mandatory warning on first use: your LAN/public IP is visible to every peer, there is no moderation, and any peer can pick any nickname and send anything. Only chat with people you actually know.
 - Fully translated (Dutch, English, French)
 
+### Network chat and Grade.io network mode
+- Click Network chat or Network in Grade.io and you're in, no codes or invites
+- Finds everyone on the same network (same school or home connection)
+- Public relays are only used to set up the connection, encrypted; messages and game data go straight between browsers
+- Grade.io lobbies are filled with bots, the oldest player hosts and hosting moves on if they leave
+
 ### Keyboard shortcuts
+All shortcuts can be changed in the ? menu: click a key and press a new one.
+
 | Key | Action |
 |-----|--------|
 | F6 | Open GradeFlow |
@@ -103,7 +123,11 @@ GradeFlow reads grades from SmartSchool's own API and stores everything locally 
 
 ## Install
 
-Available on the [Chrome Web Store](https://chromewebstore.google.com).
+Available on the [Chrome Web Store](https://chromewebstore.google.com/detail/gradeflow/mhcppcdlhnopfnkicmdmjakibpkbilkm).
+
+## Community
+
+Join the [GradeFlow Discord](https://discord.com/invite/WN7yMAfAkk) for updates, ideas, and help.
 
 ## License
 
