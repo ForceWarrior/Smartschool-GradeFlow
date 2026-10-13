@@ -81,7 +81,7 @@
   function Hue() { return Math.floor(Math.random() * 360); }
 
   function NewWorld() {
-    const w = { seed: (Math.random() * 4294967296) >>> 0, tick: 0, nextId: 1, players: new Map(), cells: new Map(), viruses: new Map(), ejected: new Map(), events: [], time: 0 };
+    const w = { seed: (Math.random() * 4294967296) >>> 0, ep: Date.now(), tick: 0, nextId: 1, players: new Map(), cells: new Map(), viruses: new Map(), ejected: new Map(), events: [], time: 0 };
     w.pellets = NewPellets(w.seed);
     for (let i = 0; i < VIRUS_COUNT; i++) AddVirus(w, Rand(300, SIZE - 300), Rand(300, SIZE - 300));
     return w;
@@ -421,11 +421,11 @@
   }
 
   function SyncOf(w) {
-    return { t: 'sync', seed: w.pellets.seed, gens: [...w.pellets.gen], roster: RosterOf(w) };
+    return { t: 'sync', ep: w.ep, seed: w.pellets.seed, gens: [...w.pellets.gen], roster: RosterOf(w) };
   }
 
   function WorldFromSnapshot(snap) {
-    const w = { seed: pelletState.seed, tick: snap.k, nextId: 1, players: new Map(), cells: new Map(), viruses: new Map(), ejected: new Map(), events: [], time: 0, pellets: pelletState };
+    const w = { seed: pelletState.seed, ep: net.hostEp || Date.now(), tick: snap.k, nextId: 1, players: new Map(), cells: new Map(), viruses: new Map(), ejected: new Map(), events: [], time: 0, pellets: pelletState };
     let maxId = 0;
     for (const [id, name, hue, bot] of roster.values()) AddPlayer(w, id, name, !!bot, hue);
     for (const [pid, aliveFlag, flat] of snap.p) {
@@ -447,19 +447,13 @@
   }
 
   function Net() {
-    const self = { port: null, selfId: '', status: 'discovering', peers: new Map(), dead: new Set(), host: '', upBase: 0, ready: false, lastSend: 0, lastSnapAt: 0 };
+    const self = { port: null, selfId: '', status: 'discovering', peers: new Map(), dead: new Set(), host: '', hostEp: 0, hostAt: 0, ready: false, lastSend: 0, lastSnapAt: 0 };
     const post = m => { try { self.port?.postMessage(m); } catch (_) {} };
     self.send = (to, data, rel = true) => post({ kind: 'send', to, data, rel });
     self.rename = name => post({ kind: 'rename', name });
-    self.myUp = () => performance.now() - self.upBase;
-    self.peerUp = id => { const p = self.peers.get(id); return p ? p.up + (performance.now() - p.at) : 0; };
     self.elect = () => {
-      let best = self.selfId, bestUp = self.myUp();
-      for (const id of self.peers.keys()) {
-        if (self.dead.has(id)) continue;
-        const up = self.peerUp(id);
-        if (up > bestUp + 1500 || (Math.abs(up - bestUp) <= 1500 && id < best)) { best = id; bestUp = up; }
-      }
+      let best = self.selfId;
+      for (const id of self.peers.keys()) if (!self.dead.has(id) && id < best) best = id;
       return best;
     };
     self.start = () => {
@@ -488,6 +482,8 @@
       world = last && pelletState ? WorldFromSnapshot(last.data) : NewWorld();
       pelletState = world.pellets;
     }
+    net.hostEp = world.ep;
+    net.ready = true;
     myId = net.selfId;
     if (!world.players.has(myId)) AddPlayer(world, myId, myName, false);
     else world.players.get(myId).name = myName;
@@ -498,33 +494,37 @@
     net.send(null, SyncOf(world), true);
   }
 
-  function Rehost() {
-    if (!net?.selfId || net.status === 'offline') return;
+  function SetHost(id, ep) {
     const prev = net.host;
-    net.host = net.elect();
-    if (net.host === prev) return;
-    if (net.host === net.selfId) BecomeHost();
-    else if (prev === net.selfId) { world = null; net.ready = false; snaps.length = 0; net.pendingSpawn = alive; }
-    else { net.ready = !!pelletState && prev !== ''; net.lastSnapAt = performance.now(); }
+    net.host = id;
+    net.hostEp = ep;
+    net.hostAt = net.lastSnapAt = performance.now();
+    if (id === net.selfId) return BecomeHost();
+    if (prev === net.selfId) { world = null; snaps.length = 0; net.pendingSpawn = alive; }
+    net.ready = !!pelletState;
+  }
+
+  function Rehost() {
+    if (!net?.selfId || net.status === 'offline' || (net.host && !net.dead.has(net.host))) return;
+    SetHost(net.elect(), net.hostEp);
+    UpdateLobby();
   }
 
   function OnNet(m) {
     if (!net) return;
     if (m.kind === 'status') {
-      if (!net.selfId) { net.selfId = m.selfId; net.upBase = performance.now() - (m.up || 0); }
+      if (!net.selfId) net.selfId = m.selfId;
       net.status = m.status;
-      if (m.status === 'online' && !net.host) setTimeout(() => { if (!net?.host && net?.status === 'online') Rehost(); }, net.peers.size ? 0 : 4000);
+      if (m.status === 'online' && !net.host) setTimeout(() => { if (net?.status === 'online') Rehost(); }, 4000);
       UpdateLobby();
     } else if (m.kind === 'peer') {
-      net.peers.set(m.id, { name: m.name, up: m.up || 0, at: performance.now() });
-      if (net.host) Rehost();
+      net.peers.set(m.id, { name: m.name });
       if (IsHost() && world) {
         if (!world.players.has(m.id)) AddPlayer(world, m.id, m.name, false);
         FillBots(world);
         net.send(m.id, SyncOf(world), true);
         net.send(null, { t: 'roster', roster: RosterOf(world) }, true);
       }
-      if (!net.host) Rehost();
       UpdateLobby();
     } else if (m.kind === 'rename') {
       const p = net.peers.get(m.id);
@@ -540,14 +540,23 @@
         FillBots(world);
         net.send(null, { t: 'roster', roster: RosterOf(world) }, true);
       }
-      Rehost();
+      if (net.host === m.id) { net.host = ''; Rehost(); }
       UpdateLobby();
     } else if (m.kind === 'msg') OnPeerData(m.id, m.data);
   }
 
   function OnPeerData(from, d) {
     if (!d || typeof d !== 'object') return;
-    if (net.dead.has(from)) { net.dead.delete(from); Rehost(); }
+    net.dead.delete(from);
+    if (d.t === 'sync' && from !== net.host) {
+      const ep = Number(d.ep) || 0;
+      const held = net.host && !net.dead.has(net.host) && (IsHost() || net.ready);
+      if (held && !(ep < net.hostEp || (ep === net.hostEp && from < net.host))) {
+        if (IsHost() && world) net.send(from, SyncOf(world), true);
+        return;
+      }
+      SetHost(from, ep);
+    }
     if (IsHost() && world) {
       const p = world.players.get(from);
       if (d.t === 'in' && p && !p.bot) {
@@ -832,9 +841,8 @@
       simAlpha = acc / STEP;
       Broadcast();
     }
-    if (net && net.ready && net.host && !IsHost() && performance.now() - net.lastSnapAt > 3500) {
+    if (net && net.host && !IsHost() && performance.now() - (net.ready ? net.lastSnapAt : net.hostAt) > (net.ready ? 3500 : 6000)) {
       net.dead.add(net.host);
-      net.lastSnapAt = performance.now();
       Rehost();
     }
     SendInput();

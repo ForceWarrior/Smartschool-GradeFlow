@@ -1065,7 +1065,7 @@ function _GfAttendanceCode(el) {
 
 function _GfParseAttendance(el, text) {
   if (text.length < 6 || text.length > 260 || _GF_ATT_JUNK_RE.test(text)) return null;
-  const found = _GfFindDate(text);
+  const found = _GfFindDate(text, true);
   if (!found || !_GfDateInSchoolYear(found)) return null;
   const code = _GfAttendanceCode(el);
   const late = code === 'L' || _GF_ATT_LATE_RE.test(text);
@@ -1149,8 +1149,10 @@ function _GfFindAttendanceNavElement(doc) {
 function _GfActivateAttendanceNav(doc) {
   const target = _GfFindAttendanceNavElement(doc);
   if (!target) return false;
-  target.querySelector?.('a[href]')?.setAttribute('target', '_self');
-  target.click?.();
+  const link = target.matches('a[href]') ? target : target.querySelector('a[href]');
+  link?.setAttribute('target', '_self');
+  const view = target.ownerDocument.defaultView;
+  for (const type of ['mousedown', 'mouseup', 'click']) target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view }));
   return true;
 }
 
@@ -1245,7 +1247,7 @@ function _GfPlannerItemFromApi(el) {
     dueIso: at.toISOString(),
     type: String(el.assignmentType?.name || (el.plannedElementType === 'planned-to-dos' ? 'To-do' : '')).trim(),
     resolved: el.resolvedStatus === 'resolved',
-    url: `/planner/main/`,
+    url: `${location.origin}/planner/main/`,
     source: 'api',
   };
 }

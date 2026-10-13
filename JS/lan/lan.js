@@ -28,7 +28,7 @@
   function Broker(url) {
     let c = pool.get(url);
     if (!c) {
-      c = GfMqtt.Client(url, (topic, payload, from) => routes.get(topic)?.(payload, from));
+      c = GfMqtt.Client(url, (topic, payload, from) => routes.get(topic)?.forEach(f => f(payload, from)));
       pool.set(url, c);
     }
     return c;
@@ -125,15 +125,12 @@
 
   function Join(channel, opts) {
     const selfId = RandomId();
-    const startedAt = performance.now();
     const peers = new Map();
     const seen = new Map();
     let name = CleanName(opts.name) || 'Speler';
     let keys = null, hello = 0, sweep = 0, closed = false;
 
     const status = s => opts.onStatus?.(s, selfId);
-
-    function Uptime() { return performance.now() - startedAt; }
 
     async function Publish(obj) {
       if (!keys || closed) return;
@@ -142,13 +139,13 @@
     }
 
     function Hello() {
-      Publish({ t: 'hi', name, up: Math.round(Uptime()) });
+      Publish({ t: 'hi', name });
     }
 
     function Peer(id) {
       let p = peers.get(id);
       if (!p) {
-        p = { id, name: 'Speler', up: 0, upAt: 0, seen: 0, pc: null, r: null, u: null, open: false, tried: -1e9 };
+        p = { id, name: 'Speler', seen: 0, pc: null, r: null, u: null, open: false, tried: -1e9 };
         peers.set(id, p);
       }
       return p;
@@ -170,10 +167,10 @@
       dc.onopen = () => {
         if (p.r?.readyState === 'open' && p.u?.readyState === 'open' && !p.open) {
           p.open = true;
-          opts.onPeer?.({ id: p.id, name: p.name, up: PeerUptime(p) });
+          opts.onPeer?.({ id: p.id, name: p.name });
         }
       };
-      dc.onclose = () => { if (peers.get(p.id) === p) Drop(p); };
+      dc.onclose = () => { if (peers.get(p.id) === p && (p.r === dc || p.u === dc)) Drop(p); };
       dc.onmessage = e => {
         if (typeof e.data !== 'string' || e.data.length > 65536) return;
         let data;
@@ -200,7 +197,7 @@
       WireChannel(p, pc.createDataChannel('u', { ordered: false, maxRetransmits: 0 }));
       await pc.setLocalDescription(await pc.createOffer());
       await GatherComplete(pc);
-      if (p.pc === pc) Publish({ t: 'offer', to: p.id, sdp: pc.localDescription.sdp, name, up: Math.round(Uptime()) });
+      if (p.pc === pc) Publish({ t: 'offer', to: p.id, sdp: pc.localDescription.sdp, name });
     }
 
     async function Answer(p, sdp) {
@@ -209,10 +206,6 @@
       await pc.setLocalDescription(await pc.createAnswer());
       await GatherComplete(pc);
       if (p.pc === pc) Publish({ t: 'answer', to: p.id, sdp: pc.localDescription.sdp });
-    }
-
-    function PeerUptime(p) {
-      return p.up + (performance.now() - p.upAt);
     }
 
     function Note(p, msg) {
@@ -224,7 +217,6 @@
           if (p.open) opts.onRename?.(p.id, n);
         }
       }
-      if (Number.isFinite(msg.up)) { p.up = msg.up; p.upAt = performance.now(); }
     }
 
     async function OnRelay(payload) {
@@ -269,7 +261,8 @@
       if (!netId) { status('offline'); return; }
       keys = await RoomKeys(netId, channel);
       if (closed) return;
-      routes.set(keys.topic, payload => OnRelay(payload));
+      if (!routes.has(keys.topic)) routes.set(keys.topic, new Set());
+      routes.get(keys.topic).add(OnRelay);
       for (const url of BROKERS) Broker(url).subscribe(keys.topic);
       status('connecting');
       setTimeout(Hello, 600);
@@ -279,9 +272,7 @@
 
     return {
       selfId,
-      uptime: Uptime,
-      peerUptime(id) { const p = peers.get(id); return p ? PeerUptime(p) : 0; },
-      peers() { return [...peers.values()].filter(p => p.open).map(p => ({ id: p.id, name: p.name, up: PeerUptime(p) })); },
+      peers() { return [...peers.values()].filter(p => p.open).map(p => ({ id: p.id, name: p.name })); },
       rename(n) { name = CleanName(n) || name; Hello(); },
       send(to, data, reliable = true) {
         const json = JSON.stringify(data);
@@ -298,7 +289,8 @@
         clearInterval(sweep);
         for (const p of peers.values()) Drop(p, false);
         peers.clear();
-        if (keys) {
+        const set = keys && routes.get(keys.topic);
+        if (set?.delete(OnRelay) && !set.size) {
           routes.delete(keys.topic);
           for (const url of BROKERS) pool.get(url)?.unsubscribe(keys.topic);
         }

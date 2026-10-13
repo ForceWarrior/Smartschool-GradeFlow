@@ -173,10 +173,11 @@ function SaveSubjectIcons(obj) {
 
 function EmojiForSubject(subj) {
   const lower = subj.toLowerCase();
-  const words = new Set(lower.split(/[^a-zà-ÿ0-9]+/));
+  const words = lower.split(/[^a-zà-ÿ0-9]+/).filter(Boolean);
+  const code = words.length <= 2 ? words[0] : '';
   for (const rule of GetIconRules()) {
     const keywords = rule.keys.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
-    if (keywords.some(k => k.length <= 3 ? words.has(k) : lower.includes(k))) return rule.icon;
+    if (keywords.some(k => k.length <= 2 ? k === code : k.length === 3 ? words.includes(k) : lower.includes(k))) return rule.icon;
   }
   return '📘';
 }
@@ -384,6 +385,9 @@ function SortScoresChronologically(scores) {
     return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
   });
 }
+function PointsMax(scores) {
+  return scores.reduce((a, e) => a + e.max, 0);
+}
 function CalcPercent(scores) {
   const s = scores.reduce((a, e) => a + e.scored, 0);
   const m = scores.reduce((a, e) => a + e.max, 0);
@@ -463,7 +467,10 @@ function GetHoursForSubject(subject) {
 function ComputeTotalWeightedHours(data) {
   if (S.weightMode !== 'hours' || !data) return null;
   let total = 0;
-  for (const subj of Object.keys(data)) { const h = GetHoursForSubject(subj); if (h) total += h; }
+  for (const [subj, { scores }] of Object.entries(data)) {
+    const h = GetHoursForSubject(subj);
+    if (h && PointsMax(EffectiveScores(subj, scores, S.activePeriod))) total += h;
+  }
   return total > 0 ? total : null;
 }
 function WeightedPct(data, period = S.activePeriod, includeWhatIf = period === S.activePeriod) {
@@ -471,7 +478,9 @@ function WeightedPct(data, period = S.activePeriod, includeWhatIf = period === S
   for (const [subject, { scores }] of Object.entries(data || {})) {
     const h = GetHoursForSubject(subject);
     if (!h || isNaN(h)) continue;
-    weighted += EffectiveSubjectPct(subject, scores, period, includeWhatIf) * h;
+    const eff = EffectiveScores(subject, scores, period, includeWhatIf);
+    if (!PointsMax(eff)) continue;
+    weighted += CalcPercent(eff) * h;
     totalHours += h;
   }
   return totalHours > 0 ? (weighted / totalHours) : 0;
@@ -506,7 +515,7 @@ function FormulaSubjectPct(subject, store) {
       const pw = parseFloat(part.weight) || 0;
       if (!pw || !part.period) continue;
       const scores = EffectiveScores(subject, store[part.period]?.[subject]?.scores || [], part.period, false);
-      if (!scores.length) continue;
+      if (!PointsMax(scores)) continue;
       gws += CalcPercent(scores) * pw;
       gtw += pw;
     }
@@ -605,7 +614,7 @@ function GetScorePeriod(score, fallbackPeriod) {
 }
 function GradeKey(period, subject, score) {
   const x = score?._extra;
-  return [period || '', subject || '', score?.title || '', score?.date || '', x ? `x:${ExtraLabelKey(x)}` : String(score?.scored ?? ''), x ? '' : String(score?.max ?? '')]
+  return [period || '', subject || '', score?.title || '', score?.date || '', x ? `x:${x.id || ExtraLabelKey(x)}` : String(score?.scored ?? ''), x ? '' : String(score?.max ?? '')]
     .join('\u0001');
 }
 function GradeKeyFromScore(subject, score, fallbackPeriod) {
@@ -748,9 +757,6 @@ function EffectiveScores(subject, scores, fallbackPeriod, includeWhatIf = true) 
     .map(score => ApplyScoreModel(subject, score, fallbackPeriod));
   const planned = includeWhatIf ? BuildWhatIfScore(subject) : null;
   return planned ? [...base, planned] : base;
-}
-function EffectiveSubjectPct(subject, scores, fallbackPeriod, includeWhatIf = true) {
-  return CalcPercent(EffectiveScores(subject, scores, fallbackPeriod, includeWhatIf));
 }
 function EffectiveTotals(data, fallbackPeriod, includeWhatIf = true) {
   return Object.entries(data || {}).flatMap(([subject, payload]) => EffectiveScores(subject, payload?.scores || [], fallbackPeriod, includeWhatIf));
@@ -1088,18 +1094,15 @@ async function CopyText(text) {
   return ok;
 }
 function ToggleGradeExcluded(key, nc = false) {
-  let nowExcluded;
-  if (nc && !S.excludedGrades?.[key]) {
-    const next = { ...(S.includedGrades || {}) };
-    nowExcluded = !!next[key];
-    if (nowExcluded) delete next[key]; else next[key] = 1;
-    SaveIncludedGrades(next);
-  } else {
-    const next = { ...(S.excludedGrades || {}) };
-    nowExcluded = !next[key];
-    if (nowExcluded) next[key] = 1; else delete next[key];
-    SaveExcludedGrades(next);
-  }
+  const excluded = { ...(S.excludedGrades || {}) };
+  const included = { ...(S.includedGrades || {}) };
+  const nowExcluded = !(excluded[key] || (nc && !included[key]));
+  delete excluded[key];
+  delete included[key];
+  if (nowExcluded && !nc) excluded[key] = 1;
+  if (!nowExcluded && nc) included[key] = 1;
+  SaveExcludedGrades(excluded);
+  SaveIncludedGrades(included);
   ShowToast(nowExcluded ? Translate('notify_grade_excluded') : Translate('notify_grade_included'), '', nowExcluded ? 'warn' : 'ok');
   RenderMainContent(false);
   UpdateTopbar();
@@ -1232,7 +1235,7 @@ function GetBestSubject(data) {
   let best = null, bestScore = -Infinity;
   for (const [subj, { scores }] of Object.entries(data)) {
     const effective = EffectiveScores(subj, scores, S.activePeriod);
-    if (!effective.length) continue;
+    if (!PointsMax(effective)) continue;
     const subjPct = CalcPercent(effective);
     const score = useValue ? (GetHoursForSubject(subj) ? subjPct * GetHoursForSubject(subj) : -Infinity) : subjPct;
     if (score > bestScore) { bestScore = score; best = { subj, CalcPercent: subjPct, hours: GetHoursForSubject(subj), valueScore: score }; }
@@ -2708,7 +2711,9 @@ function RenderTable(animated = true) {
     const rawSubjPct      = CalcPercent(effectiveScores);
     const formulaPctValue = useFormulaPct ? FormulaSubjectPct(subj, S.store) : null;
     const subjPct         = formulaPctValue ?? rawSubjPct;
-    const subjTotalMax    = effectiveScores.reduce((a, e) => a + e.max, 0);
+    const subjTotalMax    = PointsMax(effectiveScores);
+    const pctColor        = formulaPctValue == null && !subjTotalMax ? 'var(--text-3)' : ColorForPercent(subjPct);
+    const pctText         = formulaPctValue == null && !subjTotalMax ? '–' : `${FormatPercent(subjPct)}%`;
     const subjTotalScored = effectiveScores.reduce((a, e) => a + e.scored, 0);
     const activeHours     = GetHoursForSubject(subj);
 
@@ -2763,8 +2768,8 @@ function RenderTable(animated = true) {
     return `<tr ${rowStyle}>
       <td class="gf-subject-cell" data-gf-subj="${subj.replace(/"/g, '&quot;')}">${SubjectIconHtml(subj)}${subj}${hoursBadge}</td>
       ${filledHtml}${emptyCells}
-      <td class="gf-pct-cell" data-gf-pct-tip="1" style="color:${ColorForPercent(subjPct)};">
-        <span class="gf-pct-badge" style="--pct-color:${ColorForPercent(subjPct)};">${FormatPercent(subjPct)}%</span>${formulaTag}
+      <td class="gf-pct-cell" data-gf-pct-tip="1" style="color:${pctColor};">
+        <span class="gf-pct-badge" style="--pct-color:${pctColor};">${pctText}</span>${formulaTag}
       </td>
     </tr>`;
   }).join('');

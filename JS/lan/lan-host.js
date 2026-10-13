@@ -12,7 +12,7 @@
         sess?.close();
         sess = GfLan.join(channel, {
           name: msg.name,
-          onStatus: (status, selfId) => post({ kind: 'status', status, selfId, up: sess ? sess.uptime() : 0 }),
+          onStatus: (status, selfId) => post({ kind: 'status', status, selfId }),
           onPeer: p => post({ kind: 'peer', ...p }),
           onLeave: id => post({ kind: 'leave', id }),
           onRename: (id, name) => post({ kind: 'rename', id, name }),

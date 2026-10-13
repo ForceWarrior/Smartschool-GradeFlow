@@ -119,7 +119,7 @@
 
   if (W.self === W.top && !/^chrome-extension:/.test(location.protocol)) {
     W.addEventListener('keydown', e => {
-      if (!e.isTrusted || (IsDefault('pause') && IsDefault('restart')) || !GameOpen()) return;
+      if (!e.isTrusted || (IsDefault('pause') && IsDefault('restart')) || IsEditable(e.composedPath()[0] || e.target) || !GameOpen()) return;
       for (const action of ['pause', 'restart']) {
         if (IsDefault(action) || !MatchBinding(e, Get(action))) continue;
         e.preventDefault();

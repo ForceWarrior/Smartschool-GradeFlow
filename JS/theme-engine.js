@@ -4,6 +4,8 @@
 
   const CACHE_KEY = 'gf-theme-engine-cache';
   const SHEET_PREFIX = 'gf-te:';
+  const INDEX_KEY = 'gf-te-index';
+  const CACHE_BUDGET = 1500000;
   const ENGINE_VERSION = 'e1';
   const BORDER_SIDES = ['border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color'];
   const PROPS = {
@@ -103,6 +105,18 @@
 
   function CacheSet(key, val) {
     try { localStorage.setItem(HashKey(key), JSON.stringify(val)); } catch (_) {}
+  }
+
+  function Prune(used) {
+    const index = JSON.parse(localStorage.getItem(INDEX_KEY) || '{}');
+    const now = Date.now();
+    for (const [h, n] of used) index[h] = [now, n];
+    let total = 0;
+    for (const h of Object.keys(index).sort((a, b) => index[b][0] - index[a][0])) {
+      total += index[h][1];
+      if (total > CACHE_BUDGET) { delete index[h]; localStorage.removeItem(h); }
+    }
+    localStorage.setItem(INDEX_KEY, JSON.stringify(index));
   }
 
   function Prepare(palette) {
@@ -348,7 +362,7 @@ body{background-color:${v('bg')};color:${v('text')}}
       st.style.id = 'gf-theme-engine';
     }
     let css = '';
-    const keys = [];
+    const keys = [], used = [];
     for (const [key, e] of [...st.sheets]) {
       if (e.css == null || e.sig !== sig) {
         if (!e.decls) {
@@ -366,14 +380,19 @@ body{background-color:${v('bg')};color:${v('text')}}
         if (doc === document && !e.blocked && e.css.length < 500000) CacheSet(key, { sig, count: e.count, css: e.css });
       }
       css += e.css;
-      if (!e.blocked) keys.push(key);
+      if (e.blocked) continue;
+      keys.push(key);
+      if (e.css.length < 500000) used.push([HashKey(key), e.css.length]);
     }
     st.base.textContent = BaseCss();
     st.style.textContent = css;
     if (st.base.parentNode !== head) head.prepend(st.base);
     if (st.style.parentNode !== head || head.lastElementChild !== st.style) head.appendChild(st.style);
     if (doc === document) {
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ sig, base: st.base.textContent, keys })); } catch (_) {}
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ sig, base: st.base.textContent, keys }));
+        Prune(used);
+      } catch (_) {}
     }
   }
 
@@ -381,34 +400,31 @@ body{background-color:${v('bg')};color:${v('text')}}
 
   function Inline(el, st) {
     if (el.closest?.('#gradeflow-panel-host,#gf-chat-root,#gf-arcade,#gf-home-summary,#gf-update-overlay,[id^="gf-"]')) return;
-    let orig = st.inline.get(el);
+    const orig = st.inline.get(el) || {};
     const style = el.style;
-    if (orig) {
-      for (const prop of Object.keys(orig)) {
-        const now = style.getPropertyValue(prop);
-        if (now !== orig[prop].mapped) orig[prop] = { value: now, mapped: '' };
-      }
-    } else orig = {};
     for (const prop of INLINE_PROPS) {
       const value = style.getPropertyValue(prop);
-      if (!value) continue;
-      const known = orig[prop];
-      if (known && known.mapped === value) continue;
-      const mapped = MapValue(value, PROPS[prop]);
+      if (orig[prop]?.mapped === value) continue;
+      delete orig[prop];
+      const mapped = value && MapValue(value, PROPS[prop]);
       if (!mapped) continue;
-      orig[prop] = { value, mapped, prio: style.getPropertyPriority(prop) };
-      style.setProperty(prop, mapped, orig[prop].prio);
+      const prio = style.getPropertyPriority(prop);
+      style.setProperty(prop, mapped, prio);
+      orig[prop] = { value, prio, mapped: style.getPropertyValue(prop) };
     }
-    const bg = el.getAttribute?.('bgcolor');
-    if (bg && !orig.__bg) {
-      const mapped = MapValue(bg, 'bg');
-      if (mapped) { orig.__bg = { value: bg, mapped }; style.setProperty('background-color', mapped); }
-    }
-    if (el.tagName === 'FONT' && el.getAttribute('color') && !orig.__font) {
-      const mapped = MapValue(el.getAttribute('color'), 'fg');
-      if (mapped) { orig.__font = { value: '', mapped }; style.setProperty('color', mapped); }
+    for (const [attr, role] of [['bgcolor', 'bg'], ['color', 'fg']]) {
+      if (attr === 'color' && el.tagName !== 'FONT') continue;
+      const value = el.getAttribute(attr) || '';
+      const key = '@' + attr;
+      if (orig[key]?.mapped === value) continue;
+      delete orig[key];
+      const mapped = value && MapValue(value, role);
+      if (!mapped) continue;
+      el.setAttribute(attr, mapped);
+      orig[key] = { value, mapped };
     }
     if (Object.keys(orig).length) st.inline.set(el, orig);
+    else st.inline.delete(el);
   }
 
   function InlineAll(root, st) {
@@ -426,10 +442,9 @@ body{background-color:${v('bg')};color:${v('text')}}
     doc.querySelectorAll('[style],[bgcolor],font[color]').forEach(el => {
       const orig = st.inline.get(el);
       if (!orig) return;
-      for (const [prop, o] of Object.entries(orig)) {
-        if (prop === '__bg' || prop === '__font') { el.style.removeProperty(prop === '__bg' ? 'background-color' : 'color'); continue; }
-        if (el.style.getPropertyValue(prop) !== o.mapped) continue;
-        if (o.value) el.style.setProperty(prop, o.value, o.prio || ''); else el.style.removeProperty(prop);
+      for (const [key, o] of Object.entries(orig)) {
+        if (key[0] === '@') { if (el.getAttribute(key.slice(1)) === o.mapped) el.setAttribute(key.slice(1), o.value); }
+        else if (el.style.getPropertyValue(key) === o.mapped) el.style.setProperty(key, o.value, o.prio);
       }
     });
     st.inline = new WeakMap();
@@ -454,7 +469,6 @@ body{background-color:${v('bg')};color:${v('text')}}
     const st = DocState(doc);
     Scan(doc);
     Render(doc);
-    st.inline = new WeakMap();
     if (doc.body) InlineAll(doc.body, st);
     doc.querySelectorAll('iframe').forEach(f => Frame(f, st));
     if (st.observer) return;
@@ -481,7 +495,7 @@ body{background-color:${v('bg')};color:${v('text')}}
         requestAnimationFrame(() => { pending = false; if (active && Scan(doc)) Render(doc); });
       }
     });
-    st.observer.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'bgcolor'] });
+    st.observer.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'bgcolor', 'color'] });
   }
 
   function Signature(palette) {
@@ -545,6 +559,7 @@ body{background-color:${v('bg')};color:${v('text')}}
     document.getElementById('gf-theme-early-base')?.remove();
     try {
       localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(INDEX_KEY);
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
         if (k && k.startsWith(SHEET_PREFIX)) localStorage.removeItem(k);
