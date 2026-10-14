@@ -660,7 +660,7 @@ const GF_EXTRA_COLOR_PCT = [
   [/orange|tangerine|hazelnut|brown|beach/, 45],
   [/yellow|lemon|olive/, 60],
   [/green|grass|kiwi|emerald|moss|sage|mint/, 75],
-  [/aqua|blue|ocean|heaven|jeans|dolphin|night|steel|lavender|violet|purple|jazz/, 92],
+  [/aqua|blue|ocean|heaven|jeans|dolphin|night|lavender|violet|purple|jazz/, 92],
 ];
 const GF_EXTRA_COLOR_HEX = [
   [/red|watermelon|dynamite|salmon|candy/, '#f87171'],
@@ -690,12 +690,14 @@ function ExtraColorMatch(x, table) {
   return table.find(([re]) => re.test(hay))?.[1] ?? null;
 }
 function ExtraPctIsGuess(x) {
-  return !Number.isFinite(x.pct) && !Number.isFinite(parseFloat(S.extraSettings.map[ExtraLabelKey(x)])) && !(ExtraLabelKey(x) in GF_EXTRA_LABEL_PCT) && ExtraColorMatch(x, GF_EXTRA_COLOR_PCT) != null;
+  return !Number.isFinite(x.pct) && !Number.isFinite(x.rank) && !Number.isFinite(parseFloat(S.extraSettings.map[ExtraLabelKey(x)])) && !(ExtraLabelKey(x) in GF_EXTRA_LABEL_PCT) && DefaultExtraPct(x) != null;
 }
 function DefaultExtraPct(x) {
   if (Number.isFinite(x.pct)) return x.pct;
   const label = ExtraLabelKey(x);
   if (label in GF_EXTRA_LABEL_PCT) return GF_EXTRA_LABEL_PCT[label];
+  if (Number.isFinite(x.rank) && x.of > 1) return Math.min(95, Math.round((x.rank + 1) / x.of * 100));
+  if (/^target_lpd/.test(x.icon || '') && !x.label) return null;
   return ExtraColorMatch(x, GF_EXTRA_COLOR_PCT);
 }
 function ExtraPct(x) {
@@ -2936,7 +2938,7 @@ function BuildTooltipHTML(d) {
   const dateRow  = d.date  ? `<div style="color:var(--text-3);font-size:10px;margin-bottom:8px;">${Esc(d.date)}</div>` : '';
   const ncRow = d.nc ? `<div class="gf-tip-note">${Translate(!d.excluded ? 'extra_counted_manual' : d.smscNc ? 'nc_smsc' : 'extra_not_counted')}</div>` : '';
   if (d.extra) {
-    const goals = d.extra.goals.length ? `${divider}<span style="color:var(--text-3);">${Translate('extra_goals')}</span><span>${d.extra.goals.map(g => `${g.count}× ${Esc(g.label || g.icon)}`).join('<br>')}</span>` : '';
+    const goals = d.extra.goals.length ? `${divider}<span style="color:var(--text-3);">${Translate('extra_goals')}</span><span>${d.extra.goals.map(g => `${g.count}× ${g.icon && S.gradeIcons?.[g.icon] ? ExtraIconHtml(g.icon, 14) : ''}${Esc(g.label || (g.icon && S.gradeIcons?.[g.icon] ? '' : g.icon))}`).join('<br>')}</span>` : '';
     const counted = d.extra.pct == null ? Translate('extra_no_value') : `${FormatPercent(d.extra.pct)}%${d.extra.guess ? ` <span style="color:var(--text-3);">(${Translate('extra_estimate')})</span>` : ''}`;
     const icon = d.extra.icon && S.gradeIcons?.[d.extra.icon] ? ExtraIconHtml(d.extra.icon, 16) : '';
     const label = d.extra.label && d.extra.label !== '●' ? Esc(d.extra.label) : icon ? '' : Translate('extra_icon_only');
