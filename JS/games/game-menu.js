@@ -47,7 +47,7 @@
       accent: '#f59e0b',
       ready: true,
       isNew: true,
-      buildPreview: PreviewSurfers,
+      buildPreview: PreviewShot('gradesurfers'),
       launch(gr) { CloseGameMenu(); W.OpenGradeSurfers?.(gr); },
       stop()     { W.CloseGradeSurfers?.(); },
     },
@@ -1534,57 +1534,6 @@
       ctx.fillStyle = '#ef4444'; ctx.fillRect(77, py - 3, 5, 3);
       ctx.fillStyle = '#f97316'; ctx.fillRect(84, py + 4, 3, 2);
       ctx.fillStyle = '#111'; ctx.fillRect(81, py + 2, 2, 2);
-      return true;
-    }
-    RegisterPreview(Tick);
-  }
-
-  function PreviewSurfers(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
-    const HZ = 30, CX = W / 2;
-    let z = 0, lane = 1, laneX = 1, t = 0;
-    const trains = [{ lane: 0, z: 120 }, { lane: 2, z: 60 }];
-    const P = (lx, zz) => { const s = 60 / (zz + 60); return { x: CX + lx * 46 * s, y: HZ + (H - HZ) * s, s }; };
-    function Tick() {
-      if (!cv.isConnected) return false;
-      t++;
-      z = (z + 2) % 20;
-      if (t % 70 === 0) lane = trains.some(tr => tr.lane === lane && tr.z < 60) ? (lane + 1) % 3 : RandomInt(0, 2);
-      laneX += (lane - laneX) * 0.15;
-      const sky = ctx.createLinearGradient(0, 0, 0, HZ);
-      sky.addColorStop(0, '#7dd3fc'); sky.addColorStop(1, '#fde68a');
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, HZ);
-      ctx.fillStyle = '#a8a29e'; ctx.fillRect(0, HZ, W, H - HZ);
-      for (let l = -1; l <= 1; l++) {
-        for (const off of [-0.32, 0.32]) {
-          const a = P(l + off, 300), b = P(l + off, 0);
-          ctx.strokeStyle = '#57534e'; ctx.lineWidth = 1.2;
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        }
-        for (let zz = 200 - z; zz > -10; zz -= 20) {
-          const a = P(l - 0.42, zz), b = P(l + 0.42, zz);
-          ctx.strokeStyle = '#78350f'; ctx.lineWidth = Math.max(0.5, 2.4 * a.s);
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        }
-      }
-      for (const tr of trains) {
-        tr.z -= 2;
-        if (tr.z < -40) { tr.z = 220; tr.lane = RandomInt(0, 2); }
-        if (tr.z < -10) continue;
-        const p = P(tr.lane - 1, Math.max(0, tr.z));
-        const w = 40 * p.s, h = 42 * p.s;
-        ctx.fillStyle = '#dc2626'; ctx.fillRect(p.x - w / 2, p.y - h, w, h);
-        ctx.fillStyle = '#fde047'; ctx.fillRect(p.x - w / 2, p.y - h * 0.55, w, h * 0.1);
-        ctx.fillStyle = '#1e3a8a'; ctx.fillRect(p.x - w * 0.35, p.y - h * 0.9, w * 0.7, h * 0.28);
-      }
-      const r = P(laneX - 1, -6);
-      const bob = Math.abs(Math.sin(t * 0.3)) * 2;
-      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(r.x, r.y, 7, 2, 0, 0, 6.28); ctx.fill();
-      ctx.fillStyle = '#2563eb'; ctx.fillRect(r.x - 5, r.y - 20 - bob, 10, 12);
-      ctx.fillStyle = '#f59e0b'; ctx.fillRect(r.x - 4, r.y - 26 - bob, 8, 6);
-      ctx.fillStyle = '#111827'; ctx.fillRect(r.x - 4 + Math.sin(t * 0.4) * 2, r.y - 8 - bob, 3, 8); ctx.fillRect(r.x + 1 - Math.sin(t * 0.4) * 2, r.y - 8 - bob, 3, 8);
       return true;
     }
     RegisterPreview(Tick);

@@ -6,7 +6,8 @@
 - Theme editor with 12 presets and fully custom colours. Custom themes recolour SmartSchool itself instead of inverting it, so images stay normal, and also style the panel, popup, chat, games, and grade colours. Parts that SmartSchool loads from its own CDN are recoloured too, and text on bright colours is kept readable. Themes can be saved and shared with a GFTHEME code.
 - Grades without points are now shown: labels, icon ratings with their goal breakdown, and percentage ranges like 60% - 90%. A new setting decides whether they count and what each label is worth.
 - Grade.io: agar.io with bots, solo or in a lobby with everyone on your network. One player hosts and another takes over when they leave or crash.
-- Crossy Grade, Grade Surfers, and Grade Hook arcade games.
+- Crossy Grade, Grade Surfers, and Grade Hook arcade games. Grade Surfers has a coin shop with characters, boards, upgrades, and hoverboards. Grade Hook has a level editor with share codes that work without a server.
+- GradeTower is rebuilt with 3 maps, 30 waves per map, bosses, 6 towers with branching upgrades, new enemy types, stars, and new art.
 - Network chat: join everyone on the same network from the chat menu without codes.
 - Remappable shortcuts in the ? menu (panel, chat, arcade, pause, restart).
 - Discord link at the bottom of the ? menu.
@@ -24,6 +25,8 @@
 - Classic dark mode no longer inverts game canvases a second time.
 - Classic dark mode no longer turns headers and other blocks that contain a profile picture white.
 - Native date and number fields in the panel follow dark and custom themes.
+- Project evaluations now use their goals: scores count as points and ratings like Goed use the evaluation's scale instead of a colour guess.
+- Custom themes also recolour inset shadows, gradients, pseudo-elements, and layered styles, which left parts of the planner white.
 - Short subject keywords like "de" or "en" no longer give subjects such as Wiskunde a wrong flag icon.
 
 ## [1.2.6] - 2026-05-06

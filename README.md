@@ -70,8 +70,8 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 |------|-----------|
 | Grade.io | Agar.io with bots, solo or with everyone on your network |
 | Crossy Grade | Crossy Road, hop over roads, rivers, and railways |
-| Grade Surfers | Subway Surfers style endless runner with trains, power-ups, and the inspector |
-| Grade Hook | Stickman Hook, swing from hook to hook through 20+ levels |
+| Grade Surfers | Subway Surfers style endless runner with trains, power-ups, the inspector, and a shop for characters, boards, and upgrades |
+| Grade Hook | Stickman Hook, swing through 24 levels or build your own in the level editor and share it with a code |
 | GradeStack | Tetris with grade-themed pieces |
 | GradeSnake | Snake with levels, good grades grow you, bad ones shrink you |
 | Grade 2048 | Merge weak grades until you hit 20/20 |
@@ -82,7 +82,7 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 | GradePong | Play pong against an AI with grade-powered effects |
 | GradeFlappy | Fly through pipe gaps and dodge bad grades |
 | GradeRunner | Endless runner with jumps, slides, pickups, and grade obstacles |
-| GradeTower | Micro tower defense with difficulty levels and grade-unlocked towers |
+| GradeTower | Tower defense with 3 maps, 30 waves each, bosses, and 6 towers with branching upgrades |
 
 All games track your personal best and have animated previews in the menu. Games only load when you open them, so SmartSchool pages stay fast.
 
