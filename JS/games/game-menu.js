@@ -191,7 +191,7 @@
       desc: 'Build tiny grade towers and defend your report path',
       accent: '#22d3ee',
       ready: true,
-      buildPreview: PreviewTower,
+      buildPreview: PreviewShot('gradetower'),
       launch(gr) { CloseGameMenu(); if (typeof OpenGradeTower === 'function') OpenGradeTower(gr); },
       stop()     { if (typeof CloseGradeTower === 'function') CloseGradeTower(); },
     },
@@ -1459,89 +1459,15 @@
     RegisterPreview(Tick);
   }
 
-  function PreviewTower(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
-    const CELL = 10;
-    const path = [
-      [0,3],[1,3],[2,3],[3,3],[4,3],[4,4],[4,5],[5,5],[6,5],[7,5],[8,5],
-      [8,6],[8,7],[7,7],[6,7],[5,7],[4,7],[3,7],[3,8],[4,8],[5,8],[6,8],[7,8],[8,8],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],[15,8]
-    ];
-    const towers = [
-      { x: 35, y: 25, r: 34, fire: 0, color: '#22d3ee', label: 'R' },
-      { x: 75, y: 35, r: 45, fire: 18, color: '#f97316', label: 'C' },
-      { x: 112, y: 65, r: 38, fire: 34, color: '#4ade80', label: 'E' },
-    ];
-    let enemies = [], bullets = [], tick = 0;
-
-    function SpawnEnemy() {
-      const p = path[0];
-      enemies.push({ x: p[0] * CELL + CELL / 2, y: p[1] * CELL + CELL / 2, idx: 0, t: 0, hp: 1, speed: 0.035 + Math.random() * 0.02, color: Math.random() > 0.75 ? '#a78bfa' : '#f87171' });
-    }
-
-    function Tick() {
-      if (!cv.isConnected) return false;
-      tick++;
-      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
-      if (tick % 58 === 1) SpawnEnemy();
-
-      for (const e of enemies) {
-        const a = path[e.idx], b = path[e.idx + 1];
-        if (!b) { e.done = true; continue; }
-        e.t += e.speed;
-        while (e.t >= 1 && e.idx < path.length - 2) { e.t -= 1; e.idx++; }
-        const c = path[e.idx], n = path[e.idx + 1];
-        e.x = (c[0] + (n[0] - c[0]) * e.t) * CELL + CELL / 2;
-        e.y = (c[1] + (n[1] - c[1]) * e.t) * CELL + CELL / 2;
-      }
-      enemies = enemies.filter(e => !e.done && e.x < W + 10);
-
-      for (const tw of towers) {
-        tw.fire--;
-        if (tw.fire > 0) continue;
-        const target = enemies.find(e => (e.x - tw.x) ** 2 + (e.y - tw.y) ** 2 <= tw.r ** 2);
-        if (target) {
-          bullets.push({ x: tw.x, y: tw.y, target, color: tw.color, life: 28 });
-          tw.fire = 26 + RandomInt(0, 18);
-        }
-      }
-
-      for (const b of bullets) {
-        if (!b.target || b.target.done) { b.life = 0; continue; }
-        const dx = b.target.x - b.x, dy = b.target.y - b.y, d = Math.hypot(dx, dy) || 1;
-        b.x += dx / d * 4.2; b.y += dy / d * 4.2; b.life--;
-        if (d < 5) { b.target.done = true; b.life = 0; }
-      }
-      bullets = bullets.filter(b => b.life > 0);
-      enemies = enemies.filter(e => !e.done);
-
-      ctx.fillStyle = dark ? '#0a0e15' : '#e8efe5'; ctx.fillRect(0, 0, W, H);
-      ctx.strokeStyle = dark ? '#161b24' : '#d4dcd0'; ctx.lineWidth = 0.5;
-      for (let x = 0; x <= W; x += CELL) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-      for (let y = 0; y <= H; y += CELL) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-
-      ctx.fillStyle = dark ? '#1f2a3a' : '#c8b889';
-      for (const p of path) ctx.fillRect(p[0] * CELL + 1, p[1] * CELL + 1, CELL - 2, CELL - 2);
-
-      for (const tw of towers) {
-        ctx.strokeStyle = tw.color + '38'; ctx.beginPath(); ctx.arc(tw.x, tw.y, tw.r, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = dark ? '#1f2937' : '#374151'; ctx.beginPath(); ctx.arc(tw.x, tw.y, 7, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = tw.color; ctx.beginPath(); ctx.arc(tw.x, tw.y, 5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#111'; ctx.font = '800 7px "IBM Plex Mono",monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(tw.label, tw.x, tw.y);
-      }
-
-      for (const e of enemies) {
-        ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, 5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(e.x - 5, e.y - 8, 10, 2);
-        ctx.fillStyle = '#4ade80'; ctx.fillRect(e.x - 5, e.y - 8, 10 * e.hp, 2);
-      }
-      for (const b of bullets) { ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x, b.y, 2.4, 0, Math.PI * 2); ctx.fill(); }
-
-      return true;
-    }
-    SpawnEnemy();
-    RegisterPreview(Tick);
+  function PreviewShot(name) {
+    return el => {
+      const img = document.createElement('img');
+      img.className = 'gf-gc-shot';
+      img.alt = '';
+      img.decoding = 'async';
+      img.src = chrome.runtime.getURL(`Assets/previews/${name}-${_el?.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'}.png`);
+      el.appendChild(img);
+    };
   }
 
   function PreviewAgar(el) {
@@ -1877,6 +1803,7 @@
   overflow:hidden; border-bottom:1px solid var(--brd);
 }
 .gf-gc-prev canvas { display:block; width:100%; height:100%; }
+.gf-gc-shot { display:block; width:100%; height:100%; object-fit:cover; }
 .gf-gc-body { padding:9px 12px; flex:1; min-height:0; overflow:hidden; }
 .gf-gc-title { font-size:13px; font-weight:700; margin-bottom:2px; }
 .gf-gc-new { margin-left:6px; padding:1px 5px; border-radius:4px; background:var(--gf-game-accent,#f97316); color:#fff; font-size:8px; font-weight:800; letter-spacing:.6px; vertical-align:2px; }

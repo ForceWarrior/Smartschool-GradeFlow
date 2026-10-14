@@ -37,6 +37,7 @@
       "resources": [
         "Assets/icon.png",
         "Assets/update-preview.png",
+        "Assets/previews/*",
         "HTML/grades.html",
         "JS/grades.js",
         "CSS/grades.css",
