@@ -2934,7 +2934,7 @@ function BuildTooltipHTML(d) {
 
   const titleRow = d.title ? `<div style="font-weight:600;font-size:12px;margin-bottom:2px;color:var(--text-0);">${Esc(d.title)}</div>` : '';
   const dateRow  = d.date  ? `<div style="color:var(--text-3);font-size:10px;margin-bottom:8px;">${Esc(d.date)}</div>` : '';
-  const ncRow = d.nc ? `<div class="gf-tip-note">${Translate(!d.excluded ? 'extra_counted_manual' : d.smscNc && !d.extra ? 'nc_smsc' : 'extra_not_counted')}</div>` : '';
+  const ncRow = d.nc ? `<div class="gf-tip-note">${Translate(!d.excluded ? 'extra_counted_manual' : d.smscNc ? 'nc_smsc' : 'extra_not_counted')}</div>` : '';
   if (d.extra) {
     const goals = d.extra.goals.length ? `${divider}<span style="color:var(--text-3);">${Translate('extra_goals')}</span><span>${d.extra.goals.map(g => `${g.count}× ${Esc(g.label || g.icon)}`).join('<br>')}</span>` : '';
     const counted = d.extra.pct == null ? Translate('extra_no_value') : `${FormatPercent(d.extra.pct)}%${d.extra.guess ? ` <span style="color:var(--text-3);">(${Translate('extra_estimate')})</span>` : ''}`;

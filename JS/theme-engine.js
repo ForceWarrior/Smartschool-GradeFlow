@@ -6,7 +6,7 @@
   const SHEET_PREFIX = 'gf-te:';
   const INDEX_KEY = 'gf-te-index';
   const CACHE_BUDGET = 1500000;
-  const ENGINE_VERSION = 'e1';
+  const ENGINE_VERSION = 'e2';
   const BORDER_SIDES = ['border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color'];
   const PROPS = {
     'color': 'fg', 'background-color': 'bg', 'background-image': 'bg',
@@ -32,9 +32,10 @@
   const docs = new Set();
   let P = null, sig = '', mapCache = new Map(), active = false, pollTimer = 0, outKeys = new Set();
   const DYN_ATTR = 'data-gf-d';
+  const DYN_HOLD = 'data-gf-dr';
   const DYN_SKIP = new Set(['head', 'script', 'style', 'link', 'meta', 'title', 'template', 'noscript', 'svg', 'img', 'video', 'canvas', 'iframe', 'picture', 'object', 'embed', 'br', 'wbr', 'source', 'track', 'math']);
-  const GF_ID = /^(gf-|gradeflow)/;
-  const GF_HOSTS = '[id^="gf-"],[id^="gradeflow"]';
+  const GF_ID = /^(gf-|gradeflow-panel-host$)/;
+  const GF_HOSTS = '[id^="gf-"],#gradeflow-panel-host,svg,math';
   const SIDES = ['top', 'right', 'bottom', 'left'];
 
   function Clamp(v, a = 0, b = 1) { return v < a ? a : v > b ? b : v; }
@@ -57,11 +58,18 @@
       const m = key.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/);
       if (m) out = { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4] };
       else {
-        if (!ctx2d) ctx2d = document.createElement('canvas').getContext('2d');
+        if (!ctx2d) ctx2d = Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true });
         ctx2d.fillStyle = '#010203';
         ctx2d.fillStyle = key;
         const v = ctx2d.fillStyle;
-        if (v !== '#010203' || key === '#010203') out = v[0] === '#' ? ParseHex(v) : Parse(v);
+        if (v[0] === '#' && (v !== '#010203' || key === '#010203')) out = ParseHex(v);
+        else if (v !== '#010203' && v !== key && /^rgba?\(/.test(v)) out = Parse(v);
+        else if (v !== '#010203') {
+          ctx2d.clearRect(0, 0, 1, 1);
+          ctx2d.fillRect(0, 0, 1, 1);
+          const [r, g, b, a] = ctx2d.getImageData(0, 0, 1, 1).data;
+          out = { r, g, b, a: a / 255 };
+        }
       }
     }
     if (parseCache.size > 4000) parseCache.clear();
@@ -90,7 +98,7 @@
   }
 
   function Key(c) {
-    return `${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)},${Math.round(c.a * 100)}`;
+    return `${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)},${Math.round(c.a * 255)}`;
   }
 
   function Lum(c) {
@@ -242,7 +250,7 @@
   }
 
   function NoteCss(css) {
-    const re = /([a-z-]+)\s*:\s*([^;{}]+)/gi;
+    const re = /(--[\w-]+|[a-z-]+)\s*:\s*([^;{}]+)/gi;
     let m;
     while ((m = re.exec(css))) {
       const prop = m[1].toLowerCase();
@@ -442,6 +450,7 @@ body{background-color:${v('bg')};color:${v('text')}}
         Prune(used);
       } catch (_) {}
     }
+    if ([...st.sheets.values()].some(e => e.blocked)) DynHover(doc, st);
     DynQueue(doc, null, true);
   }
 
@@ -449,6 +458,7 @@ body{background-color:${v('bg')};color:${v('text')}}
     if (!st.dyn) {
       const style = doc.createElement('style');
       style.id = 'gf-theme-dyn';
+      style.textContent = `[${DYN_HOLD}]{transition:none!important}`;
       st.dyn = { style, ids: new Map(), queue: new Set(), solo: new Set(), pending: [], full: false, raf: 0, hover: null };
     }
     const head = doc.head || doc.documentElement;
@@ -456,12 +466,12 @@ body{background-color:${v('bg')};color:${v('text')}}
     return st.dyn;
   }
 
-  function DynQueue(doc, el, full) {
+  function DynQueue(doc, el, full, shallow = false) {
     if (!active || !doc.defaultView) return;
     const d = DynState(doc, DocState(doc));
     if (full) d.full = true;
     else if (el === doc.documentElement || el === doc.body) d.solo.add(el);
-    else if (el && el.getElementsByTagName('*').length > 400) { d.solo.add(el); for (const c of el.children) d.solo.add(c); }
+    else if (el && shallow && el.getElementsByTagName('*').length > 400) { d.solo.add(el); for (const c of el.children) d.solo.add(c); }
     else if (el) d.queue.add(el);
     if (!d.raf) d.raf = doc.defaultView.requestAnimationFrame(() => DynFlush(doc));
   }
@@ -503,8 +513,10 @@ body{background-color:${v('bg')};color:${v('text')}}
     }
     const els = d.pending.splice(0, 2500).filter(n => n.isConnected);
     const seen = new Set(els);
-    for (const el of d.solo) if (el.isConnected && !seen.has(el) && !DYN_SKIP.has(el.localName) && !el.closest(GF_HOSTS)) els.push(el);
+    let extra = false;
+    for (const el of d.solo) if (el.isConnected && !seen.has(el) && !DYN_SKIP.has(el.localName) && !el.closest(GF_HOSTS)) { els.push(el); extra = true; }
     d.solo.clear();
+    if (extra) els.sort((a, b) => a === b ? 0 : a.compareDocumentPosition(b) & 2 ? 1 : -1);
     if (els.length) DynApply(doc, d, els);
     if ((d.pending.length || d.queue.size || d.full) && !d.raf) d.raf = doc.defaultView.requestAnimationFrame(() => DynFlush(doc));
   }
@@ -519,7 +531,13 @@ body{background-color:${v('bg')};color:${v('text')}}
 
   function DynApply(doc, d, els) {
     const view = doc.defaultView;
-    for (const el of els) if (el.hasAttribute(DYN_ATTR)) el.removeAttribute(DYN_ATTR);
+    const held = [];
+    for (const el of els) {
+      if (!el.hasAttribute(DYN_ATTR)) continue;
+      el.setAttribute(DYN_HOLD, '');
+      el.removeAttribute(DYN_ATTR);
+      held.push(el);
+    }
     const ebg = new Map();
     const Effective = el => {
       if (!el || el === doc.documentElement) return P.bg;
@@ -528,7 +546,7 @@ body{background-color:${v('bg')};color:${v('text')}}
       let r;
       if (cs.backgroundImage !== 'none') r = null;
       else {
-        const c = Parse(cs.backgroundColor);
+        const c = Parse(Remap(cs.backgroundColor, 'bg') || cs.backgroundColor);
         r = c && c.a >= 0.6 ? c : Effective(el.parentElement);
       }
       ebg.set(el, r);
@@ -542,7 +560,7 @@ body{background-color:${v('bg')};color:${v('text')}}
       if (bg) body += `background-color:${bg}!important;`;
       const sides = [];
       for (const side of SIDES) {
-        if (cs[`border-${side}-style`] === 'none' || !parseFloat(cs[`border-${side}-width`])) continue;
+        if (cs[`border-${side}-style`] === 'none' || !parseFloat(cs[`border-${side}-width`]) || cs[`border-${side}-color`] === cs.color) continue;
         const m = Remap(cs[`border-${side}-color`], 'border');
         if (m) sides.push([side, m]);
       }
@@ -560,18 +578,23 @@ body{background-color:${v('bg')};color:${v('text')}}
         }
       }
       if (fg) body += `color:${fg}!important;`;
-      if (body) writes.push([el, body]);
+      if (body) {
+        writes.push([el, body]);
+        if (!el.hasAttribute(DYN_HOLD) && /[1-9]/.test(cs.transitionDuration)) { el.setAttribute(DYN_HOLD, ''); held.push(el); }
+      }
     }
-    const sheet = d.style.sheet;
+    let rules = '';
     for (const [el, body] of writes) {
       let id = d.ids.get(body);
       if (id == null) {
         id = d.ids.size;
         d.ids.set(body, id);
-        try { sheet.insertRule(`[${DYN_ATTR}="${id}"]{${body}}`, sheet.cssRules.length); } catch (_) {}
+        rules += `[${DYN_ATTR}="${id}"]{${body}}`;
       }
       el.setAttribute(DYN_ATTR, id);
     }
+    if (rules) d.style.textContent += `@layer gf-dyn{${rules}}`;
+    if (held.length) view.requestAnimationFrame(() => { for (const el of held) el.removeAttribute(DYN_HOLD); });
   }
 
   function DynStop(doc, st) {
@@ -580,7 +603,7 @@ body{background-color:${v('bg')};color:${v('text')}}
     if (d.raf) doc.defaultView?.cancelAnimationFrame(d.raf);
     if (d.hover) for (const t of ['mouseover', 'mouseout', 'focusin', 'focusout']) doc.removeEventListener(t, d.hover, true);
     d.style.remove();
-    doc.querySelectorAll(`[${DYN_ATTR}]`).forEach(el => el.removeAttribute(DYN_ATTR));
+    doc.querySelectorAll(`[${DYN_ATTR}],[${DYN_HOLD}]`).forEach(el => { el.removeAttribute(DYN_ATTR); el.removeAttribute(DYN_HOLD); });
     st.dyn = null;
   }
 
@@ -668,7 +691,7 @@ body{background-color:${v('bg')};color:${v('text')}}
         if (m.type === 'attributes') {
           if (m.target.nodeType !== 1) continue;
           if (m.attributeName !== 'class') Inline(m.target, st);
-          DynQueue(doc, m.target);
+          DynQueue(doc, m.target, false, true);
           continue;
         }
         for (const n of m.addedNodes) {
@@ -719,6 +742,7 @@ body{background-color:${v('bg')};color:${v('text')}}
         if (active && Scan(document)) Render(document);
         document.getElementById('gf-theme-early')?.remove();
         document.getElementById('gf-theme-early-base')?.remove();
+        DynQueue(document, null, true);
       };
       if (document.readyState === 'complete') loaded();
       else addEventListener('load', loaded, { once: true });

@@ -491,7 +491,9 @@ function _GfIsMediaMatch(element) {
   if (!_GfElementMatches(element, GF_DARK_MEDIA_SELECTOR)) return false;
   if (element.matches(GF_DARK_MEDIA_TAG_SELECTOR) || element.classList.contains(GF_DARK_MEDIA_CLASS) && !element.matches(GF_DARK_MEDIA_FUZZY_SELECTOR)) return true;
   if (!element.matches(GF_DARK_MEDIA_FUZZY_SELECTOR) || element.matches('.icon-label')) return true;
-  return (element.textContent || '').trim().length <= 2 && !element.querySelector(GF_DARK_MEDIA_TAG_SELECTOR);
+  if (element.querySelector(GF_DARK_MEDIA_TAG_SELECTOR)) return false;
+  if ((element.textContent || '').trim().length <= 2) return true;
+  try { return getComputedStyle(element).backgroundImage.includes('url('); } catch (_) { return false; }
 }
 
 function _GfProtectMediaElement(element) {
@@ -539,12 +541,16 @@ function _GfClearDarkMediaProtection() {
 
 const _gfDarkMediaPending = new Set();
 
+const _gfDarkMediaSolo = new Set();
+
 function _GfScheduleDarkMediaProtection(root = document, delay = 80) {
-  _gfDarkMediaPending.add(root);
+  if (root) _gfDarkMediaPending.add(root);
   clearTimeout(_gfDarkMediaTimer);
   _gfDarkMediaTimer = setTimeout(() => {
     const roots = [..._gfDarkMediaPending];
     _gfDarkMediaPending.clear();
+    for (const el of _gfDarkMediaSolo) if (el.isConnected) _GfProtectMediaElement(el);
+    _gfDarkMediaSolo.clear();
     if (roots.includes(document) || roots.length > 150) { _GfProtectDarkMedia(document); return; }
     for (const r of roots) {
       if (r.isConnected && !roots.some(o => o !== r && o.contains(r))) _GfProtectDarkMedia(r);
@@ -560,23 +566,36 @@ function _GfStartDarkMediaWatcher() {
   _gfDarkMediaObserver = new MutationObserver(mutations => {
     let any = false;
     for (const mutation of mutations) {
+      if (mutation.type === 'attributes') {
+        const node = mutation.target;
+        const now = node.getAttribute?.('class') || '';
+        if (node.nodeType !== 1 || _GfIsGradeFlowSurface(node)) continue;
+        if (String(mutation.oldValue || '').replace(GF_DARK_MEDIA_CLASS, '').trim() === now.replace(GF_DARK_MEDIA_CLASS, '').trim()) continue;
+        _gfDarkMediaSolo.add(node);
+        any = true;
+        continue;
+      }
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== 1 || _GfIsGradeFlowSurface(node)) continue;
         _gfDarkMediaPending.add(node);
         any = true;
       }
     }
-    if (any) _GfScheduleDarkMediaProtection(_gfDarkMediaPending.values().next().value, 80);
+    if (any) _GfScheduleDarkMediaProtection(_gfDarkMediaPending.values().next().value || null, 80);
   });
   _gfDarkMediaObserver.observe(observeRoot, {
     childList: true,
-    subtree: true
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class'],
+    attributeOldValue: true
   });
 }
 
 function _GfStopDarkMediaWatcher() {
   clearTimeout(_gfDarkMediaTimer);
   _gfDarkMediaPending.clear();
+  _gfDarkMediaSolo.clear();
   _gfDarkMediaTimer = 0;
   if (_gfDarkMediaObserver) {
     _gfDarkMediaObserver.disconnect();
