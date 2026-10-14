@@ -484,6 +484,16 @@ function _GfLooksLikeBackgroundMedia(element) {
   return GF_DARK_MEDIA_NAME_RE.test(nameText);
 }
 
+const GF_DARK_MEDIA_TAG_SELECTOR = 'img,svg,video,canvas,object,embed,picture,[role="img"],smsc-svg,smsc-icon';
+const GF_DARK_MEDIA_FUZZY_SELECTOR = '[class*="smsc-svg" i],[class*="smsc-icon" i],[class*="avatar" i],[class*="profile-pic" i],[class*="profilepic" i],[class*="userpic" i],[class*="user-picture" i],[class*="userpicture" i],[class*="logo" i]';
+
+function _GfIsMediaMatch(element) {
+  if (!_GfElementMatches(element, GF_DARK_MEDIA_SELECTOR)) return false;
+  if (element.matches(GF_DARK_MEDIA_TAG_SELECTOR) || element.classList.contains(GF_DARK_MEDIA_CLASS) && !element.matches(GF_DARK_MEDIA_FUZZY_SELECTOR)) return true;
+  if (!element.matches(GF_DARK_MEDIA_FUZZY_SELECTOR) || element.matches('.icon-label')) return true;
+  return (element.textContent || '').trim().length <= 2 && !element.querySelector(GF_DARK_MEDIA_TAG_SELECTOR);
+}
+
 function _GfProtectMediaElement(element) {
   if (!element || element.nodeType !== 1 || !element.classList) return;
   if (_GfIsNeverDarkMedia(element) || _GfIsMediaContainer(element)) {
@@ -496,12 +506,12 @@ function _GfProtectMediaElement(element) {
     _GfRestoreDarkMediaInlineFilter(element);
     return;
   }
-  if (_GfClosestProtectedMediaAncestor(element) && _GfElementMatches(element, GF_DARK_MEDIA_SELECTOR)) {
+  if (_GfClosestProtectedMediaAncestor(element) && _GfIsMediaMatch(element)) {
     element.classList.remove(GF_DARK_MEDIA_CLASS);
     _GfSetDarkMediaInlineFilter(element, 'none');
     return;
   }
-  const isMedia = _GfElementMatches(element, GF_DARK_MEDIA_SELECTOR) || _GfLooksLikeBackgroundMedia(element);
+  const isMedia = _GfIsMediaMatch(element) || _GfLooksLikeBackgroundMedia(element);
   element.classList.toggle(GF_DARK_MEDIA_CLASS, isMedia);
   if (isMedia) _GfSetDarkMediaInlineFilter(element, GF_DARK_MEDIA_FILTER);
   else _GfRestoreDarkMediaInlineFilter(element);
@@ -1729,7 +1739,11 @@ function _GfGetPanelIframe() {
 
 function OnPanelMessage(e) {
   if (e.data?.type === 'gf-close') ClosePanel();
-  if (e.data?.type === 'gf-f8') _GfLaunchArcade();
+  if (e.data?.type === 'gf-f8') {
+    _GfGetPanelIframe()?.blur();
+    window.focus();
+    _GfLaunchArcade();
+  }
   if (e.data?.type === 'gf-open-gradeflow') OpenPanel(true);
   if (e.data?.type === 'gf-refresh-planner') _GfRefreshPlannerItems(true);
   if (e.data?.type === 'gf-refresh-attendance') _GfRefreshAttendanceItems(!!e.data.force);
@@ -1994,6 +2008,9 @@ try {
       } else if (msg.type === 'ping') {
         sendResponse({ ok: true });
         return true;
+      } else if (msg.type === 'gf-theme-refetch') {
+        GfThemeEngine.refetch();
+        setTimeout(() => _GfGetPanelIframe()?.contentWindow?.postMessage({ type: 'gf-theme-status', blocked: GfThemeEngine.blocked() }, '*'), 2500);
       } else if (msg.type === 'getTheme') {
         sendResponse({ ok: true, theme: _gfEffectiveTheme, savedTheme: _gfCurrentTheme, vars: _gfExternalThemeVars });
         return true;

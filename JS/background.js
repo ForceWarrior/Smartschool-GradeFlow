@@ -127,6 +127,14 @@ function _PushToAllSmartSchoolTabs() {
   });
 }
 
+chrome.permissions.onAdded.addListener(p => {
+  if (!(p.origins || []).some(o => o.includes('smart-school.net'))) return;
+  chrome.tabs.query({ url: '*://*.smartschool.be/*' }, tabs => {
+    if (chrome.runtime.lastError) return;
+    for (const tab of tabs) if (tab.id) chrome.tabs.sendMessage(tab.id, { type: 'gf-theme-refetch' }, () => void chrome.runtime.lastError);
+  });
+});
+
 function _PushPfpToAllSmartSchoolTabs() {
   if (!_cachedPfp) return;
   chrome.tabs.query({ url: '*://*.smartschool.be/*' }, tabs => {

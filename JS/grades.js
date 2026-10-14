@@ -83,6 +83,16 @@ function SaveCustomLang(obj) {
   S.customLang = { ...obj };
   try { localStorage.setItem('gradeflow-custom-lang-v1', JSON.stringify(S.customLang)); } catch (_) {}
 }
+try {
+  chrome.storage.sync.get('gf-lang', r => {
+    const v = r?.['gf-lang'];
+    if (!v || v === S.lang) return;
+    S.lang = v;
+    try { localStorage.setItem('gradeflow-lang-v1', v); } catch (_) {}
+    if (typeof Render === 'function' && S.store) Render();
+  });
+} catch (_) {}
+
 function ResolveLangCode() {
   const pref = S.lang;
   if (pref === 'auto' || pref === 'custom') {
@@ -224,12 +234,14 @@ function ApplyGradeTheme(theme, vars = null) {
     document.documentElement.style.setProperty('--border-hi', vars.accent || vars.border || '#3a3a3a');
     document.documentElement.style.setProperty('--text-0', vars.text || '#f5f5f5');
     document.documentElement.style.setProperty('--text-1', vars.text || '#c4c4c4');
-    document.documentElement.style.setProperty('--text-2', vars.text || '#888');
-    document.documentElement.style.setProperty('--text-3', vars.text || '#555');
+    document.documentElement.style.setProperty('--text-2', vars.muted ? `color-mix(in srgb, ${vars.text} 55%, ${vars.muted})` : vars.text || '#888');
+    document.documentElement.style.setProperty('--text-3', vars.muted || vars.text || '#555');
+    root.style.colorScheme = vars.isDark === false ? 'light' : 'dark';
     return;
   }
   ClearExternalGradeTheme();
   document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
+  root.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
 }
 
 chrome.storage.local.get(['gradeflow-theme', GF_THEME_PALETTE_KEY, GF_THEME_LIBRARY_KEY], r => {
@@ -662,7 +674,7 @@ const GF_EXTRA_COLOR_HEX = [
 function LoadExtraSettings() {
   const raw = LoadJSONSetting('gradeflow-extra-v1', {});
   const weight = parseFloat(raw.weight);
-  return { count: !!raw.count, weight: Number.isFinite(weight) && weight > 0 ? weight : 10, map: raw.map && typeof raw.map === 'object' ? raw.map : {} };
+  return { count: !!raw.count, countNc: !!raw.countNc, weight: Number.isFinite(weight) && weight > 0 ? weight : 10, map: raw.map && typeof raw.map === 'object' ? raw.map : {} };
 }
 function SaveExtraSettings(next) {
   S.extraSettings = { ...S.extraSettings, ...next };
@@ -676,6 +688,9 @@ function ExtraLabelKey(x) {
 function ExtraColorMatch(x, table) {
   const hay = `${x.color || ''} ${x.icon || ''}`.toLowerCase();
   return table.find(([re]) => re.test(hay))?.[1] ?? null;
+}
+function ExtraPctIsGuess(x) {
+  return !Number.isFinite(x.pct) && !Number.isFinite(parseFloat(S.extraSettings.map[ExtraLabelKey(x)])) && !(ExtraLabelKey(x) in GF_EXTRA_LABEL_PCT) && ExtraColorMatch(x, GF_EXTRA_COLOR_PCT) != null;
 }
 function DefaultExtraPct(x) {
   if (Number.isFinite(x.pct)) return x.pct;
@@ -694,7 +709,7 @@ function ExtraColor(x) {
 function ExtraToScore(x) {
   const pct = ExtraPct(x);
   const w = S.extraSettings.weight;
-  return { title: x.title || '', date: x.date || '', scored: pct == null ? 0 : pct / 100 * w, max: pct == null ? 0 : w, nc: !S.extraSettings.count || !!x.nc, _extra: x };
+  return { title: x.title || '', date: x.date || '', scored: pct == null ? 0 : pct / 100 * w, max: pct == null ? 0 : w, nc: !S.extraSettings.count || (!!x.nc && !S.extraSettings.countNc), _smscNc: !!x.nc, _extra: x };
 }
 function DeriveStore(raw) {
   if (!raw) return null;
@@ -703,7 +718,7 @@ function DeriveStore(raw) {
     if (period.startsWith('_')) continue;
     out[period] = {};
     for (const [subject, payload] of Object.entries(subjects || {})) {
-      const scores = (payload?.scores || []).map(x => ({ ...x }));
+      const scores = (payload?.scores || []).map(x => ({ ...x, nc: !!x.nc && !S.extraSettings.countNc, _smscNc: !!x.nc }));
       for (const x of payload?.extra || []) scores.push(ExtraToScore(x));
       if (scores.length) out[period][subject] = { scores };
     }
@@ -1604,6 +1619,15 @@ function RenderSettings() {
     </div>
 
     <div class="gf-sett-section">
+      <div class="gf-sett-label">${Translate('nc_setting')}</div>
+      <div class="gf-sett-toggle-row">
+        <button class="gf-sett-opt${!S.extraSettings.countNc ? ' active' : ''}" data-sett-action="ncCount" data-sett-val="0">${Translate('nc_count_off')}</button>
+        <button class="gf-sett-opt${S.extraSettings.countNc ? ' active' : ''}" data-sett-action="ncCount" data-sett-val="1">${Translate('nc_count_on')}</button>
+      </div>
+      <div class="gf-mode-desc" style="margin-top:6px;">${Translate('nc_setting_desc')}</div>
+    </div>
+
+    <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('base_method')}</div>
       <div class="gf-sett-toggle-row">
         <button class="gf-sett-opt${S.weightMode === 'points' ? ' active' : ''}" data-sett-action="weightMode" data-sett-val="points">${Translate('points')}</button>
@@ -1671,6 +1695,8 @@ function RenderSettings() {
         SaveGradeDecimals(val); RenderSettings(); Render();
       } else if (action === 'extraCount') {
         SaveExtraSettings({ count: val === '1' }); RenderSettings(); Render();
+      } else if (action === 'ncCount') {
+        SaveExtraSettings({ countNc: val === '1' }); RenderSettings(); Render();
       }
     });
   });
@@ -1786,6 +1812,7 @@ function BindThemeEditor(body) {
     const t = list.find(x => x.id === btn.dataset.themePreset);
     if (!t) return;
     SaveThemePalette({ ...t, site: S.palette.site, recolor: S.palette.recolor }, true);
+    if (S.palette.site) GfRequestCdnAccess();
     _gfThemeEditing = false;
     RenderSettings();
   }));
@@ -1814,7 +1841,7 @@ function BindThemeEditor(body) {
     RenderSettings();
   });
   root.querySelector('#gf-theme-grant')?.addEventListener('click', () => {
-    chrome.permissions.request({ origins: ['https://*.smart-school.net/*'] }, granted => {
+    GfRequestCdnAccess(granted => {
       ShowToast(granted ? Translate('theme_granted') : Translate('theme_not_granted'), '', granted ? 'ok' : 'warn');
     });
   });
@@ -2737,11 +2764,12 @@ function RenderTable(animated = true) {
         formula_pct: formulaPctValue != null ? formulaPctValue.toFixed(1) : null,
         hours: activeHours || null, total_hours: totalWeightedHours || null,
         weighted_contrib_pp: wpp, mode: tipMode, nc: !!e.nc, excluded,
-        extra: e._extra ? { label: ExtraLabel(e._extra), detail: e._extra.detail || '', goals: e._extra.goals || [], pct: ExtraPct(e._extra), kind: e._extra.kind } : null,
+        smscNc: !!e._smscNc,
+        extra: e._extra ? { label: ExtraLabel(e._extra), icon: e._extra.icon || '', detail: e._extra.detail || '', goals: e._extra.goals || [], pct: ExtraPct(e._extra), guess: ExtraPctIsGuess(e._extra), kind: e._extra.kind } : null,
       }));
 
       const cls = `gf-grade-cell${excluded ? ' gf-grade-excluded' : ''}${weight !== 1 ? ' gf-grade-weighted' : ''}${e.nc ? ' gf-grade-nc' : ''}${e._extra ? ' gf-grade-extra' : ''}`;
-      const attrs = `class="${cls}" data-gf-grade="${tip}" data-gf-grade-key="${encodeURIComponent(key)}"${e.nc ? ' data-gf-nc="1"' : ''}`;
+      const attrs = `class="${cls}" data-gf-grade="${tip}" data-gf-grade-key="${encodeURIComponent(key)}"${e.nc ? ' data-gf-nc="1"' : ''}${e.nc && e._smscNc ? ` data-gf-badge="${Esc(Translate('nc_badge'))}"` : ''}`;
       if (e._extra) return `<td ${attrs} style="--gf-extra:${ExtraColor(e._extra)};">${ExtraIconHtml(e._extra.icon)}<span>${Esc(ExtraLabel(e._extra))}</span></td>`;
       return `<td ${attrs} style="background:${BgForPercent(ep)};">${FormatNumber(e.scored)}/${FormatNumber(e.max)}</td>`;
     });
@@ -2768,7 +2796,7 @@ function RenderTable(animated = true) {
     return `<tr ${rowStyle}>
       <td class="gf-subject-cell" data-gf-subj="${subj.replace(/"/g, '&quot;')}">${SubjectIconHtml(subj)}${subj}${hoursBadge}</td>
       ${filledHtml}${emptyCells}
-      <td class="gf-pct-cell" data-gf-pct-tip="1" style="color:${pctColor};">
+      <td class="gf-pct-cell" data-gf-pct-tip="${pctText === '–' ? 'empty' : '1'}" style="color:${pctColor};">
         <span class="gf-pct-badge" style="--pct-color:${pctColor};">${pctText}</span>${formulaTag}
       </td>
     </tr>`;
@@ -2906,14 +2934,16 @@ function BuildTooltipHTML(d) {
 
   const titleRow = d.title ? `<div style="font-weight:600;font-size:12px;margin-bottom:2px;color:var(--text-0);">${Esc(d.title)}</div>` : '';
   const dateRow  = d.date  ? `<div style="color:var(--text-3);font-size:10px;margin-bottom:8px;">${Esc(d.date)}</div>` : '';
-  const ncRow = d.nc ? `<div class="gf-tip-note">${Translate(d.excluded ? 'extra_not_counted' : 'extra_counted_manual')}</div>` : '';
+  const ncRow = d.nc ? `<div class="gf-tip-note">${Translate(!d.excluded ? 'extra_counted_manual' : d.smscNc && !d.extra ? 'nc_smsc' : 'extra_not_counted')}</div>` : '';
   if (d.extra) {
     const goals = d.extra.goals.length ? `${divider}<span style="color:var(--text-3);">${Translate('extra_goals')}</span><span>${d.extra.goals.map(g => `${g.count}× ${Esc(g.label || g.icon)}`).join('<br>')}</span>` : '';
-    const counted = d.extra.pct == null ? Translate('extra_no_value') : `${FormatPercent(d.extra.pct)}%`;
+    const counted = d.extra.pct == null ? Translate('extra_no_value') : `${FormatPercent(d.extra.pct)}%${d.extra.guess ? ` <span style="color:var(--text-3);">(${Translate('extra_estimate')})</span>` : ''}`;
+    const icon = d.extra.icon && S.gradeIcons?.[d.extra.icon] ? ExtraIconHtml(d.extra.icon, 16) : '';
+    const label = d.extra.label && d.extra.label !== '●' ? Esc(d.extra.label) : icon ? '' : Translate('extra_icon_only');
     return `${titleRow}${dateRow}
     <div style="display:grid;grid-template-columns:auto auto;gap:2px 14px;">
       <span style="color:var(--text-3);">${Translate('extra_rating')}</span>
-      <span style="font-weight:700;">${Esc(d.extra.label || '?')}</span>
+      <span style="font-weight:700;">${icon}${label}</span>
       ${d.extra.detail ? `<span style="color:var(--text-3);">${Translate('extra_detail')}</span><span>${Esc(d.extra.detail)}</span>` : ''}
       <span style="color:var(--text-3);">${Translate('extra_value')}</span>
       <span>${counted}</span>
@@ -2924,8 +2954,8 @@ function BuildTooltipHTML(d) {
     <div style="display:grid;grid-template-columns:auto auto;gap:2px 14px;">
       <span style="color:var(--text-3);">${Translate('score')}</span>
       <span style="font-weight:700;">${FormatNumber(d.scored)}/${FormatNumber(d.max)} <span style="color:${pctColor};margin-left:4px;">${ApplyDecimalSep(d.CalcPercent)}%</span></span>
-      <span style="color:var(--text-3);">${Translate('contribution')}</span>
-      <span>${FormatNumber(d.scored)}/${FormatNumber(d.subj_max)} (${ApplyDecimalSep(d.contrib_pp)}%)</span>
+      ${!d.excluded && d.subj_max > 0 ? `<span style="color:var(--text-3);">${Translate('contribution')}</span>
+      <span>${FormatNumber(d.scored)}/${FormatNumber(d.subj_max)} (${ApplyDecimalSep(d.contrib_pp)}%)</span>` : ''}
       ${extra}
     </div>${ncRow}`;
 }
@@ -2943,8 +2973,9 @@ function BindTableListeners() {
     }
     const pctCell = e.target.closest('[data-gf-pct-tip]');
     if (pctCell) {
-      tt.innerHTML = `<div style="font-weight:600;font-size:11px;margin-bottom:4px;color:var(--orange);">${Translate('pct_warning_title')}</div>
-        <div style="color:var(--text-3);font-size:10px;line-height:1.6;max-width:220px;">${Translate('pct_warning_body')}</div>`;
+      const empty = pctCell.dataset.gfPctTip === 'empty';
+      tt.innerHTML = `<div style="font-weight:600;font-size:11px;margin-bottom:4px;color:var(--orange);">${Translate(empty ? 'pct_empty_title' : 'pct_warning_title')}</div>
+        <div style="color:var(--text-3);font-size:10px;line-height:1.6;max-width:220px;">${Translate(empty ? 'pct_empty_body' : 'pct_warning_body')}</div>`;
       tt.style.display = 'block'; PositionTooltip(tt, e.clientX, e.clientY);
     }
   });

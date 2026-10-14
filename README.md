@@ -101,7 +101,7 @@ Optional opt-in overlay for chatting with friends who also use GradeFlow.
 - Click Network chat or Network in Grade.io and you're in, no codes or invites
 - Finds everyone on the same network (same school or home connection)
 - Public relays are only used to set up the connection, encrypted; messages and game data go straight between browsers
-- Grade.io lobbies are filled with bots, the oldest player hosts and hosting moves on if they leave
+- Grade.io lobbies are filled with bots, one player hosts and another takes over if they leave
 
 ### Keyboard shortcuts
 All shortcuts can be changed in the ? menu: click a key and press a new one.
