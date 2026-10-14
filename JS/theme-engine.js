@@ -881,5 +881,52 @@ body{background-color:${v('bg')};color:${v('text')}}
     return n;
   }
 
-  W.GfThemeEngine = { start: Start, stop: Stop, early: Early, blocked: Blocked, refetch: Refetch, map: (c, role) => P ? MapColor(c, role) : c };
+  function Inspect(target) {
+    const doc = target.ownerDocument;
+    const st = DocState(doc);
+    const PROPS_RE = /background|box-shadow|color|border|filter|opacity|outline/i;
+    const rules = [];
+    const walk = (list, href, depth = 0) => {
+      for (const r of list) {
+        if (r.selectorText && r.style) rules.push([href, r.selectorText, r.style.cssText]);
+        else if (r.cssRules && depth < 6) walk(r.cssRules, href, depth + 1);
+      }
+    };
+    for (const sheet of doc.styleSheets) {
+      const href = sheet.href || '#' + (sheet.ownerNode?.id || 'inline');
+      const list = Rules(sheet);
+      if (list) walk(list, href);
+      else {
+        const e = st.sheets.get(sheet.href);
+        if (e?.decls) for (const [, sel, decls] of e.decls) rules.push(['fetched ' + sheet.href, sel, decls.map(d => d[0] + ':' + d[1] + (d[3] ? '!important' : '')).join(';')]);
+      }
+    }
+    const Info = el => {
+      const c = getComputedStyle(el), b = getComputedStyle(el, '::before'), a = getComputedStyle(el, '::after');
+      const matched = [];
+      for (const [href, sel, text] of rules) {
+        if (!PROPS_RE.test(text)) continue;
+        const clean = sel.replace(/::?(before|after|placeholder|selection|marker|-webkit-[a-z-]+)/g, '');
+        let hit = false;
+        try { hit = !!clean.trim() && el.matches(clean); } catch (_) {}
+        if (hit) matched.push([href.slice(-70), sel.slice(0, 140), text.slice(0, 260)]);
+        if (matched.length > 25) break;
+      }
+      return {
+        tag: el.tagName, id: el.id, cls: String(el.className?.baseVal ?? el.className).slice(0, 160), dyn: el.getAttribute(DYN_ATTR), inline: (el.getAttribute('style') || '').slice(0, 200),
+        bg: c.backgroundColor, img: c.backgroundImage.slice(0, 160), shadow: c.boxShadow.slice(0, 160), color: c.color, border: `${c.borderTopWidth} ${c.borderTopStyle} ${c.borderTopColor}`, filter: c.filter, opacity: c.opacity, scheme: c.colorScheme, shadowRoot: !!el.shadowRoot,
+        before: b.content === 'none' ? null : `${b.backgroundColor} ${b.backgroundImage.slice(0, 80)}`, after: a.content === 'none' ? null : `${a.backgroundColor} ${a.backgroundImage.slice(0, 80)}`,
+        rules: matched,
+      };
+    };
+    const chain = [];
+    for (let el = target; el && el.nodeType === 1 && chain.length < 7; el = el.parentElement) chain.push(Info(el));
+    return {
+      active, sig, url: doc.location?.pathname, theme: document.documentElement.getAttribute('data-gf-theme'), source: document.documentElement.getAttribute('data-gf-theme-source'),
+      sheets: [...doc.styleSheets].map(s => { const e = st.sheets.get(SheetKey(s)); return `${Rules(s) ? 'read' : e?.blocked ? 'BLOCKED' : e?.fetched ? 'fetched' : 'locked'} ${(s.href || '#' + (s.ownerNode?.id || 'inline')).slice(-90)}`; }),
+      dynRules: st.dyn ? st.dyn.ids.size : 0, outKeys: outKeys.size, chain,
+    };
+  }
+
+  W.GfThemeEngine = { start: Start, stop: Stop, early: Early, blocked: Blocked, refetch: Refetch, inspect: Inspect, map: (c, role) => P ? MapColor(c, role) : c };
 })(window);
