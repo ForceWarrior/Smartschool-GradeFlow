@@ -1468,65 +1468,81 @@ function NormalizeApiResultToEntries(result) {
   })).filter(x => x.subject);
 }
 
-const _GF_DETAILS_KEY = 'gradeflow-eval-details-v1';
+const _GF_DETAILS_KEY = 'gradeflow-eval-details-v2';
 
-function _GfGoalsFromDetails(details) {
+function _GfDetailSummary(data) {
+  const det = data?.details || {};
+  const scales = (det.scales || []).map((sc, rank, all) => ({ sc, rank, of: all.length }));
   const goals = new Map();
-  for (const goal of details?.projectGoals || details?.goals || []) {
-    const parsed = _GfParseGraphic(goal?.graphic);
-    if (!parsed) continue;
-    const g = parsed.extra || { kind: 'score', label: `${parsed.scored}/${parsed.max}`, pct: parsed.scored / parsed.max * 100 };
-    const label = g.label || g.icon || '';
-    const key = `${label}|${g.icon || ''}`;
-    const row = goals.get(key) || { label, icon: g.icon || '', color: g.color || '', count: 0 };
+  let scored = 0, max = 0;
+  for (const goal of det.projectGoals || det.goals || []) {
+    const g = goal?.graphic;
+    if (!g || typeof g !== 'object') continue;
+    const parsed = _GfParseGraphic(g);
+    if (parsed && !parsed.extra) { scored += parsed.scored; max += parsed.max; continue; }
+    const hit = scales.find(({ sc }) => (g.value && sc.value === g.value) || (g.color && sc.color === g.color));
+    const label = String(g.description || hit?.sc.description || hit?.sc.name || hit?.sc.label || (parsed?.extra?.kind === 'icon' ? '' : parsed?.extra?.label) || '').trim();
+    const pct = Number.isFinite(parsed?.extra?.pct) ? parsed.extra.pct : hit?.sc.type === 'percentage' && Number.isFinite(Number(hit.sc.value)) ? Number(hit.sc.value) : null;
+    const icon = g.type === 'icon' ? String(g.value || '') : '';
+    const key = `${label}|${icon}|${g.color || ''}`;
+    const row = goals.get(key) || { label, icon, color: String(g.color || ''), count: 0, pct, rank: hit ? hit.rank : null, of: hit ? hit.of : null };
     row.count++;
     goals.set(key, row);
   }
-  return [...goals.values()];
+  return { goals: [...goals.values()], points: max > 0 ? { scored, max } : null, at: Date.now() };
 }
 
-function _GfScaleLabel(details, extra) {
-  for (const scale of details?.scales || []) {
-    const parsed = _GfParseGraphic(scale)?.extra;
-    if (!parsed) continue;
-    const same = extra.icon ? (scale.value === extra.icon || scale.color === extra.color) : scale.color === extra.color;
-    const label = String(scale.description || scale.name || scale.label || '').trim();
-    if (same && label) return label;
+function _GfApplyDetail(x, d) {
+  const goals = d.goals || [];
+  if (!goals.length) return;
+  x.goals = goals;
+  const total = goals.reduce((a, g) => a + g.count, 0);
+  const top = [...goals].sort((a, b) => b.count - a.count || (a.rank ?? 0) - (b.rank ?? 0))[0];
+  if (!x.label && top.label) x.label = top.label;
+  if (top.icon) x.icon = top.icon;
+  if (top.color) x.color = top.color;
+  if (goals.every(g => Number.isFinite(g.pct))) x.pct = goals.reduce((a, g) => a + g.pct * g.count, 0) / total;
+  else if (goals.every(g => Number.isFinite(g.rank) && g.of > 1)) {
+    x.rank = goals.reduce((a, g) => a + g.rank * g.count, 0) / total;
+    x.of = top.of;
   }
-  return '';
 }
 
 async function _GfEnrichExtras(store) {
-  const extras = [];
+  const slots = [];
   for (const [key, subjects] of Object.entries(store)) {
     if (key.startsWith('_')) continue;
-    for (const payload of Object.values(subjects)) for (const x of payload.extra || []) if (x.id && (x.kind === 'icon' || x.kind === 'label')) extras.push(x);
+    for (const payload of Object.values(subjects)) if (payload.extra?.some(x => x.id && (x.kind === 'icon' || x.kind === 'label'))) slots.push(payload);
   }
-  if (!extras.length) return;
+  if (!slots.length) return;
+  chrome.storage.local.remove('gradeflow-eval-details-v1');
   const cache = (await chrome.storage.local.get(_GF_DETAILS_KEY))?.[_GF_DETAILS_KEY] || {};
-  const todo = [...new Set(extras.map(x => x.id))].filter(id => !cache[id]).slice(0, 60);
+  const ids = [...new Set(slots.flatMap(p => p.extra.filter(x => x.id && (x.kind === 'icon' || x.kind === 'label')).map(x => x.id)))];
+  const todo = ids.filter(id => !cache[id] || Date.now() - cache[id].at > 3 * 864e5).slice(0, 150);
   let i = 0;
-  await Promise.all(Array.from({ length: Math.min(4, todo.length) }, async () => {
+  await Promise.all(Array.from({ length: Math.min(6, todo.length) }, async () => {
     while (i < todo.length) {
       const id = todo[i++];
       try {
         const res = await fetch(`/results/api/v1/evaluations/${encodeURIComponent(id)}`, { credentials: 'include' });
-        if (!res.ok) continue;
-        const data = await res.json();
-        cache[id] = { goals: _GfGoalsFromDetails(data?.details), scale: '', at: Date.now() };
-        const parsed = _GfParseGraphic(data?.graphic)?.extra;
-        if (parsed) cache[id].scale = _GfScaleLabel(data?.details, parsed);
+        if (res.ok) cache[id] = _GfDetailSummary(await res.json());
       } catch (_) {}
     }
   }));
-  const ids = Object.keys(cache);
-  if (ids.length > 250) ids.sort((a, b) => cache[a].at - cache[b].at).slice(0, ids.length - 250).forEach(id => delete cache[id]);
+  const keys = Object.keys(cache);
+  if (keys.length > 400) keys.sort((a, b) => cache[a].at - cache[b].at).slice(0, keys.length - 400).forEach(id => delete cache[id]);
   chrome.storage.local.set({ [_GF_DETAILS_KEY]: cache });
-  for (const x of extras) {
-    const d = cache[x.id];
-    if (!d) continue;
-    if (d.goals?.length) x.goals = d.goals;
-    if (!x.label && d.scale) x.label = d.scale;
+  for (const payload of slots) {
+    payload.extra = payload.extra.filter(x => {
+      const d = x.id && cache[x.id];
+      if (!d) return true;
+      if (d.points) {
+        payload.scores.push({ title: x.title, date: x.date, scored: d.points.scored, max: d.points.max, ...(x.nc ? { nc: true } : {}) });
+        return false;
+      }
+      _GfApplyDetail(x, d);
+      return true;
+    });
   }
 }
 

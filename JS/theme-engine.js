@@ -228,8 +228,51 @@
     return res;
   }
 
+  function SplitTop(value) {
+    const parts = [];
+    let depth = 0, start = 0;
+    for (let i = 0; i < value.length; i++) {
+      const c = value[i];
+      if (c === '(') depth++;
+      else if (c === ')') depth--;
+      else if (c === ',' && !depth) { parts.push(value.slice(start, i)); start = i + 1; }
+    }
+    parts.push(value.slice(start));
+    return parts;
+  }
+
+  function MapTokens(value, role, known) {
+    let changed = false;
+    const out = value.replace(TOKEN_RE, tok => {
+      const c = Parse(tok);
+      if (!c || c.a === 0 || (known && outKeys.has(role + Key(c)))) return tok;
+      const m = MapColor(tok, role);
+      if (m !== tok) changed = true;
+      return m;
+    });
+    return changed ? out : null;
+  }
+
+  function MapShadow(value, known) {
+    let changed = false;
+    const out = SplitTop(value).map(part => {
+      if (!/inset/i.test(part)) return part;
+      const nums = part.replace(TOKEN_RE, ' ').match(/-?\d*\.?\d+/g) || [];
+      const role = (parseFloat(nums[3]) || 0) > 4 ? 'bg' : 'border';
+      return part.replace(TOKEN_RE, tok => {
+        const c = Parse(tok);
+        if (!c || c.a === 0 || ToHsl(c).l < 0.5 || (known && (outKeys.has('bg' + Key(c)) || outKeys.has('border' + Key(c))))) return tok;
+        const m = MapColor(tok, role);
+        if (m !== tok) changed = true;
+        return m;
+      });
+    });
+    return changed ? out.join(',') : null;
+  }
+
   function MapValue(value, role) {
     if (!value || /^(inherit|initial|unset|revert|currentcolor|none|auto)$/i.test(value)) return null;
+    if (role === 'shadow') return /inset/i.test(value) ? MapShadow(value, false) : null;
     if (/url\(/i.test(value) && !/gradient/i.test(value)) return null;
     if (!TOKEN_TEST.test(value.replace(/var\([^)]*\)/g, ''))) return null;
     let changed = false;
@@ -320,7 +363,8 @@
 
   function BaseCss() {
     const v = k => Fmt(P[k]);
-    return `html{background-color:${v('bg')}!important;color:${v('text')};color-scheme:${P.dark ? 'dark' : 'light'};scrollbar-color:${v('surface3')} ${v('bg')}}
+    return `@layer gf-dyn;
+html{background-color:${v('bg')}!important;color:${v('text')};color-scheme:${P.dark ? 'dark' : 'light'};scrollbar-color:${v('surface3')} ${v('bg')}}
 body{background-color:${v('bg')};color:${v('text')}}
 :where(input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=image]),textarea,select){background-color:${v('surface')};color:${v('text')};border-color:${v('border')}}
 :where(button){color:inherit}
@@ -485,6 +529,7 @@ body{background-color:${v('bg')};color:${v('text')}}
       if (!d.raf) d.raf = doc.defaultView.requestAnimationFrame(() => DynFlush(doc));
     };
     for (const t of ['mouseover', 'mouseout', 'focusin', 'focusout']) doc.addEventListener(t, d.hover, true);
+    DynQueue(doc, null, true);
   }
 
   function OwnText(el) {
@@ -511,7 +556,7 @@ body{background-color:${v('bg')};color:${v('text')}}
       d.queue.clear();
       for (const root of roots) if (root === doc.body || !root.closest(GF_HOSTS)) Collect(doc, root, d.pending, seen);
     }
-    const els = d.pending.splice(0, 2500).filter(n => n.isConnected);
+    const els = d.pending.splice(0, 1500).filter(n => n.isConnected);
     const seen = new Set(els);
     let extra = false;
     for (const el of d.solo) if (el.isConnected && !seen.has(el) && !DYN_SKIP.has(el.localName) && !el.closest(GF_HOSTS)) { els.push(el); extra = true; }
@@ -544,7 +589,8 @@ body{background-color:${v('bg')};color:${v('text')}}
       if (ebg.has(el)) return ebg.get(el);
       const cs = view.getComputedStyle(el);
       let r;
-      if (cs.backgroundImage !== 'none') r = null;
+      if (cs.backgroundImage !== 'none' && (cs.backgroundImage.includes('url(') || !cs.backgroundImage.match(TOKEN_RE))) r = null;
+      else if (cs.backgroundImage !== 'none') r = Parse(MapTokens(cs.backgroundImage, 'bg', true)?.match(TOKEN_RE)?.[0] || cs.backgroundImage.match(TOKEN_RE)[0]);
       else {
         const c = Parse(Remap(cs.backgroundColor, 'bg') || cs.backgroundColor);
         r = c && c.a >= 0.6 ? c : Effective(el.parentElement);
@@ -566,9 +612,33 @@ body{background-color:${v('bg')};color:${v('text')}}
       }
       if (sides.length === 4 && sides.every(x => x[1] === sides[0][1])) body += `border-color:${sides[0][1]}!important;`;
       else for (const [side, m] of sides) body += `border-${side}-color:${m}!important;`;
+      const img = cs.backgroundImage;
+      const grad = img !== 'none' && !img.includes('url(');
+      const gimg = grad ? MapTokens(img, 'bg', true) : null;
+      if (gimg) body += `background-image:${gimg}!important;`;
+      if (cs.boxShadow !== 'none' && cs.boxShadow.includes('inset')) {
+        const sh = MapShadow(cs.boxShadow, true);
+        if (sh) body += `box-shadow:${sh}!important;`;
+      }
+      let pseudo = '';
+      if (d.hover) for (const pe of ['::before', '::after']) {
+        const ps = view.getComputedStyle(el, pe);
+        if (ps.content === 'none' || ps.content === 'normal') continue;
+        let pb = '';
+        const pbg = Remap(ps.backgroundColor, 'bg');
+        if (pbg) pb += `background-color:${pbg}!important;`;
+        if (ps.backgroundImage !== 'none' && !ps.backgroundImage.includes('url(')) {
+          const pg = MapTokens(ps.backgroundImage, 'bg', true);
+          if (pg) pb += `background-image:${pg}!important;`;
+        }
+        const pfg = Remap(ps.color, 'fg');
+        if (pfg) pb += `color:${pfg}!important;`;
+        if (pb) pseudo += `${pe}{${pb}}`;
+      }
       let fg = Remap(cs.color, 'fg');
-      const own = Parse(bg || cs.backgroundColor);
-      const eb = cs.backgroundImage !== 'none' ? null : own && own.a >= 0.6 ? own : Effective(el.parentElement);
+      const first = grad ? (gimg || img).match(TOKEN_RE)?.[0] : null;
+      const own = first ? Parse(first) : Parse(bg || cs.backgroundColor);
+      const eb = img !== 'none' && !grad ? null : own && own.a >= 0.6 ? own : Effective(el.parentElement);
       ebg.set(el, eb);
       if (eb && OwnText(el)) {
         const tc = Parse(fg || cs.color);
@@ -578,8 +648,8 @@ body{background-color:${v('bg')};color:${v('text')}}
         }
       }
       if (fg) body += `color:${fg}!important;`;
-      if (body) {
-        writes.push([el, body]);
+      if (body || pseudo) {
+        writes.push([el, body + (pseudo ? '\u0001' + pseudo : '')]);
         if (!el.hasAttribute(DYN_HOLD) && /[1-9]/.test(cs.transitionDuration)) { el.setAttribute(DYN_HOLD, ''); held.push(el); }
       }
     }
@@ -589,7 +659,10 @@ body{background-color:${v('bg')};color:${v('text')}}
       if (id == null) {
         id = d.ids.size;
         d.ids.set(body, id);
-        rules += `[${DYN_ATTR}="${id}"]{${body}}`;
+        const [own, pseudo] = body.split('\u0001');
+        const sel = `[${DYN_ATTR}="${id}"]`;
+        if (own) rules += `${sel}{${own}}`;
+        if (pseudo) rules += pseudo.replace(/(::(?:before|after))\{/g, `${sel}$1{`);
       }
       el.setAttribute(DYN_ATTR, id);
     }
