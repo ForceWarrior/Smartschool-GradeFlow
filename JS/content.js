@@ -1,4 +1,4 @@
-// Iframe guard
+
 if (window.self !== window.top) {
   (function CleanupIframe() {
     const run = () => {
@@ -29,12 +29,9 @@ if (window.self !== window.top) {
     const hasName = !!nameCache;
     if (!hasPfp && !hasName) return;
 
-    // Inject CSS BEFORE any content paints
     const rules = [];
 
     if (hasPfp) {
-      // Hide userpicture imgs by default, then content:url() shows our cached PFP.
-      // This prevents any frame of the original avatar from being painted.
       rules.push(`
         img[src*="userpicture"], img[data-gf-orig-src] {
           content: url(${pfpCache}) !important;
@@ -43,8 +40,6 @@ if (window.self !== window.top) {
     }
 
     if (hasName) {
-      // Only hide the actual SmartSchool top bar, NOT broad selectors like
-      // [class*="Header"] which could match content containers.
       rules.push(`
         .smsc-top-bar, .smsc-top, #smsc-top, .smsc-header {
           visibility: hidden !important;
@@ -60,9 +55,6 @@ if (window.self !== window.top) {
       setTimeout(() => document.getElementById('gf-pers-hide')?.remove(), 4000);
     }
 
-    // Intercept img.src assignment so userpicture URLs are swapped to our
-    // cached PFP BEFORE the browser fetches the original. Zero network trip,
-    // zero flicker.
     if (hasPfp) {
       try {
         const proto = HTMLImageElement.prototype;
@@ -89,17 +81,21 @@ if (window.self !== window.top) {
       } catch (_) {}
     }
 
-    // Same trick for the real name: stash the cached real name so the
-    // personalization code can find/replace it instantly when DOM is ready.
     if (hasName && realName) {
       window._gfDetectedRealName = realName;
     }
   } catch (_) {}
 })();
 
-// Dark mode flash prevention
 ;(function GfAntiFlashDarkMode() {
   if (localStorage.getItem('gf-smpp-active-cache') === '1') return;
+  if (localStorage.getItem('gf-theme-cache') === 'custom') {
+    try {
+      const palette = JSON.parse(localStorage.getItem('gf-theme-palette-cache') || 'null');
+      if (palette?.site !== false) GfThemeEngine.early(GfCleanPalette(palette));
+    } catch (_) {}
+    return;
+  }
   if (localStorage.getItem('gf-theme-cache') !== 'dark') return;
   document.documentElement.setAttribute('data-gf-theme', 'dark');
   const s = document.createElement('style');
@@ -128,7 +124,6 @@ if (window.self !== window.top) {
   }, 1500);
 })();
 
-// Theme state
 let _gfCurrentTheme = 'light';
 let _gfEffectiveTheme = 'light';
 let _gfExternalThemeVars = null;
@@ -143,6 +138,8 @@ let _gfHomeSummaryLayoutTimer = 0;
 let _gfHomeSummaryEnabled = true;
 let _gfDarkMediaObserver = null;
 let _gfDarkMediaTimer = 0;
+let _gfCustomPalette = null;
+let _gfCustomSig = '';
 const GF_HOME_SUMMARY_ENABLED_KEY = 'gradeflow-home-summary-enabled';
 const GF_DARK_MEDIA_FILTER = 'invert(1) hue-rotate(180deg)';
 const GF_DARK_MEDIA_CLASS = 'gf-dark-media-protected';
@@ -154,7 +151,11 @@ const GF_THEME_SHEETS = [
 ];
 
 function _GfNormalizeTheme(value) {
-  return value === 'dark' || value === 'smpp' ? value : 'light';
+  return value === 'dark' || value === 'smpp' || value === 'custom' ? value : 'light';
+}
+
+function _GfBridged() {
+  return /^(smpp|custom)$/.test(document.documentElement.getAttribute('data-gf-theme-source') || '');
 }
 
 function _GfCssVar(name) {
@@ -212,7 +213,7 @@ function _GfExternalThemeSignature(vars) {
 
 function _GfSetExternalThemeVars(vars) {
   const root = document.documentElement;
-  root.setAttribute('data-gf-theme-source', 'smpp');
+  root.setAttribute('data-gf-theme-source', vars.source === 'custom' ? 'custom' : 'smpp');
   root.setAttribute('data-gf-external-dark', vars.isDark ? '1' : '0');
   root.setAttribute('data-gf-external-glass', vars.glass ? '1' : '0');
   root.style.setProperty('--gf-ext-accent', vars.accent);
@@ -243,7 +244,9 @@ const GF_HOST_THEME_BASE_VARS = {
   '--gf-game-accent': '--gf-ext-accent', '--sh-bg': '--gf-ext-bg', '--sh-surf': '--gf-ext-surface', '--sh-surf2': '--gf-ext-surface-2',
   '--sh-brd': '--gf-ext-border', '--sh-txt': '--gf-ext-text', '--sh-txt2': '--gf-ext-muted', '--sh-txt3': '--gf-ext-muted', '--sh-acc': '--gf-ext-accent',
 };
-const GF_HOST_THEME_PREFIXES = ['gs', 'g2', 'gm', 'sw', 'bo', 'po', 'fl', 'rn', 'tw'];
+const GF_HOST_THEME_PREFIXES = ['gs', 'g2', 'gm', 'sw', 'bo', 'po', 'fl', 'rn', 'tw', 'io', 'cr', 'ss', 'hk'];
+const GF_GAME_HOST_IDS = ['gf-tetris', 'gf-snake', 'gf-2048', 'gf-sweep', 'gf-memory', 'gf-shooter', 'gf-bo', 'gf-po', 'gf-fl', 'gf-rn', 'gf-tw', 'gf-io', 'gf-cr', 'gf-ss', 'gf-hk'];
+const GF_GAME_HOST_SELECTOR = GF_GAME_HOST_IDS.map(id => '#' + id).join(',');
 const GF_HOST_THEME_PARTS = {
   modal: '--gf-ext-surface', hdr: '--gf-ext-surface-2', hud: '--gf-ext-surface-2', bar: '--gf-ext-surface-2', body: '--gf-ext-bg',
   scr: '--gf-ext-overlay', brd: '--gf-ext-accent', brd2: '--gf-ext-border', 'btn-brd': '--gf-ext-border', btn: '--gf-ext-surface-2',
@@ -259,9 +262,9 @@ const GF_HOST_THEME_CUSTOM_PROPS = [
 
 function _GfThemeState() {
   const root = document.documentElement;
-  const source = root.getAttribute('data-gf-theme-source') === 'smpp' ? 'smpp' : 'gradeflow';
-  const isDark = source === 'smpp' ? root.getAttribute('data-gf-external-dark') === '1' : root.getAttribute('data-gf-theme') === 'dark';
-  return { source, isDark };
+  const source = _GfBridged() ? root.getAttribute('data-gf-theme-source') : 'gradeflow';
+  const isDark = source !== 'gradeflow' ? root.getAttribute('data-gf-external-dark') === '1' : root.getAttribute('data-gf-theme') === 'dark';
+  return { source, isDark, bridged: source !== 'gradeflow' };
 }
 
 function _GfApplyThemeToHost(host) {
@@ -269,9 +272,9 @@ function _GfApplyThemeToHost(host) {
   const themeState = _GfThemeState();
   host.dataset.theme = themeState.isDark ? 'dark' : 'light';
   host.dataset.themeSource = themeState.source;
-  host.classList.toggle('is-smpp', themeState.source === 'smpp');
-  host.style.filter = themeState.isDark && themeState.source !== 'smpp' ? 'invert(1) hue-rotate(180deg)' : '';
-  if (themeState.source === 'smpp') {
+  host.classList.toggle('is-smpp', themeState.bridged);
+  host.style.filter = themeState.isDark && !themeState.bridged ? 'invert(1) hue-rotate(180deg)' : '';
+  if (themeState.bridged) {
     for (const [propertyName, sourceName] of Object.entries(GF_HOST_THEME_BASE_VARS)) host.style.setProperty(propertyName, `var(${sourceName})`);
     for (const prefix of GF_HOST_THEME_PREFIXES) {
       for (const [partName, sourceName] of Object.entries(GF_HOST_THEME_PARTS)) host.style.setProperty(`--${prefix}-${partName}`, `var(${sourceName})`);
@@ -282,7 +285,7 @@ function _GfApplyThemeToHost(host) {
 }
 
 function _GfRefreshThemedHosts() {
-  document.querySelectorAll('#gf-arcade,#gf-tetris,#gf-snake,#gf-2048,#gf-sweep,#gf-memory,#gf-shooter,#gf-bo,#gf-po,#gf-fl,#gf-rn,#gf-tw')
+  document.querySelectorAll(`#gf-arcade,${GF_GAME_HOST_SELECTOR}`)
     .forEach(host => _GfApplyThemeToHost(host));
 }
 
@@ -343,7 +346,7 @@ const GF_DARK_MEDIA_BACKGROUND_SELECTOR = [
   '.smsc_cm_no_items',
   '.icon-label[class*="smsc-svg" i]'
 ].join(',');
-const GF_DARK_MEDIA_SURFACE_SELECTOR = '#gradeflow-panel-host,#gf-chat-root,#gf-update-overlay,#gf-home-summary';
+const GF_DARK_MEDIA_SURFACE_SELECTOR = `#gradeflow-panel-host,#gf-chat-root,#gf-update-overlay,#gf-home-summary,#gf-arcade,${GF_GAME_HOST_SELECTOR}`;
 const GF_DARK_MEDIA_CONTAINER_SELECTOR = [
   '.topnav__menu',
   '.topnav__menu--courses',
@@ -414,8 +417,7 @@ function _GfIsHomeSummaryEnabledValue(value) {
 }
 
 function _GfDarkMediaIsActive() {
-  const root = document.documentElement;
-  return root.getAttribute('data-gf-theme') === 'dark' && root.getAttribute('data-gf-theme-source') !== 'smpp';
+  return document.documentElement.getAttribute('data-gf-theme') === 'dark' && !_GfBridged();
 }
 
 function _GfElementMatches(element, selector) {
@@ -525,9 +527,19 @@ function _GfClearDarkMediaProtection() {
   });
 }
 
+const _gfDarkMediaPending = new Set();
+
 function _GfScheduleDarkMediaProtection(root = document, delay = 80) {
+  _gfDarkMediaPending.add(root);
   clearTimeout(_gfDarkMediaTimer);
-  _gfDarkMediaTimer = setTimeout(() => _GfProtectDarkMedia(root), delay);
+  _gfDarkMediaTimer = setTimeout(() => {
+    const roots = [..._gfDarkMediaPending];
+    _gfDarkMediaPending.clear();
+    if (roots.includes(document) || roots.length > 150) { _GfProtectDarkMedia(document); return; }
+    for (const r of roots) {
+      if (r.isConnected && !roots.some(o => o !== r && o.contains(r))) _GfProtectDarkMedia(r);
+    }
+  }, delay);
 }
 
 function _GfStartDarkMediaWatcher() {
@@ -536,14 +548,15 @@ function _GfStartDarkMediaWatcher() {
   if (_gfDarkMediaObserver || !window.MutationObserver) return;
   const observeRoot = document.body || document.documentElement;
   _gfDarkMediaObserver = new MutationObserver(mutations => {
-    let scanRoot = document;
+    let any = false;
     for (const mutation of mutations) {
-      if (mutation.addedNodes && mutation.addedNodes.length) {
-        scanRoot = mutation.target && mutation.target.nodeType === 1 ? mutation.target : document;
-        break;
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== 1 || _GfIsGradeFlowSurface(node)) continue;
+        _gfDarkMediaPending.add(node);
+        any = true;
       }
     }
-    _GfScheduleDarkMediaProtection(scanRoot, 80);
+    if (any) _GfScheduleDarkMediaProtection(_gfDarkMediaPending.values().next().value, 80);
   });
   _gfDarkMediaObserver.observe(observeRoot, {
     childList: true,
@@ -553,6 +566,7 @@ function _GfStartDarkMediaWatcher() {
 
 function _GfStopDarkMediaWatcher() {
   clearTimeout(_gfDarkMediaTimer);
+  _gfDarkMediaPending.clear();
   _gfDarkMediaTimer = 0;
   if (_gfDarkMediaObserver) {
     _gfDarkMediaObserver.disconnect();
@@ -591,7 +605,10 @@ function _GfSyncSmartschoolPlusPlusTheme(force = false) {
   const vars = _GfReadSmartschoolPlusPlusTheme();
   const signature = _GfExternalThemeSignature(vars);
   if (vars) {
-    if (force || signature !== _gfExternalThemeSignature || _gfEffectiveTheme !== 'smpp') _GfUseExternalTheme(vars);
+    if (force || signature !== _gfExternalThemeSignature || _gfEffectiveTheme !== 'smpp') {
+      GfThemeEngine.stop();
+      _GfUseExternalTheme(vars);
+    }
     return true;
   }
   if (_gfEffectiveTheme === 'smpp') {
@@ -608,11 +625,13 @@ function _GfStartSmartschoolPlusPlusWatcher() {
   if (_gfExternalThemePoll) return;
   const watch = () => _GfSyncSmartschoolPlusPlusTheme(false);
   _gfExternalThemePoll = setInterval(watch, 600);
-  if (window.MutationObserver) {
-    _gfExternalThemeObserver = new MutationObserver(() => _GfSchedulePageThemeApply(120));
-    _gfExternalThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
-    if (document.body) _gfExternalThemeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
-  }
+  setTimeout(() => { clearInterval(_gfExternalThemePoll); _gfExternalThemePoll = setInterval(watch, 2500); }, 10000);
+  _gfExternalThemeObserver = new MutationObserver(() => _GfSchedulePageThemeApply(120));
+  const observe = () => {
+    for (const el of [document.documentElement, document.body]) if (el) _gfExternalThemeObserver.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
+  };
+  if (document.body) observe();
+  else document.addEventListener('DOMContentLoaded', observe, { once: true });
   [120, 350, 900, 1800, 3200].forEach(delay => setTimeout(watch, delay));
 }
 
@@ -640,10 +659,51 @@ function _GfEnsureThemeSheets(onDone) {
   setTimeout(done, 900);
 }
 
+function _GfUseCustomTheme(palette) {
+  const p = GfCleanPalette(palette);
+  const sigNow = JSON.stringify(p);
+  if (sigNow === _gfCustomSig && _gfEffectiveTheme === 'custom' && document.documentElement.getAttribute('data-gf-theme-source') === 'custom') return;
+  _gfCustomSig = sigNow;
+  const vars = GfThemeVars(p);
+  _gfExternalThemeVars = vars;
+  _gfExternalThemeSignature = '';
+  _gfEffectiveTheme = 'custom';
+  localStorage.removeItem('gf-smpp-active-cache');
+  localStorage.setItem('gf-theme-palette-cache', JSON.stringify(p));
+  document.documentElement.removeAttribute('data-gf-theme');
+  document.getElementById('gf-dark-flash-shield')?.remove();
+  GF_THEME_SHEETS.forEach(({ id }) => document.getElementById(id)?.remove());
+  _GfStopDarkMediaWatcher();
+  _GfStopNavWatcher();
+  _gfSheetRevealed = false;
+  if (document.body) {
+    document.body.style.opacity = '';
+    document.body.style.transition = '';
+  }
+  _GfSetExternalThemeVars(vars);
+  if (p.site) {
+    GfThemeEngine.start(p);
+    setTimeout(() => _GfGetPanelIframe()?.contentWindow?.postMessage({ type: 'gf-theme-status', blocked: GfThemeEngine.blocked() }, '*'), 2500);
+  } else GfThemeEngine.stop();
+  _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
+  _GfRefreshThemedHosts();
+  _GfPostThemeToPanel();
+}
+
 function ApplyPageTheme(theme) {
   theme = _GfNormalizeTheme(theme);
   localStorage.setItem('gf-theme-cache', theme);
   const smppTheme = _GfReadSmartschoolPlusPlusTheme();
+  if (theme === 'custom' && !smppTheme) {
+    if (_gfCustomPalette) _GfUseCustomTheme(_gfCustomPalette);
+    else chrome.storage.local.get(GF_THEME_PALETTE_KEY, r => {
+      _gfCustomPalette = GfCleanPalette(r?.[GF_THEME_PALETTE_KEY] || GF_THEME_PRESETS[0]);
+      if (_gfCurrentTheme === 'custom') _GfUseCustomTheme(_gfCustomPalette);
+    });
+    return;
+  }
+  _gfCustomSig = '';
+  GfThemeEngine.stop();
 
   if (theme === 'smpp' || smppTheme) {
     if (smppTheme) _GfUseExternalTheme(smppTheme);
@@ -668,6 +728,7 @@ function ApplyPageTheme(theme) {
   _gfExternalThemeSignature = '';
   _gfEffectiveTheme = theme;
   localStorage.removeItem('gf-smpp-active-cache');
+  localStorage.removeItem('gf-theme-palette-cache');
   _GfClearExternalThemeVars();
 
   if (theme === 'dark') {
@@ -702,8 +763,8 @@ function _GfRevealPage() {
   }
 }
 
-// Chrome storage
-chrome.storage.local.get('gradeflow-theme', ({ 'gradeflow-theme': saved }) => {
+chrome.storage.local.get(['gradeflow-theme', GF_THEME_PALETTE_KEY], ({ 'gradeflow-theme': saved, [GF_THEME_PALETTE_KEY]: palette }) => {
+  _gfCustomPalette = palette ? GfCleanPalette(palette) : null;
   _gfCurrentTheme = _GfNormalizeTheme(saved);
   _gfSheetRevealed = false;
   _GfStartSmartschoolPlusPlusWatcher();
@@ -722,7 +783,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes['gradeflow-theme']) {
     _gfCurrentTheme = _GfNormalizeTheme(changes['gradeflow-theme'].newValue);
     _gfSheetRevealed = false;
-    _GfSchedulePageThemeApply(120);
+    _GfSchedulePageThemeApply(_gfCurrentTheme === 'custom' ? 0 : 120);
+  }
+
+  if (changes[GF_THEME_PALETTE_KEY]) {
+    _gfCustomPalette = GfCleanPalette(changes[GF_THEME_PALETTE_KEY].newValue || GF_THEME_PRESETS[0]);
+    if (_gfCurrentTheme === 'custom' && _gfEffectiveTheme !== 'smpp') _GfUseCustomTheme(_gfCustomPalette);
   }
 
   if (changes['gradeflow-grades']) {
@@ -730,7 +796,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// Misc helpers
 let gradeflowWeightMode = 'points';
 let gradeflowManualHours = LoadManualHours();
 let gradeflowFormula = LoadFormula();
@@ -807,8 +872,12 @@ const gradeflowCache = {
   apiSucceeded: false
 };
 
-const _GF_PLANNER_KEY = 'gradeflow-planner-items';
-const _GF_ATTENDANCE_KEY = 'gradeflow-attendance-items';
+const _GF_PLANNER_KEY = 'gradeflow-planner-v2';
+const _GF_ATTENDANCE_KEY = 'gradeflow-attendance-v2';
+if (!localStorage.getItem('gf-v13-cleanup')) {
+  chrome.storage.local.remove(['gradeflow-planner-items', 'gradeflow-attendance-items']);
+  localStorage.setItem('gf-v13-cleanup', '1');
+}
 
 function LoadManualHours() {
   try {
@@ -875,258 +944,194 @@ function FormatShortDate(value) {
   return d.toLocaleDateString('nl-BE');
 }
 
-function _GfParsePlannerDate(text) {
-  const raw = String(text || '');
-  const lower = raw.toLowerCase();
+const _GF_MONTHS = {
+  jan: 1, januari: 1, janvier: 1, january: 1, janv: 1,
+  feb: 2, februari: 2, fev: 2, fevr: 2, fevrier: 2, février: 2, févr: 2, february: 2,
+  maa: 3, mrt: 3, maart: 3, mar: 3, mars: 3, march: 3,
+  apr: 4, april: 4, avr: 4, avril: 4,
+  mei: 5, mai: 5, may: 5,
+  jun: 6, juni: 6, juin: 6, june: 6,
+  jul: 7, juli: 7, juil: 7, juillet: 7, july: 7,
+  aug: 8, augustus: 8, aout: 8, août: 8, august: 8,
+  sep: 9, sept: 9, september: 9, septembre: 9,
+  okt: 10, oct: 10, oktober: 10, octobre: 10, october: 10,
+  nov: 11, november: 11, novembre: 11,
+  dec: 12, december: 12, decembre: 12, décembre: 12, déc: 12,
+};
+const _GF_MONTH_RE = new RegExp(`\\b(\\d{1,2})\\s+(${Object.keys(_GF_MONTHS).sort((a, b) => b.length - a.length).join('|')})\\.?\\s+(20\\d{2})\\b`, 'i');
+const _GF_SCRAPE_SKIP = '#gradeflow-panel-host,#gradeflow-tab-wrapper,#gf-chat-root,#gf-home-summary,#gf-arcade,header,nav,[role="banner"],[role="navigation"],[role="menu"],[role="tooltip"],[class*="topnav" i],[id*="topnav" i],[class*="notif" i],[id*="notif" i],[class*="message" i],[id*="message" i],[class*="toast" i],[class*="popover" i],[class*="dropdown" i],[class*="tooltip" i],.smsc-top-bar,.smsc-header,script,style,template,noscript';
+
+function _GfSchoolYearStart() {
   const now = new Date();
-  if (/\b(vandaag|today|aujourd'hui)\b/.test(lower)) return now.toISOString();
-  if (/\b(morgen|tomorrow|demain)\b/.test(lower)) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    return d.toISOString();
+  return now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function _GfValidDate(day, month, year) {
+  if (!(month >= 1 && month <= 12 && day >= 1 && day <= 31)) return false;
+  const d = new Date(year, month - 1, day);
+  return d.getMonth() === month - 1;
+}
+
+function _GfFindDate(text, allowNoYear = false) {
+  const raw = String(text || '');
+  let m = raw.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if (m && _GfValidDate(+m[3], +m[2], +m[1])) return { day: +m[3], month: +m[2], year: +m[1], text: m[0] };
+  m = raw.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](20\d{2}|\d{2})\b/);
+  if (m) {
+    const year = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+    if (_GfValidDate(+m[1], +m[2], year)) return { day: +m[1], month: +m[2], year, text: m[0] };
   }
-  const match = raw.match(/\b(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?\b/);
-  if (!match) return '';
-  let year = match[3] ? Number(match[3]) : now.getFullYear();
-  if (year < 100) year += 2000;
-  const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
-  if (!match[3] && date.getTime() < now.getTime() - 1000 * 60 * 60 * 24 * 120) date.setFullYear(date.getFullYear() + 1);
-  return isNaN(date) ? '' : date.toISOString();
+  m = raw.match(_GF_MONTH_RE);
+  if (m) {
+    const month = _GF_MONTHS[m[2].toLowerCase()];
+    if (month && _GfValidDate(+m[1], month, +m[3])) return { day: +m[1], month, year: +m[3], text: m[0] };
+  }
+  if (!allowNoYear) return null;
+  m = raw.match(/(?:^|[^\d\/.:-])(\d{1,2})\/(\d{1,2})(?![\d\/.:-])/);
+  if (!m || !_GfValidDate(+m[1], +m[2], 2000)) return null;
+  const start = _GfSchoolYearStart();
+  const year = +m[2] >= 8 ? start : start + 1;
+  return { day: +m[1], month: +m[2], year, text: `${m[1]}/${m[2]}` };
 }
 
-function _GfPlannerDisplayDate(iso) {
-  if (!iso) return '';
-  const date = new Date(iso);
-  return isNaN(date) ? String(iso) : date.toLocaleDateString('nl-BE');
+function _GfDateInSchoolYear(found) {
+  if (!found) return false;
+  const start = _GfSchoolYearStart();
+  const t = new Date(found.year, found.month - 1, found.day).getTime();
+  return t >= new Date(start, 7, 15).getTime() && t <= new Date(start + 1, 7, 31).getTime();
 }
 
-function _GfPlannerSubjects() {
-  const subjects = new Set();
-  const all = BuildAllPeriodData(gradeflowCache.gradesStore || {});
-  Object.keys(all || {}).forEach(subject => subjects.add(subject));
-  return [...subjects];
+function _GfDateValue(found) {
+  return `${found.day}/${found.month}/${found.year}`;
 }
 
-function _GfGuessPlannerSubject(text) {
-  const lower = String(text || '').toLowerCase();
-  return _GfPlannerSubjects().find(subject => lower.includes(subject.toLowerCase())) || '';
+function _GfNodeText(el) {
+  return String((el.ownerDocument?.defaultView ? el.innerText : el.textContent) || '').replace(/\s+/g, ' ').trim();
 }
 
-function _GfCleanPlannerTitle(text) {
-  return String(text || '')
+function _GfScrapeCandidates(root, selector, limit) {
+  const body = root.body || root;
+  if (!body?.querySelectorAll) return [];
+  const out = [];
+  for (const el of body.querySelectorAll(selector)) {
+    if (el.closest(_GF_SCRAPE_SKIP)) continue;
+    out.push(el);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function _GfCollapseRepeat(text) {
+  const words = text.split(' ');
+  const half = words.length / 2;
+  if (words.length >= 2 && words.length % 2 === 0 && words.slice(0, half).join(' ').toLowerCase() === words.slice(half).join(' ').toLowerCase()) return words.slice(0, half).join(' ');
+  return text;
+}
+
+function _GfPickMinimalRows(entries, sameRow) {
+  entries.sort((a, b) => a.text.length - b.text.length);
+  const accepted = [];
+  for (const entry of entries) {
+    const inner = accepted.filter(a => entry.el.contains(a.el));
+    if (!inner.length) { accepted.push(entry); continue; }
+    if (inner.length === 1 && sameRow(inner[0], entry) && entry.text.length <= inner[0].text.length * 2 + 16) {
+      const target = inner[0];
+      target.el = entry.el;
+      for (const key of Object.keys(entry.info)) if (!target.info[key] && entry.info[key]) target.info[key] = entry.info[key];
+      target.text = entry.text;
+    }
+  }
+  return accepted;
+}
+
+const _GF_ATT_LATE_RE = /\bte\s*laat\b|\blaatkom|\blaattijdig|\bretard|\blate\b/i;
+const _GF_ATT_ABSENT_RE = /afwezig|ziek|attest|dokter|overmacht|begrafenis|gewettigd|spijbel|absen|malad|excus|sick/i;
+const _GF_ATT_JUNK_RE = /highcharts|evolutie|totalen|statistiek|grafiek|chart|alle informatie|leerlingvolgsysteem/i;
+const _GF_ATT_MOMENT_RE = /\b(VM|NM|voormiddag|namiddag|matin|apr[eè]s-midi|AM|PM)\b/i;
+const _GF_ATT_HEADINGS_RE = /\b(alle afwezigheden|afwezigheden|absences|te laat|aanwezigheden|filter|overzicht)\b/gi;
+const _GF_ATT_WEEKDAY_RE = /\b(maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|ma|di|wo|do|vr|za|zo|lun|mar|mer|jeu|ven|sam|dim)\.?(?=\s|$)/gi;
+
+const _GF_ATT_ABSENT_CODES = 'ZDBRQPMYUTJA';
+
+function _GfAttendanceCode(el) {
+  const leaves = el.children.length ? el.querySelectorAll('*') : [el];
+  for (const leaf of leaves) {
+    if (leaf.children.length) continue;
+    const t = (leaf.textContent || '').trim();
+    if (/^[A-Z]$/.test(t)) return t;
+  }
+  return '';
+}
+
+function _GfParseAttendance(el, text) {
+  if (text.length < 6 || text.length > 260 || _GF_ATT_JUNK_RE.test(text)) return null;
+  const found = _GfFindDate(text, true);
+  if (!found || !_GfDateInSchoolYear(found)) return null;
+  const code = _GfAttendanceCode(el);
+  const late = code === 'L' || _GF_ATT_LATE_RE.test(text);
+  const absent = !late && (_GF_ATT_ABSENT_RE.test(text));
+  if (!late && !absent && !code) return null;
+  const moment = (text.match(_GF_ATT_MOMENT_RE)?.[1] || '').toUpperCase().replace('VOORMIDDAG', 'VM').replace('NAMIDDAG', 'NM');
+  let title = text
+    .replace(found.text, ' ')
+    .replace(_GF_ATT_MOMENT_RE, ' ')
+    .replace(_GF_ATT_HEADINGS_RE, ' ')
+    .replace(_GF_ATT_WEEKDAY_RE, ' ')
+    .replace(code ? new RegExp(`(^|\\s)${code}(?=\\s|$)`, 'g') : /$^/, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/\b\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\b/g, '')
-    .trim()
-    .slice(0, 140);
-}
-
-function _GfExtractPlannerItemsFromDom() {
-  if (!document.body) return [];
-  const pathHint = /(planner|planning|agenda|task|tasks|taken|opdracht|calendar)/i.test(location.pathname + ' ' + location.hash);
-  const keyword = /(taak|taken|opdracht|deadline|agenda|planner|planning|toets|test|huiswerk|assignment|task|calendar|due|planned|devoir|travail)/i;
-  const candidates = [...document.querySelectorAll('a, li, tr, article, [role="listitem"], [class]')]
-    .filter(el => !el.closest('#gradeflow-panel-host, #gradeflow-tab-wrapper'))
-    .slice(0, 1200);
-  const seen = new Set();
-  const items = [];
-  for (const el of candidates) {
-    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-    if (text.length < 8 || text.length > 420) continue;
-    const meta = `${el.className || ''} ${el.id || ''} ${el.getAttribute('href') || ''}`;
-    const dueIso = _GfParsePlannerDate(text);
-    if (!dueIso && !pathHint && !keyword.test(text + ' ' + meta)) continue;
-    if (!dueIso && !keyword.test(text + ' ' + meta)) continue;
-    const title = _GfCleanPlannerTitle(text);
-    if (!title || title.length < 3) continue;
-    const href = el.closest('a')?.href || el.querySelector?.('a[href]')?.href || '';
-    const item = {
-      title,
-      subject: _GfGuessPlannerSubject(text),
-      dueDate: _GfPlannerDisplayDate(dueIso),
-      dueIso,
-      type: keyword.exec(text + ' ' + meta)?.[0] || '',
-      url: href,
-      source: location.pathname,
-    };
-    const key = [item.title, item.subject, item.dueDate].join('\u0001').toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    items.push(item);
-    if (items.length >= 80) break;
-  }
-  return items.sort((a, b) => String(a.dueIso || '').localeCompare(String(b.dueIso || '')));
-}
-
-function _GfStorePlannerItems(items) {
-  chrome.storage.local.set({ [_GF_PLANNER_KEY]: JSON.stringify(items || []) }, () => {
-    _GfGetPanelIframe()?.contentWindow?.postMessage({ type: 'gf-planner-ready' }, '*');
-  });
-}
-
-function _GfRefreshPlannerItems() {
-  const items = _GfExtractPlannerItemsFromDom();
-  if (items.length) _GfStorePlannerItems(items);
-  return items;
-}
-
-function _GfAttendanceDateFromText(text) {
-  const raw = String(text || '');
-  const yearFirst = raw.match(/\b(20\d{2})[\/.-](\d{1,2})[\/.-](\d{1,2})\b/);
-  if (yearFirst) {
-    return { text: yearFirst[0], value: `${Number(yearFirst[3])}/${Number(yearFirst[2])}/${yearFirst[1]}`, day: Number(yearFirst[3]), month: Number(yearFirst[2]), year: Number(yearFirst[1]) };
-  }
-  const numeric = raw.match(/\b(?:ma|di|wo|do|vr|za|zo)?\s*(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?\b/i);
-  if (numeric) {
-    let year = numeric[3] ? Number(numeric[3]) : new Date().getFullYear();
-    if (year < 100) year += 2000;
-    return { text: numeric[0], value: `${numeric[1]}/${numeric[2]}/${year}`, day: Number(numeric[1]), month: Number(numeric[2]), year };
-  }
-  const monthMap = {
-    jan: 1, januari: 1, feb: 2, februari: 2, maa: 3, maart: 3, mrt: 3, apr: 4, april: 4,
-    mei: 5, jun: 6, juni: 6, jul: 7, juli: 7, aug: 8, augustus: 8, sep: 9, sept: 9, september: 9,
-    okt: 10, oktober: 10, nov: 11, november: 11, dec: 12, december: 12,
+    .trim();
+  title = _GfCollapseRepeat(title).slice(0, 120);
+  return {
+    date: _GfDateValue(found),
+    moment,
+    code,
+    title,
+    type: late ? 'late' : absent || (code && _GF_ATT_ABSENT_CODES.includes(code)) ? 'absent' : 'other',
   };
-  const word = raw.match(/\b(?:ma|di|wo|do|vr|za|zo)?\s*(\d{1,2})\s+(jan(?:uari)?|feb(?:ruari)?|maa(?:rt)?|mrt|apr(?:il)?|mei|jun(?:i)?|jul(?:i)?|aug(?:ustus)?|sep(?:t|tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{4})\b/i);
-  if (!word) return { text: '', value: '' };
-  const month = monthMap[word[2].toLowerCase()];
-  return month ? { text: word[0], value: `${word[1]}/${month}/${word[3]}`, day: Number(word[1]), month, year: Number(word[3]) } : { text: '', value: '' };
-}
-
-function _GfAttendanceDateIsRelevant(foundDate) {
-  const day = Number(foundDate?.day), month = Number(foundDate?.month), year = Number(foundDate?.year);
-  if (!day || !month || !year || month < 1 || month > 12 || day < 1 || day > 31) return false;
-  const now = new Date();
-  const schoolStartYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
-  return year >= schoolStartYear && year <= schoolStartYear + 1;
 }
 
 function _GfExtractAttendanceItemsFromDom(root = document, sourcePath = location.pathname) {
-  const body = root.body || root;
-  if (!body) return [];
-  const pageHint = /(studentcard|leerling|afwezig|absen|attendance|late|te-laat|lvs)/i.test(sourcePath + ' ' + (root.title || document.title));
-  const keyword = /(afwezig|afwezigheid|doktersattest|te laat|overmacht|openbaar vervoer|ziek|absence|absent|late|retard|attest)/i;
-  const junk = /(highcharts|created with highcharts|chart|evolutie afwezigheden|totalen per|klassen\b|alle informatie|leerlingvolgsysteem)/i;
-  const candidates = [...body.querySelectorAll('li, tr, article, p, div, [role="listitem"], [class*="absence"], [class*="absen"], [class*="afwezig"], [class*="late"], [class*="lvs"]')]
-    .filter(el => !el.closest('#gradeflow-panel-host, #gradeflow-tab-wrapper'))
-    .sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length)
-    .slice(0, 1400);
-  const seen = new Set();
-  const items = [];
-  for (const el of candidates) {
-    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-    if (text.length < 8 || text.length > 360) continue;
-    const meta = `${el.className || ''} ${el.id || ''}`;
-    if (junk.test(text + ' ' + meta)) continue;
-    const foundDate = _GfAttendanceDateFromText(text);
-    if (!foundDate.value || !_GfAttendanceDateIsRelevant(foundDate)) continue;
-    const momentMatch = text.match(/\b(VM|NM|AM|PM)\b(?:\s*,\s*\b(VM|NM|AM|PM)\b)?/i);
-    const codeMatch = text.match(/\b([LDRBZ])\b/);
-    const hasKeyword = keyword.test(text + ' ' + meta);
-    const hasCompactAttendanceCode = pageHint && (!!codeMatch || !!momentMatch) && text.length <= 180;
-    if (!hasKeyword && !hasCompactAttendanceCode) continue;
-    let title = text
-      .replace(foundDate.text || '', '')
-      .replace(momentMatch?.[0] || '', '')
-      .replace(codeMatch ? new RegExp(`\\b${codeMatch[1]}\\b`) : /$^/, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (title.length > 120) title = title.slice(0, 120).trim();
-    const item = {
-      date: foundDate.value,
-      moment: momentMatch?.[0] || '',
-      code: codeMatch?.[1] || '',
-      title: title || keyword.exec(text)?.[0] || codeMatch?.[1] || momentMatch?.[0] || '',
-      detail: '',
-      type: keyword.exec(text + ' ' + meta)?.[0] || codeMatch?.[1] || momentMatch?.[0] || '',
-      source: sourcePath,
-    };
-    const key = [item.date, item.moment, item.code, item.title].join('\u0001').toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    items.push(item);
-    if (items.length >= 100) break;
+  const entries = [];
+  for (const el of _GfScrapeCandidates(root, '.lvs-pupilpresences-row,tr,li,[role="row"],[role="listitem"],article,div,section,p,td', 3000)) {
+    const text = _GfNodeText(el);
+    const info = _GfParseAttendance(el, text);
+    if (info) entries.push({ el, text, info });
   }
-  return items;
+  const rows = _GfPickMinimalRows(entries, (a, b) => a.info.date === b.info.date && (!a.info.moment || !b.info.moment || a.info.moment === b.info.moment));
+  return _GfMergeAttendanceItems(rows.map(r => ({ ...r.info, source: sourcePath })));
+}
+
+function _GfAttendanceKey(item) {
+  return [item.date, item.moment || '', String(item.title || '').toLowerCase()].join('\u0001');
+}
+
+function _GfMergeAttendanceItems(...groups) {
+  const out = [];
+  for (const item of groups.flat()) {
+    if (!item?.date) continue;
+    const title = String(item.title || '').toLowerCase();
+    const twin = out.find(o => o.date === item.date && (o.moment || '') === (item.moment || '') && (o.title.toLowerCase() === title || (title && o.title.toLowerCase().includes(title)) || (o.title && title.includes(o.title.toLowerCase()))));
+    if (twin) {
+      if (!twin.code && item.code) twin.code = item.code;
+      if (item.title.length > twin.title.length) twin.title = item.title;
+      if (twin.type === 'other' && item.type !== 'other') twin.type = item.type;
+      continue;
+    }
+    out.push({ ...item, title: String(item.title || '') });
+    if (out.length >= 200) break;
+  }
+  return out;
 }
 
 const _GF_ATTENDANCE_URLS = [
   '/Studentcard',
-  '/?module=LVS&file=index&function=main',
   '/?module=StudentCard&file=index&function=main',
-  '/?module=Absence&file=index&function=main',
-  '/?module=Absences&file=index&function=main',
+  '/?module=LVS&file=index&function=main',
 ];
 let _gfAttendanceRefreshPromise = null;
 
-function _GfNormalizeAttendanceUrl(raw) {
-  const value = String(raw || '').trim().replace(/&amp;/g, '&');
-  if (!value || value === '#' || /^javascript:/i.test(value)) return '';
-  try {
-    const url = new URL(value, location.href);
-    if (url.origin !== location.origin) return '';
-    const full = `${url.pathname}${url.search}${url.hash}` || '/';
-    return /(module=(?:LVS|StudentCard)\b|afwezig|absen|absence|attendance|te[-_ ]?laat|studentcard)/i.test(full) ? full : '';
-  } catch (_) {
-    return '';
-  }
-}
-
-function _GfExtractAttendanceUrlsFromText(text) {
-  const found = [];
-  const raw = String(text || '').replace(/\\\//g, '/').replace(/\u0026/g, '&');
-  const matches = raw.match(/(?:https?:\/\/[^'"\s<>]+|\/\?[^'"\s<>]+|\/index\.php\?[^'"\s<>]+|index\.php\?[^'"\s<>]+)/gi) || [];
-  for (const match of matches) {
-    const clean = match.replace(/[),.;]+$/g, '');
-    const url = _GfNormalizeAttendanceUrl(clean.startsWith('index.php') ? `/${clean}` : clean);
-    if (url) found.push(url);
-  }
-  return found;
-}
-
-function _GfDiscoverAttendanceUrls(root = document) {
-  const body = root.body || root;
-  if (!body) return [];
-  const urls = [];
-  const push = value => {
-    const url = _GfNormalizeAttendanceUrl(value);
-    if (url) urls.push(url);
-  };
-  push(location.href);
-  const candidates = [...body.querySelectorAll('a[href], area[href], form[action], [onclick], [data-href], [data-url], [data-link], [data-module]')]
-    .filter(el => !el.closest('#gradeflow-panel-host, #gradeflow-tab-wrapper'))
-    .slice(0, 2200);
-  for (const el of candidates) {
-    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-    const meta = `${el.getAttribute('href') || ''} ${el.getAttribute('action') || ''} ${el.getAttribute('onclick') || ''} ${el.dataset?.href || ''} ${el.dataset?.url || ''} ${el.dataset?.link || ''} ${el.dataset?.module || ''} ${text}`;
-    if (!/(module=(?:LVS|StudentCard)\b|afwezig|absen|absence|attendance|te[-_ ]?laat|studentcard|leerlingvolgsysteem)/i.test(meta)) continue;
-    push(el.getAttribute('href'));
-    push(el.getAttribute('action'));
-    push(el.dataset?.href);
-    push(el.dataset?.url);
-    push(el.dataset?.link);
-    if (/^(LVS|StudentCard)$/i.test(el.dataset?.module || '')) push(`/?module=${el.dataset.module}&file=index&function=main`);
-    urls.push(..._GfExtractAttendanceUrlsFromText(el.getAttribute('onclick')));
-    urls.push(..._GfExtractAttendanceUrlsFromText(meta));
-  }
-  return [...new Set(urls)];
-}
-
-function _GfAttendanceUrls() {
-  return [...new Set([..._GF_ATTENDANCE_URLS, ..._GfDiscoverAttendanceUrls()])].slice(0, 12);
-}
-
-function _GfMergeAttendanceItems(...groups) {
-  const seen = new Set();
-  const out = [];
-  for (const items of groups) {
-    for (const item of (items || [])) {
-      const key = [item.date, item.moment, item.code, item.title].join('\u0001').toLowerCase();
-      if (!item.date || seen.has(key)) continue;
-      seen.add(key);
-      out.push(item);
-      if (out.length >= 180) return out;
-    }
-  }
-  return out;
+function _GfIsAttendancePage(path = location.pathname + location.search) {
+  return /studentcard|module=(lvs|absence|absences)\b|afwezig/i.test(path);
 }
 
 function _GfDelay(ms) {
@@ -1134,21 +1139,9 @@ function _GfDelay(ms) {
 }
 
 function _GfFindAttendanceNavElement(doc) {
-  const root = doc?.body || doc;
-  if (!root) return null;
-  const candidates = [...root.querySelectorAll('a, button, li, span, div, td')]
-    .filter(el => !el.closest('#gradeflow-panel-host, #gradeflow-tab-wrapper'))
-    .slice(0, 1800);
-  for (const el of candidates) {
-    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    if (text === 'afwezigheden' || text === 'absences') return el.closest('a, button, li, tr, [onclick]') || el;
-  }
-  for (const el of candidates) {
-    const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    if (!text || text.length > 80) continue;
-    if (/evolutie|totalen|grafiek|chart/.test(text)) continue;
-    if (!/\bafwezigheden\b|\bafwezigheid\b|\babsences\b|\babsence\b/i.test(text)) continue;
-    return el.closest('a, button, li, tr, [onclick]') || el;
+  for (const el of _GfScrapeCandidates(doc, 'a,button,[role="tab"],li,span', 1800)) {
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (text === 'afwezigheden' || text === 'absences' || text === 'aanwezigheden') return el.closest('a,button,[role="tab"],li,[onclick]') || el;
   }
   return null;
 }
@@ -1156,54 +1149,39 @@ function _GfFindAttendanceNavElement(doc) {
 function _GfActivateAttendanceNav(doc) {
   const target = _GfFindAttendanceNavElement(doc);
   if (!target) return false;
-  const link = target.matches?.('a[href]') ? target : target.querySelector?.('a[href]') || target.closest?.('a[href]');
-  if (link) {
-    try { link.setAttribute('target', '_self'); } catch (_) {}
-  }
-  try { target.scrollIntoView?.({ block: 'center', inline: 'center' }); } catch (_) {}
-  try {
-    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: target.ownerDocument.defaultView }));
-    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: target.ownerDocument.defaultView }));
-    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: target.ownerDocument.defaultView }));
-    return true;
-  } catch (_) {
-    try { target.click?.(); return true; } catch (_) { return false; }
-  }
+  const link = target.matches('a[href]') ? target : target.querySelector('a[href]');
+  link?.setAttribute('target', '_self');
+  const view = target.ownerDocument.defaultView;
+  for (const type of ['mousedown', 'mouseup', 'click']) target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view }));
+  return true;
 }
 
 async function _GfLoadAttendanceItemsInFrame(url) {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.tabIndex = -1;
-  frame.style.cssText = 'position:fixed;left:-10000px;top:-10000px;width:1px;height:1px;opacity:0;pointer-events:none;border:0;';
+  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:1024px;height:768px;opacity:0;pointer-events:none;border:0;';
   document.documentElement.appendChild(frame);
   try {
     await new Promise(resolve => {
-      const done = () => resolve();
-      frame.addEventListener('load', done, { once: true });
+      frame.addEventListener('load', resolve, { once: true });
       frame.src = url;
-      setTimeout(done, 3500);
+      setTimeout(resolve, 4000);
     });
-    const deadline = Date.now() + 10000;
-    const minWaitUntil = Date.now() + 1200;
-    let items = [], stableReads = 0, navClicked = false;
+    const deadline = Date.now() + 9000;
+    let items = [], stable = 0, navTried = false;
     while (Date.now() < deadline) {
       const doc = frame.contentDocument;
       if (doc?.body) {
-        if (!navClicked) {
-          navClicked = _GfActivateAttendanceNav(doc);
-          if (navClicked) { await _GfDelay(700); continue; }
+        if (!navTried) {
+          navTried = true;
+          if (_GfActivateAttendanceNav(doc)) { await _GfDelay(800); continue; }
         }
-        const nextItems = _GfExtractAttendanceItemsFromDom(doc, url);
-        if (nextItems.length > items.length) {
-          items = nextItems;
-          stableReads = 0;
-        } else if (items.length) {
-          stableReads++;
-          if (Date.now() >= minWaitUntil && stableReads >= 3) return items;
-        }
+        const next = _GfExtractAttendanceItemsFromDom(doc, url);
+        if (next.length > items.length) { items = next; stable = 0; }
+        else if (items.length && ++stable >= 2) return items;
       }
-      await _GfDelay(450);
+      await _GfDelay(500);
     }
     return items;
   } catch (_) {
@@ -1213,52 +1191,102 @@ async function _GfLoadAttendanceItemsInFrame(url) {
   }
 }
 
-async function _GfFetchAttendanceItems() {
-  const found = [];
-  for (const url of _GfAttendanceUrls()) {
-    try {
-      const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) continue;
-      const html = await res.text();
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const items = _GfExtractAttendanceItemsFromDom(doc, url);
-      if (items.length) found.push(items);
-    } catch (_) {}
-  }
-  return _GfMergeAttendanceItems(...found);
-}
-
-async function _GfRenderAttendanceItems() {
-  const found = [];
-  for (const url of _GfAttendanceUrls()) {
-    const items = await _GfLoadAttendanceItemsInFrame(url);
-    if (items.length) {
-      found.push(items);
-      _GfStoreAttendanceItems(_GfMergeAttendanceItems(...found));
-    }
-  }
-  return _GfMergeAttendanceItems(...found);
-}
-
 function _GfStoreAttendanceItems(items) {
-  chrome.storage.local.set({ [_GF_ATTENDANCE_KEY]: JSON.stringify(items || []) }, () => {
+  chrome.storage.local.set({ [_GF_ATTENDANCE_KEY]: JSON.stringify(items || []), [_GF_ATTENDANCE_KEY + '-at']: Date.now() }, () => {
     _GfGetPanelIframe()?.contentWindow?.postMessage({ type: 'gf-attendance-ready' }, '*');
   });
 }
 
-async function _GfRefreshAttendanceItems() {
+function _GfRefreshAttendanceItems(force = false) {
   if (_gfAttendanceRefreshPromise) return _gfAttendanceRefreshPromise;
   _gfAttendanceRefreshPromise = (async () => {
-    const domItems = _GfExtractAttendanceItemsFromDom();
-    if (domItems.length) _GfStoreAttendanceItems(domItems);
-    const renderedItems = await _GfRenderAttendanceItems();
-    const fetchedItems = renderedItems.length ? [] : await _GfFetchAttendanceItems();
-    if (fetchedItems.length) _GfStoreAttendanceItems(fetchedItems);
-    const items = _GfMergeAttendanceItems(domItems, renderedItems, fetchedItems);
-    if (items.length) _GfStoreAttendanceItems(items);
-    return items;
+    if (_GfIsAttendancePage()) {
+      const domItems = _GfExtractAttendanceItemsFromDom();
+      if (domItems.length) { _GfStoreAttendanceItems(domItems); return domItems; }
+    }
+    if (!force) {
+      const at = (await chrome.storage.local.get(_GF_ATTENDANCE_KEY + '-at'))?.[_GF_ATTENDANCE_KEY + '-at'] || 0;
+      if (Date.now() - at < 30 * 60 * 1000) return null;
+    }
+    for (const url of _GF_ATTENDANCE_URLS) {
+      const items = await _GfLoadAttendanceItemsInFrame(url);
+      if (items.length) { _GfStoreAttendanceItems(items); return items; }
+    }
+    chrome.storage.local.set({ [_GF_ATTENDANCE_KEY + '-at']: Date.now() });
+    return [];
   })().finally(() => { _gfAttendanceRefreshPromise = null; });
   return _gfAttendanceRefreshPromise;
+}
+
+const _GF_PLANNER_TYPES = 'planned-assignments,planned-to-dos';
+let _gfPlannerRefreshPromise = null;
+
+function _GfPlannerUserId() {
+  const url = document.querySelector('#datePickerMenu')?.getAttribute('plannerurl') || document.querySelector('[plannerurl]')?.getAttribute('plannerurl') || '';
+  const fromUrl = url.split('/')[4];
+  if (/^\d+_\d+_\d+$/.test(fromUrl || '')) return fromUrl;
+  for (const script of document.scripts) {
+    const m = script.textContent.match(/authenticatedUser[\\"']*\s*:\s*\{[^}]*?[\\"']id[\\"']*\s*:\s*[\\"']*(\d+_\d+_\d+)/);
+    if (m) return m[1];
+  }
+  try { return localStorage.getItem('gf-planner-user') || ''; } catch (_) { return ''; }
+}
+
+function _GfIsoDay(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function _GfPlannerItemFromApi(el) {
+  const at = new Date(el?.period?.dateTimeTo || el?.period?.dateTimeFrom || '');
+  if (!el?.name || isNaN(at)) return null;
+  return {
+    id: String(el.id || ''),
+    title: String(el.name).trim().slice(0, 160),
+    subject: String(el.courses?.[0]?.name || '').trim(),
+    dueDate: `${at.getDate()}/${at.getMonth() + 1}/${at.getFullYear()}`,
+    dueIso: at.toISOString(),
+    type: String(el.assignmentType?.name || (el.plannedElementType === 'planned-to-dos' ? 'To-do' : '')).trim(),
+    resolved: el.resolvedStatus === 'resolved',
+    url: `${location.origin}/planner/main/`,
+    source: 'api',
+  };
+}
+
+function _GfStorePlannerItems(items) {
+  chrome.storage.local.set({ [_GF_PLANNER_KEY]: JSON.stringify(items || []), [_GF_PLANNER_KEY + '-at']: Date.now() }, () => {
+    _GfGetPanelIframe()?.contentWindow?.postMessage({ type: 'gf-planner-ready' }, '*');
+  });
+}
+
+function _GfRefreshPlannerItems(force = false) {
+  if (_gfPlannerRefreshPromise) return _gfPlannerRefreshPromise;
+  _gfPlannerRefreshPromise = (async () => {
+    const userId = _GfPlannerUserId();
+    if (!userId) return null;
+    try { localStorage.setItem('gf-planner-user', userId); } catch (_) {}
+    if (!force) {
+      const at = (await chrome.storage.local.get(_GF_PLANNER_KEY + '-at'))?.[_GF_PLANNER_KEY + '-at'] || 0;
+      if (Date.now() - at < 10 * 60 * 1000) return null;
+    }
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 21);
+    const to = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 42);
+    const res = await fetch(`/planner/api/v1/planned-elements/user/${encodeURIComponent(userId)}?from=${_GfIsoDay(from)}&to=${_GfIsoDay(to)}&types=${_GF_PLANNER_TYPES}`, { credentials: 'include' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    const seen = new Set();
+    const items = data.map(_GfPlannerItemFromApi).filter(item => {
+      if (!item) return false;
+      const key = item.id || `${item.title}|${item.dueDate}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).sort((a, b) => a.dueIso.localeCompare(b.dueIso)).slice(0, 150);
+    _GfStorePlannerItems(items);
+    return items;
+  })().catch(() => null).finally(() => { _gfPlannerRefreshPromise = null; });
+  return _gfPlannerRefreshPromise;
 }
 
 function CreateStore() { return {}; }
@@ -1269,21 +1297,29 @@ function CloneStore(store) {
     out[p] = {};
     for (const [s, payload] of Object.entries(subjects || {})) {
       out[p][s] = { scores: (payload?.scores || []).map(x => ({ ...x })) };
+      if (payload?.extra?.length) out[p][s].extra = payload.extra.map(x => ({ ...x }));
     }
   }
   return out;
 }
-function StoreGrade(store, { subject, period, title, date, scored, max }) {
-  if (!subject || isNaN(scored) || isNaN(max) || max <= 0) return false;
+function StoreGrade(store, { subject, period, title, date, scored, max, nc, extra }) {
+  if (!subject) return false;
   period = period || 'Onbekend';
   if (!store[period]) store[period] = {};
   if (!store[period][subject]) store[period][subject] = { scores: [] };
-  const scores = store[period][subject].scores;
-  if (!scores.some(x => x.scored === scored && x.max === max && x.title === (title || '') && x.date === (date || ''))) {
-    scores.push({ title: title || '', date: date || '', scored, max });
+  const slot = store[period][subject];
+  title = title || '';
+  date = date || '';
+  if (extra) {
+    const list = slot.extra || (slot.extra = []);
+    if (list.some(x => x.title === title && x.date === date && x.label === extra.label && x.icon === extra.icon)) return false;
+    list.push({ title, date, ...extra, ...(nc ? { nc: true } : {}) });
     return true;
   }
-  return false;
+  if (isNaN(scored) || isNaN(max) || max <= 0) return false;
+  if (slot.scores.some(x => x.scored === scored && x.max === max && x.title === title && x.date === date)) return false;
+  slot.scores.push(nc ? { title, date, scored, max, nc: true } : { title, date, scored, max });
+  return true;
 }
 function RemoveGrade(store, { subject, period, title, date, scored, max }) {
   if (!store?.[period]?.[subject]?.scores) return false;
@@ -1296,7 +1332,7 @@ function RemoveGrade(store, { subject, period, title, date, scored, max }) {
   return true;
 }
 function StoreSize(store) {
-  return Object.entries(store).filter(([k]) => !k.startsWith('_')).flatMap(([,p]) => Object.values(p)).reduce((n, s) => n + s.scores.length, 0);
+  return Object.entries(store).filter(([k]) => !k.startsWith('_')).flatMap(([,p]) => Object.values(p)).reduce((n, s) => n + s.scores.length + (s.extra?.length || 0), 0);
 }
 function CalcPercent(scores) {
   const s = scores.reduce((a, e) => a + e.scored, 0),
@@ -1341,22 +1377,128 @@ function BuildAllPeriodData(store) {
 }
 function ComputePeriodsFromStore(store) { return ['Alle', ...SortPeriods(Object.keys(store || {}).filter(p => p !== 'Alle' && !p.startsWith('_')))]; }
 
+function _GfNum(v) {
+  return parseFloat(String(v).replace(',', '.'));
+}
+
+function _GfRangeFrom(text) {
+  const m = String(text || '').match(/(\d+(?:[.,]\d+)?)\s*%?\s*(?:-|–|tot|à|to)\s*(\d+(?:[.,]\d+)?)\s*%/i);
+  if (!m) return null;
+  const lo = _GfNum(m[1]), hi = _GfNum(m[2]);
+  return hi >= lo && hi <= 100 ? { lo, hi } : null;
+}
+
+function _GfParseGraphic(g) {
+  if (!g || typeof g !== 'object') return null;
+  const desc = String(g.description ?? '').trim();
+  const color = String(g.color || '');
+  if (g.type === 'percentage') {
+    const frac = desc.match(/^\s*([\d.,]+)\s*\/\s*([\d.,]+)\s*$/);
+    if (frac) {
+      const scored = _GfNum(frac[1]), max = _GfNum(frac[2]);
+      if (Number.isFinite(scored) && max > 0) return { scored, max };
+    }
+    const range = _GfRangeFrom(desc);
+    if (range) return { extra: { kind: 'range', label: desc, pct: (range.lo + range.hi) / 2, lo: range.lo, hi: range.hi, color } };
+    const single = desc.match(/^(\d+(?:[.,]\d+)?)\s*%$/);
+    if (single) return { extra: { kind: 'percent', label: desc, pct: _GfNum(single[1]), color } };
+    if (Number.isFinite(Number(g.value)) && g.value !== null && g.value !== '') return { extra: { kind: 'percent', label: desc || `${g.value}%`, pct: Number(g.value), color } };
+    return color ? { extra: { kind: 'label', label: desc, color } } : null;
+  }
+  if (g.type === 'text') {
+    const label = String(g.value ?? '').trim() || desc;
+    if (!label) return null;
+    const range = _GfRangeFrom(`${label} ${desc}`);
+    return { extra: { kind: range ? 'range' : 'label', label, detail: desc && desc !== label ? desc : '', color, ...(range ? { pct: (range.lo + range.hi) / 2, lo: range.lo, hi: range.hi } : {}) } };
+  }
+  if (g.type === 'icon' && (g.value || color)) {
+    return { extra: { kind: 'icon', label: desc, icon: String(g.value || color), color } };
+  }
+  return null;
+}
+
 function NormalizeApiResultToEntries(result) {
-  if (result?.type !== 'normal') return [];
-  const period = result?.period?.name || 'Onbekend',
-        title = result?.name || '',
-        date = FormatShortDate(result?.date || ''),
-        desc = result?.graphic?.description || '';
-  const match = desc.match(/^\s*([\d.,]+)\s*\/\s*([\d.,]+)\s*$/);
-  if (!match) return [];
-  const scored = parseFloat(match[1].replace(',', '.')),
-        max = parseFloat(match[2].replace(',', '.'));
-  if (isNaN(scored) || isNaN(max) || max <= 0) return [];
+  const parsed = _GfParseGraphic(result?.graphic);
+  if (!parsed) return [];
+  const base = {
+    period: result?.period?.name || 'Onbekend',
+    title: result?.name || '',
+    date: FormatShortDate(result?.date || ''),
+    nc: result?.doesCount === false,
+  };
+  if (parsed.extra) {
+    base.extra = { ...parsed.extra, id: String(result?.identifier || '') };
+  } else {
+    base.scored = parsed.scored;
+    base.max = parsed.max;
+  }
   return (result?.courses || []).map(c => ({
     subject: c?.name?.trim(),
     graphic: c?.graphic || null,
-    period, title, date, scored, max
+    ...base,
   })).filter(x => x.subject);
+}
+
+const _GF_DETAILS_KEY = 'gradeflow-eval-details-v1';
+
+function _GfGoalsFromDetails(details) {
+  const goals = new Map();
+  for (const goal of details?.projectGoals || details?.goals || []) {
+    const parsed = _GfParseGraphic(goal?.graphic);
+    if (!parsed) continue;
+    const g = parsed.extra || { kind: 'score', label: `${parsed.scored}/${parsed.max}`, pct: parsed.scored / parsed.max * 100 };
+    const label = g.label || g.icon || '';
+    const key = `${label}|${g.icon || ''}`;
+    const row = goals.get(key) || { label, icon: g.icon || '', color: g.color || '', count: 0 };
+    row.count++;
+    goals.set(key, row);
+  }
+  return [...goals.values()];
+}
+
+function _GfScaleLabel(details, extra) {
+  for (const scale of details?.scales || []) {
+    const parsed = _GfParseGraphic(scale)?.extra;
+    if (!parsed) continue;
+    const same = extra.icon ? (scale.value === extra.icon || scale.color === extra.color) : scale.color === extra.color;
+    const label = String(scale.description || scale.name || scale.label || '').trim();
+    if (same && label) return label;
+  }
+  return '';
+}
+
+async function _GfEnrichExtras(store) {
+  const extras = [];
+  for (const [key, subjects] of Object.entries(store)) {
+    if (key.startsWith('_')) continue;
+    for (const payload of Object.values(subjects)) for (const x of payload.extra || []) if (x.id && (x.kind === 'icon' || x.kind === 'label')) extras.push(x);
+  }
+  if (!extras.length) return;
+  const cache = (await chrome.storage.local.get(_GF_DETAILS_KEY))?.[_GF_DETAILS_KEY] || {};
+  const todo = [...new Set(extras.map(x => x.id))].filter(id => !cache[id]).slice(0, 60);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(4, todo.length) }, async () => {
+    while (i < todo.length) {
+      const id = todo[i++];
+      try {
+        const res = await fetch(`/results/api/v1/evaluations/${encodeURIComponent(id)}`, { credentials: 'include' });
+        if (!res.ok) continue;
+        const data = await res.json();
+        cache[id] = { goals: _GfGoalsFromDetails(data?.details), scale: '', at: Date.now() };
+        const parsed = _GfParseGraphic(data?.graphic)?.extra;
+        if (parsed) cache[id].scale = _GfScaleLabel(data?.details, parsed);
+      } catch (_) {}
+    }
+  }));
+  const ids = Object.keys(cache);
+  if (ids.length > 250) ids.sort((a, b) => cache[a].at - cache[b].at).slice(0, ids.length - 250).forEach(id => delete cache[id]);
+  chrome.storage.local.set({ [_GF_DETAILS_KEY]: cache });
+  for (const x of extras) {
+    const d = cache[x.id];
+    if (!d) continue;
+    if (d.goals?.length) x.goals = d.goals;
+    if (!x.label && d.scale) x.label = d.scale;
+  }
 }
 
 function FetchSvgViaBackground(val) {
@@ -1432,14 +1574,25 @@ async function FetchAllApiGrades(onProgress) {
     if (onProgress) onProgress(StoreSize(store));
   }
 
+  await _GfEnrichExtras(store);
+  const gradeIcons = new Set();
+  for (const [key, subjects] of Object.entries(store)) {
+    if (key.startsWith('_')) continue;
+    for (const payload of Object.values(subjects)) for (const x of payload.extra || []) {
+      if (x.icon) gradeIcons.add(x.icon);
+      for (const g of x.goals || []) if (g.icon) gradeIcons.add(g.icon);
+    }
+  }
+
   const domIcons = ScrapeDomCourseIcons();
   for (const [subj, gfx] of Object.entries(domIcons)) {
     if (!courseIcons[subj]) courseIcons[subj] = gfx;
   }
 
-  const iconValues = [...new Set(
-    Object.values(courseIcons).map(g => g.value).filter(Boolean)
-  )];
+  const iconValues = [...new Set([
+    ...Object.values(courseIcons).map(g => g.value).filter(Boolean),
+    ...gradeIcons,
+  ])];
 
   const dataUris = await FetchIconDataUris(iconValues);
   for (const [subj, gfx] of Object.entries(courseIcons)) {
@@ -1449,6 +1602,7 @@ async function FetchAllApiGrades(onProgress) {
   }
 
   store._courseIcons = courseIcons;
+  store._gradeIcons = Object.fromEntries([...gradeIcons].filter(v => dataUris[v]).map(v => [v, dataUris[v]]));
   return store;
 }
 
@@ -1534,16 +1688,14 @@ function GetIconUrl() {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" fill="#f97316"/><path d="M7 3v4M17 3v4M3 9h18" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M8 12h3M13 12h3M8 16h3M13 16h3" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>');
 }
 
-// Nav watcher: event-based instead of polling
 function _GfOnNav() {
   if (document.body) document.body.style.opacity = '1';
   if (!document.getElementById('gradeflow-tab')) SetupButton();
   setTimeout(_GfInitHomeSummary, 350);
-  setTimeout(_GfRefreshPlannerItems, 650);
-  setTimeout(_GfRefreshAttendanceItems, 750);
+  setTimeout(_GfRefreshPlannerItems, 1500);
+  if (_GfIsAttendancePage()) setTimeout(_GfRefreshAttendanceItems, 900);
 }
 
-// Patch pushState/replaceState ONCE at module level so they never stack.
 const _gfOrigPush    = history.pushState;
 const _gfOrigReplace = history.replaceState;
 let _gfNavPatched    = false;
@@ -1564,7 +1716,6 @@ function _GfStopNavWatcher() {
   if (!_gfNavObserver) return;
   window.removeEventListener('popstate', _GfOnNav);
   _gfNavObserver = null;
-  // Restore original history methods so they don't fire _GfOnNav while stopped
   if (_gfNavPatched) {
     _gfNavPatched = false;
     history.pushState    = _gfOrigPush;
@@ -1572,7 +1723,6 @@ function _GfStopNavWatcher() {
   }
 }
 
-// Panel
 function _GfGetPanelIframe() {
   return document.querySelector('#gradeflow-panel-host iframe');
 }
@@ -1581,8 +1731,8 @@ function OnPanelMessage(e) {
   if (e.data?.type === 'gf-close') ClosePanel();
   if (e.data?.type === 'gf-f8') _GfLaunchArcade();
   if (e.data?.type === 'gf-open-gradeflow') OpenPanel(true);
-  if (e.data?.type === 'gf-refresh-planner') _GfRefreshPlannerItems();
-  if (e.data?.type === 'gf-refresh-attendance') _GfRefreshAttendanceItems();
+  if (e.data?.type === 'gf-refresh-planner') _GfRefreshPlannerItems(true);
+  if (e.data?.type === 'gf-refresh-attendance') _GfRefreshAttendanceItems(!!e.data.force);
   if (e.data?.type === 'gf-panel-rendered') {
     const iframe = _GfGetPanelIframe();
     if (iframe) iframe.style.opacity = '1';
@@ -1785,7 +1935,21 @@ function OpenPanel(forceOpen = false) {
   _GfLoadGradesInBackground();
 }
 
-// Arcade launcher
+const _gfLoadedScripts = new Map();
+
+function _GfLoadScripts(files) {
+  return Promise.all(files.map(file => {
+    if (!_gfLoadedScripts.has(file)) {
+      _gfLoadedScripts.set(file, chrome.runtime.sendMessage({ type: 'gf-load-scripts', files: [file] }).then(r => {
+        if (!r?.ok) _gfLoadedScripts.delete(file);
+        return !!r?.ok;
+      }, () => { _gfLoadedScripts.delete(file); return false; }));
+    }
+    return _gfLoadedScripts.get(file);
+  })).then(results => results.every(Boolean));
+}
+window._GfLoadScripts = _GfLoadScripts;
+
 function _GfLaunchArcade() {
   const bossGames = [
     { id: 'gf-bo',      fn: () => typeof BossKeyBreakout === 'function' && BossKeyBreakout() },
@@ -1798,6 +1962,10 @@ function _GfLaunchArcade() {
     { id: 'gf-sweep',   fn: () => typeof BossKeySweeper === 'function' && BossKeySweeper() },
     { id: 'gf-memory',  fn: () => typeof BossKeyMemory  === 'function' && BossKeyMemory() },
     { id: 'gf-shooter', fn: () => typeof BossKeyShooter === 'function' && BossKeyShooter() },
+    { id: 'gf-io',      fn: () => typeof BossKeyGradeIo === 'function' && BossKeyGradeIo() },
+    { id: 'gf-cr',      fn: () => typeof BossKeyGradeCross === 'function' && BossKeyGradeCross() },
+    { id: 'gf-ss',      fn: () => typeof BossKeyGradeSurfers === 'function' && BossKeyGradeSurfers() },
+    { id: 'gf-hk',      fn: () => typeof BossKeyGradeHook === 'function' && BossKeyGradeHook() },
   ];
   for (const { id, fn } of bossGames) {
     const el = document.getElementById(id);
@@ -1812,10 +1980,10 @@ function _GfLaunchArcade() {
   }
 
   const grades = gradeflowCache.gradesStore ? ExtractGradesForTetris(gradeflowCache.gradesStore) : [];
-  if (typeof ToggleGameMenu === 'function') ToggleGameMenu(grades);
+  if (typeof ToggleGameMenu === 'function') { ToggleGameMenu(grades); return; }
+  _GfLoadScripts(['JS/games/game-menu.js']).then(() => { if (typeof ToggleGameMenu === 'function') ToggleGameMenu(grades); });
 }
 
-// Message listener
 try {
   if (typeof chrome !== 'undefined' && chrome?.runtime?.onMessage?.addListener) {
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -1859,25 +2027,23 @@ try {
 } catch (_) {}
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'F6') {
+  if (GfKeys.match(e, 'panel')) {
     e.preventDefault();
     e.stopPropagation();
     OpenPanel(true);
   }
-  if (e.key === 'F8') {
+  if (GfKeys.match(e, 'arcade')) {
     e.preventDefault();
     e.stopPropagation();
     _GfLaunchArcade();
   }
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
     const panelOpen = document.getElementById('gradeflow-panel-host')?.style.display !== 'none';
-    const GAME_IDS = ['gf-tetris','gf-snake','gf-2048','gf-sweep','gf-memory','gf-shooter','gf-bo','gf-po','gf-fl','gf-rn','gf-tw','gf-arcade'];
-    const gameOpen = GAME_IDS.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
+    const gameOpen = [...GF_GAME_HOST_IDS, 'gf-arcade'].some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
     if (panelOpen || gameOpen) { e.preventDefault(); e.stopPropagation(); }
   }
 }, true);
 
-// URL persistence
 window.addEventListener('popstate', () => {
   if (location.pathname.endsWith('/GradeFlow')) {
     const host = document.getElementById('gradeflow-panel-host');
@@ -1899,9 +2065,8 @@ document.addEventListener('click', e => {
   if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) return;
   if (e.target.closest('#gradeflow-tab-wrapper, #gradeflow-tab')) return;
   if (e.target.closest('header, nav, [class*="topbar"], [class*="top-bar"], [role="banner"], [class*="topnav"], [class*="TopBar"], [class*="sidebar"], [role="toolbar"]')) return;
-  const GAME_IDS = ['gf-tetris','gf-snake','gf-2048','gf-sweep','gf-memory','gf-shooter','gf-arcade'];
-  if (GAME_IDS.some(id => document.getElementById(id)?.contains(e.target))) return;
-  const activeGame = GAME_IDS.slice(0,-1).some(id => {
+  if ([...GF_GAME_HOST_IDS, 'gf-arcade'].some(id => document.getElementById(id)?.contains(e.target))) return;
+  const activeGame = GF_GAME_HOST_IDS.some(id => {
     const el = document.getElementById(id);
     return el && el.style.display !== 'none';
   });
@@ -1934,13 +2099,6 @@ if (location.pathname.endsWith('/GradeFlow')) {
 }
 
 let _gfRetryInterval = null, _gfButtonObserver = null;
-let _gfPlannerRefreshTimer = null;
-let _gfAttendanceRefreshTimer = null;
-
-function _GfQueuePlannerRefresh(delay = 700) {
-  clearTimeout(_gfPlannerRefreshTimer);
-  _gfPlannerRefreshTimer = setTimeout(_GfRefreshPlannerItems, delay);
-}
 
 function _GfInjectFallbackButton(wrapper) {
   if (document.getElementById('gradeflow-tab')) return;
@@ -2013,7 +2171,7 @@ function _GfHomeGaugeSvg(pct) {
 function _GfBuildHomeSummary(store) {
   const data = BuildAllPeriodData(store || {});
   const subjectRows = Object.entries(data).map(([subject, payload]) => {
-    const scores = payload?.scores || [];
+    const scores = (payload?.scores || []).filter(score => !score.nc);
     const scored = scores.reduce((sum, score) => sum + (Number(score.scored) || 0), 0);
     const max = scores.reduce((sum, score) => sum + (Number(score.max) || 0), 0);
     return { subject, scored, max, pct: max > 0 ? scored / max * 100 : 0 };
@@ -2389,10 +2547,7 @@ function InitObserver() {
   }
 
   _gfButtonObserver = new MutationObserver(() => {
-    if (!document.getElementById('gradeflow-tab')) SetupButton();
-    _GfQueuePlannerRefresh();
-    clearTimeout(_gfAttendanceRefreshTimer);
-    _gfAttendanceRefreshTimer = setTimeout(_GfRefreshAttendanceItems, 900);
+    if (!document.getElementById('gradeflow-tab') && /^\/results(\/|$)/.test(location.pathname)) SetupButton();
   });
   _gfButtonObserver.observe(document.body, { childList: true, subtree: true });
 
@@ -2419,21 +2574,18 @@ if (document.readyState === 'loading') {
 } else {
   _GfInitHomeSummary();
 }
-setTimeout(_GfRefreshPlannerItems, 1200);
-setTimeout(_GfRefreshAttendanceItems, 1400);
-
+setTimeout(_GfRefreshPlannerItems, 2500);
+if (_GfIsAttendancePage()) setTimeout(_GfRefreshAttendanceItems, 1400);
 
 const _GF_P_SETTINGS_KEY = 'gf-personalization';
 const _GF_P_PFP_KEY      = 'gf-profile-picture';
 let _gfPersSettings = null;
 let _gfPersPfp      = null;
-let _gfPersReady    = false; // true once settings are loaded from storage
+let _gfPersReady    = false;
 
 let _gfDetectedRealName = (typeof window !== 'undefined' && window._gfDetectedRealName) || null;
 
 function _GfNameScanRoot() {
-  // Use SmartSchool-specific selectors only, broad wildcards like
-  // [class*="Header"] can accidentally match content containers.
   return document.querySelector(
     '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
   ) || document.body;
@@ -2482,7 +2634,6 @@ function _GfApplyName(name) {
 
   if (!candidates.length) return;
 
-  // Best candidate is the first (we're already scoped to header/nav)
   const best = candidates[0];
   _gfDetectedRealName = best.text;
   try { localStorage.setItem('gf-realname-cache', best.text); } catch (_) {}
@@ -2512,14 +2663,12 @@ function _GfRevertName() {
   } catch (_) {}
 }
 
-// Profile picture
 let _gfDetectedAvatarSrc = null;
 let _gfPfpLastUrl = '';
 let _gfPfpBgUrlCache = '';
-let _gfBgScanDone = false;  // background-image avatars only need scanning once
+let _gfBgScanDone = false;
 
 function _GfPfpScanRoot() {
-  // SmartSchool-specific selectors only. Falls back to body if not present yet.
   return document.querySelector(
     '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
   ) || document.body;
@@ -2546,21 +2695,16 @@ function _GfApplyPfp(dataUrl) {
     _gfPfpLastUrl = dataUrl;
     _gfPfpBgUrlCache = `url(${dataUrl})`;
     try { localStorage.setItem('gf-pfp-cache', dataUrl); } catch (_) {}
-    _gfBgScanDone = false; // re-scan backgrounds when PFP changes
+    _gfBgScanDone = false;
   }
   const bgUrl = _gfPfpBgUrlCache;
   const skip = '#gradeflow-panel-host, #gf-arcade';
 
-  // 1) Re-apply to elements we already swapped (cheap targeted query)
   document.querySelectorAll('[data-gf-orig-src]').forEach(el => {
     if (el.tagName === 'IMG') { if (el.src !== dataUrl) el.src = dataUrl; }
     else if (el.style.backgroundImage !== bgUrl) el.style.backgroundImage = bgUrl;
   });
 
-  // 2) Scan only the header/nav region for new userpicture imgs.
-  //    The src setter override at document_start already swaps most of these
-  //    instantly, but this handles imgs created after that override missed
-  //    (e.g. dynamically added in a deeply nested shadow DOM, or via cssText).
   const root = _GfPfpScanRoot();
   if (root) {
     const avatarUrl = _gfDetectedAvatarSrc;
@@ -2591,9 +2735,6 @@ function _GfApplyPfp(dataUrl) {
     });
   }
 
-  // 3) Background-image avatars: only scan ONCE per PFP value.
-  //    getComputedStyle is expensive; once we've found and tagged them, the
-  //    targeted [data-gf-orig-src] re-apply above keeps them in sync.
   if (!_gfBgScanDone && root) {
     _gfBgScanDone = true;
     root.querySelectorAll(
@@ -2650,7 +2791,7 @@ function _GfIsInTopnav(el) {
   return false;
 }
 
-let _gfMsgLinks     = []; // topnav Berichten <a> elements only
+let _gfMsgLinks     = [];
 let _gfMsgObserver  = null;
 let _gfMsgCount     = 0;
 let _gfMsgEnabled   = false;
@@ -3085,9 +3226,9 @@ function _GfApplyPersonalization(s) {
 
   let _gfRetryId     = null;
   let _gfRetryCount  = 0;
-  const _GF_MAX_RETRIES = 8;       // 8 × 750 ms = 6 s fast phase
+  const _GF_MAX_RETRIES = 8;
   const _GF_FAST_INTERVAL = 750;
-  const _GF_SLOW_INTERVAL = 8000;  // keepalive idle interval
+  const _GF_SLOW_INTERVAL = 8000;
 
   function _GfAnyActive() {
     const s = _gfPersSettings;
@@ -3116,7 +3257,6 @@ function _GfApplyPersonalization(s) {
     }, _GF_FAST_INTERVAL);
   }
 
-  // Idle-scheduled keepalive: never blocks an interactive frame.
   function _GfStartKeepAlive() {
     const ric = window.requestIdleCallback || function (cb) { return setTimeout(() => cb({ didTimeout: true, timeRemaining: () => 0 }), _GF_SLOW_INTERVAL); };
     function tick() {
@@ -3127,14 +3267,12 @@ function _GfApplyPersonalization(s) {
     ric(tick, { timeout: _GF_SLOW_INTERVAL });
   }
 
-  // Mutation observer: scope to header/nav once it exists, fall back to body.
   let _gfObsTimer = null;
   let _gfFirstApply = true;
 
   function _GfMutationCallback(mutations) {
     if (!_gfPersReady || !_GfAnyActive()) return;
 
-    // Only react to additions/removals of element nodes
     let hasRelevant = false;
     for (let i = 0; i < mutations.length; i++) {
       const m = mutations[i];
@@ -3151,8 +3289,6 @@ function _GfApplyPersonalization(s) {
     if (_gfObsTimer) return;
     _gfObsTimer = setTimeout(() => {
       _gfObsTimer = null;
-      // Run inside requestIdleCallback if available so the work happens
-      // off the critical path (no Violation warnings).
       const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 0));
       ric(_GfRunPersonalization, { timeout: 1500 });
     }, 800);
@@ -3162,8 +3298,6 @@ function _GfApplyPersonalization(s) {
 
   function StartObserving() {
     if (!document.body) return;
-    // Prefer narrow scope: only watch header/nav. If those don't exist yet,
-    // watch the body but still get filtered by relevance check above.
     const root = document.querySelector(
       '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
     ) || document.body;

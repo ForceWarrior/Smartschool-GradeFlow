@@ -36,7 +36,6 @@
 
       if (now < state.pausedUntil) return drop('rate-paused', rawData);
 
-
       while (state.ts.length && now - state.ts[0] > 1000) state.ts.shift();
       if (state.ts.length >= RATE_LIMIT) {
         state.pausedUntil = now + RATE_PAUSE_MS;
@@ -79,7 +78,6 @@
       state.ts.push(now);
       try { onValid(msg); } catch (_) {  }
     }
-
 
     function trackReconnect(success) {
       const now = Date.now();

@@ -31,6 +31,9 @@
     hostConn: null,
     joinerAnswerPacked: null,
     messages: [],
+    lan: null,
+    lanStatus: '',
+    lanPeers: new Map(),
   };
 
   function snapshot() {
@@ -53,6 +56,8 @@
       hostNickname: state.hostConn?.hostNickname || null,
       hostConnected: !!(state.hostConn && state.hostConn.dc && state.hostConn.dc.readyState === 'open'),
       joinerAnswerPacked: state.joinerAnswerPacked,
+      lanStatus: state.lanStatus,
+      lanPeers: [...state.lanPeers.values()],
       messages: state.messages.slice(),
     };
   }
@@ -117,6 +122,10 @@
       try { state.hostConn.pc?.close(); } catch (_) {}
     }
     state.hostConn = null;
+    state.lan?.close();
+    state.lan = null;
+    state.lanStatus = '';
+    state.lanPeers.clear();
     try { state.peerSession?.stop(); } catch (_) {}
     state.peerSession = null;
     state.mySenderId = null;
@@ -189,7 +198,6 @@
         const guard = CG.createGuard({
           expectedSenderId: peerSenderId,
           onValid: (msg) => hostHandlePeerMessage(result.peerId, msg),
-          onDrop: (r) => console.debug('[GfChat host] drop', r),
         });
         state.peers.set(result.peerId, {
           pc: slot?.pc, dc, guard, peerSenderId, nickname: claimedNick,
@@ -381,7 +389,6 @@
         const guard = CG.createGuard({
           expectedSenderId: peerSenderId,
           onValid: joinerHandleHostMessage,
-          onDrop: (r) => console.debug('[GfChat joiner] drop:', r),
         });
         state.hostConn = { pc: state.hostConn?.pc, dc, guard, peerSenderId, hostNickname };
         state.joinerAnswerPacked = null;
@@ -477,9 +484,47 @@
     return { ok: true };
   }
 
+  function cmdLanJoin() {
+    if (state.role) return { ok: false, error: 'Already in a room.' };
+    state.role = 'lan';
+    state.lanStatus = 'discovering';
+    state.lan = GfLan.join('chat', {
+      name: state.nickname,
+      onStatus: s => { if (state.lanStatus !== s) { state.lanStatus = s; pushState(); } },
+      onPeer: p => {
+        state.lanPeers.set(p.id, p.name);
+        systemMsg(p.name + ' joined.', 'chat_sys_joined', { name: p.name });
+      },
+      onRename: (id, name) => { state.lanPeers.set(id, name); pushState(); },
+      onLeave: id => {
+        const name = state.lanPeers.get(id) || 'A peer';
+        state.lanPeers.delete(id);
+        systemMsg(name + ' left.', 'chat_sys_left', { name });
+      },
+      onMessage: (id, data) => {
+        if (data?.t !== 'chat' || typeof data.text !== 'string') return;
+        const text = data.text.slice(0, CG.MAX_TEXT_LEN).trim();
+        if (text) appendMessage({ from: 'peer', author: state.lanPeers.get(id) || 'Peer', text, ts: Date.now() });
+      },
+    });
+    pushState();
+    return { ok: true };
+  }
+
+  function cmdLanLeave() {
+    cleanupAll();
+    pushState();
+    return { ok: true };
+  }
+
   function cmdChatSend({ text }) {
     text = String(text || '').slice(0, CG.MAX_TEXT_LEN).trim();
     if (!text) return { ok: false };
+    if (state.role === 'lan') {
+      state.lan?.send(null, { t: 'chat', text }, true);
+      appendMessage({ from: 'me', author: state.nickname, text, ts: Date.now() });
+      return { ok: true };
+    }
     if (state.role === 'host') {
       appendMessage({ from: 'me', author: state.nickname, text, ts: Date.now() });
       hostBroadcastChat(state.nickname, text, null);
@@ -510,6 +555,7 @@
 
   function cmdSetNickname({ nickname }) {
     state.nickname = String(nickname || '').trim().slice(0, MAX_NICKNAME);
+    state.lan?.rename(state.nickname);
     pushState();
     return { ok: true };
   }
@@ -548,6 +594,8 @@
     'join:start': cmdJoinStart,
     'join:leave': cmdJoinLeave,
     'chat:send': cmdChatSend,
+    'lan:join': cmdLanJoin,
+    'lan:leave': cmdLanLeave,
   };
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

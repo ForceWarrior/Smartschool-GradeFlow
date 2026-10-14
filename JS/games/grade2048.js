@@ -3,11 +3,10 @@
 
   const _GameText = typeof _GfTranslate === 'function' ? _GfTranslate : k => k;
 
-  /* CONFIG */
   const GRID    = 4;
-  const CELL    = 82;   // px per tile
-  const GAP     = 8;    // px gap
-  const PAD     = 10;   // grid padding
+  const CELL    = 82;
+  const GAP     = 8;
+  const PAD     = 10;
   const WIN_VAL = 2048;
   const ANIM_MS = 115;
   const LS_BEST = 'gf-2048-best';
@@ -28,9 +27,8 @@
   function GetTileData(v) {
     return TD[v] || { label: `${v}`, Pct: '', bg: '#a78bfa', fg: '#fff', glow: 'rgba(167,139,250,.5)' };
   }
-  function TileFontSize(v) { return v >= 1024 ? 15 : v >= 128 ? 17 : 19; } // label font-size px
+  function TileFontSize(v) { return v >= 1024 ? 15 : v >= 128 ? 17 : 19; }
 
-  /* PERSISTENCE */
   function GetBestScore()  { try { return +localStorage.getItem(LS_BEST) || 0; } catch (_) { return 0; } }
   function SetBestScore(n) { try { if (n > GetBestScore()) localStorage.setItem(LS_BEST, n); } catch (_) {} }
 
@@ -59,7 +57,6 @@
     return true;
   }
 
-  /* MOVE */
   function GetLineIds(a, dir) {
     const order = (dir === 'right' || dir === 'down') ? [3, 2, 1, 0] : [0, 1, 2, 3];
     return order.map(b => dir === 'left' || dir === 'right' ? G.board[a][b] : G.board[b][a]).filter(Boolean);
@@ -73,9 +70,9 @@
     if (!G || G.locked || G.status !== 'playing') return;
     G.locked = true;
 
-    const moves   = new Map(); // id -> { toRow, toCol }
-    const absorbs = new Map(); // absorbedId -> { toRow, toCol } (slides to merge pos then vanishes)
-    const merges  = new Map(); // id -> newVal
+    const moves   = new Map();
+    const absorbs = new Map();
+    const merges  = new Map();
     const newBoard = EmptyBoard();
     let totalScore = 0, anythingMoved = false;
 
@@ -83,7 +80,6 @@
       const ids = GetLineIds(a, dir);
       if (!ids.length) continue;
 
-      // Slide + merge
       const result = [];
       let i = 0;
       while (i < ids.length) {
@@ -160,7 +156,6 @@
     return false;
   }
 
-  /* RENDERING */
   function CreateTileElement(t) {
     const { id, val, row, col, isNew, isMerged } = t;
     const d  = GetTileData(val);
@@ -212,7 +207,6 @@
     }
   }
 
-  /* INPUT */
   const DIR_MAP = {
     ArrowLeft:'left',a:'left',A:'left',
     ArrowRight:'right',d:'right',D:'right',
@@ -224,7 +218,7 @@
     const el = document.getElementById('gf-2048');
     if (!el || el.style.display === 'none') return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); CloseGrade2048(); return; }
-    if (e.key === 'F8')     { e.preventDefault(); e.stopPropagation(); return; } // handled by content.js
+    if (e.key === 'F8')     { e.preventDefault(); e.stopPropagation(); return; }
     const dir = DIR_MAP[e.key];
     if (dir) { e.preventDefault(); e.stopPropagation(); DoMove(dir); }
   }
@@ -242,7 +236,6 @@
     }, { passive: true });
   }
 
-  /* THEME */
   function ApplyTheme() {
     const el = document.getElementById('gf-2048'); if (!el) return;
     if (typeof window._GfApplyThemeToHost === 'function') window._GfApplyThemeToHost(el);
@@ -254,8 +247,7 @@
   }
   const _tobs = new MutationObserver(ApplyTheme);
 
-  /* BUILD OVERLAY */
-  const GW = GRID * CELL + (GRID - 1) * GAP + PAD * 2; // grid total px
+  const GW = GRID * CELL + (GRID - 1) * GAP + PAD * 2;
 
   function BuildOverlay() {
     if (document.getElementById('gf-2048')) return;
@@ -319,7 +311,6 @@
     AddSwipe(document.getElementById('gf-28-grid-wrap'));
   }
 
-  /* PUBLIC API */
   function OpenGrade2048() {
     if (!document.getElementById('gf-2048')) BuildOverlay();
     const el = document.getElementById('gf-2048');
@@ -403,7 +394,6 @@
 .gf28-tile-new{animation:gf28-appear 160ms ease-out both;}
 .gf28-tile-merge{animation:gf28-pop 200ms ease-out both;}
 .gf28-tile-perfect{animation:gf28-pulse 1.4s ease-in-out infinite;}
-/* Overlays */
 #gf-28-ovr-win,#gf-28-ovr-over{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--g2-ovr);border-radius:10px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:24px;}
 .gf28-ovr-icon{font-size:36px;line-height:1;}
 .gf28-ovr-title{font-size:22px;font-weight:800;letter-spacing:-0.5px;}
@@ -412,10 +402,8 @@
 .gf28-btn:hover{background:rgba(245,158,11,.22);box-shadow:0 4px 20px rgba(245,158,11,.3);transform:translateY(-1px);}
 .gf28-btn-sec{border-color:var(--g2-btn-brd);color:var(--g2-txt2);background:transparent;}
 .gf28-btn-sec:hover{background:rgba(128,128,128,.1);box-shadow:none;transform:translateY(-1px);}
-/* Legend */
 #gf-28-legend{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;max-width:${GW}px;}
 .gf28-leg{padding:3px 7px;border-radius:5px;font-size:9px;font-weight:700;letter-spacing:.3px;white-space:nowrap;}
-/* Hint */
 #gf-28-hint{font-size:9px;color:var(--g2-txt3);text-align:center;max-width:${GW}px;line-height:1.6;}
 #gf-28-hint strong{color:var(--g2-txt2);}
 `;

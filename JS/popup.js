@@ -1,4 +1,4 @@
-// SVG icons
+
 const MOON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -13,21 +13,19 @@ const SUN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fil
   <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
 </svg>`;
 
-// Storage key
 const KEY_THEME = 'gradeflow-theme';
 const KEY_HOME_SUMMARY = 'gradeflow-home-summary-enabled';
 
-// State
 let pageTheme = 'light';
 let popupExternalThemeVars = null;
+let popupExternalSource = '';
+let _gfPopupLang = 'auto';
 let popupThemePoll = 0;
 
-// DOM refs
 const toggleBtn  = document.getElementById('theme-toggle');
 const presetBtns = document.querySelectorAll('.preset-btn');
 const homeSummaryToggle = document.getElementById('home-summary-toggle');
 
-// Popup appearance
 function ApplyPopupAppearance(base) {
   const root = document.documentElement;
   if (popupExternalThemeVars) {
@@ -44,8 +42,8 @@ function ApplyPopupAppearance(base) {
     root.style.setProperty('--orange-glow', `color-mix(in srgb, ${popupExternalThemeVars.accent} 26%, transparent)`);
     root.style.setProperty('--shadow', popupExternalThemeVars.isDark ? '0 8px 32px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.35)' : '0 8px 32px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.07)');
     toggleBtn.innerHTML = popupExternalThemeVars.isDark ? SUN_SVG : MOON_SVG;
-    toggleBtn.title = 'Smartschool++ controls this theme';
-    toggleBtn.disabled = true;
+    toggleBtn.title = popupExternalSource === 'custom' ? 'Switch to Smartschool theme' : 'Smartschool++ controls this theme';
+    toggleBtn.disabled = popupExternalSource !== 'custom';
     return;
   }
   root.removeAttribute('data-theme-source');
@@ -56,14 +54,12 @@ function ApplyPopupAppearance(base) {
   toggleBtn.disabled = false;
 }
 
-// Preset highlight
 function UpdatePresetHighlight() {
   presetBtns.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.preset === pageTheme);
   });
 }
 
-// Activate
 function ActivatePreset(preset) {
   pageTheme = preset;
   ApplyPopupAppearance(preset);
@@ -71,15 +67,69 @@ function ActivatePreset(preset) {
   chrome.storage.local.set({ [KEY_THEME]: preset });
 }
 
-// Header buttons
-toggleBtn.addEventListener('click', () => { if (!popupExternalThemeVars) ActivatePreset(pageTheme === 'dark' ? 'light' : 'dark'); });
+const themeModes = document.querySelectorAll('.theme-mode');
+const themePresets = document.getElementById('theme-presets');
+let popupPalette = null;
+let popupLibrary = [];
+
+function EscPopup(v) {
+  return String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+
+function RenderThemePicker() {
+  const locked = !!popupExternalThemeVars && popupExternalSource !== 'custom';
+  themeModes.forEach(b => { b.classList.toggle('active', b.dataset.mode === pageTheme); b.disabled = locked; });
+  themePresets.classList.toggle('hidden', pageTheme !== 'custom' || locked);
+  if (pageTheme !== 'custom' || locked) return;
+  const list = [...GF_THEME_PRESETS, ...popupLibrary];
+  themePresets.innerHTML = list.map((t, i) => {
+    const active = popupPalette && GF_THEME_TOKENS.every(k => t[k] === popupPalette[k]);
+    return `<button class="theme-swatch${active ? ' active' : ''}" data-index="${i}" title="${EscPopup(t.name)}" style="--s-bg:${t.bg};--s-surf:${t.surface2};--s-acc:${t.accent};--s-txt:${t.text}"><i></i><span>${EscPopup(t.name)}</span></button>`;
+  }).join('');
+}
+
+function UsePalette(palette) {
+  popupPalette = GfCleanPalette({ ...palette, site: popupPalette?.site, recolor: popupPalette?.recolor });
+  popupExternalSource = 'custom';
+  popupExternalThemeVars = GfThemeVars(popupPalette);
+  chrome.storage.local.set({ [GF_THEME_PALETTE_KEY]: popupPalette });
+  ActivatePreset('custom');
+  RenderThemePicker();
+}
+
+function SetThemeMode(next) {
+  if (popupExternalThemeVars && popupExternalSource !== 'custom') return;
+  if (next === 'custom') {
+    UsePalette(popupPalette || GF_THEME_PRESETS[0]);
+    return;
+  }
+  popupExternalSource = '';
+  popupExternalThemeVars = null;
+  ActivatePreset(next);
+  RenderThemePicker();
+}
+
+toggleBtn.addEventListener('click', () => SetThemeMode(pageTheme === 'light' ? 'dark' : pageTheme === 'dark' ? 'custom' : 'light'));
+themeModes.forEach(b => b.addEventListener('click', () => SetThemeMode(b.dataset.mode)));
+themePresets.addEventListener('click', e => {
+  const btn = e.target.closest('.theme-swatch');
+  if (!btn) return;
+  const t = [...GF_THEME_PRESETS, ...popupLibrary][+btn.dataset.index];
+  if (t) UsePalette(t);
+});
 presetBtns.forEach(btn => btn.addEventListener('click', () => ActivatePreset(btn.dataset.preset)));
 
-// Load state
-chrome.storage.local.get(KEY_THEME, res => {
+chrome.storage.local.get([KEY_THEME, GF_THEME_PALETTE_KEY, GF_THEME_LIBRARY_KEY], res => {
   pageTheme = res[KEY_THEME] ?? 'light';
+  popupPalette = res[GF_THEME_PALETTE_KEY] ? GfCleanPalette(res[GF_THEME_PALETTE_KEY]) : null;
+  popupLibrary = Array.isArray(res[GF_THEME_LIBRARY_KEY]) ? res[GF_THEME_LIBRARY_KEY].map(GfCleanPalette) : [];
+  if (pageTheme === 'custom') {
+    popupExternalSource = 'custom';
+    popupExternalThemeVars = GfThemeVars(popupPalette || GF_THEME_PRESETS[0]);
+  }
   ApplyPopupAppearance(pageTheme);
   UpdatePresetHighlight();
+  RenderThemePicker();
 });
 
 chrome.storage.local.get(KEY_HOME_SUMMARY, res => {
@@ -94,8 +144,14 @@ homeSummaryToggle?.addEventListener('change', () => {
 });
 
 function ApplyExternalThemeResponse(res) {
-  popupExternalThemeVars = res?.theme === 'smpp' && res.vars ? res.vars : null;
+  const bridged = (res?.theme === 'smpp' || res?.theme === 'custom') && res.vars;
+  const next = bridged ? res.theme : '';
+  const changed = next !== popupExternalSource;
+  popupExternalSource = next;
+  popupExternalThemeVars = bridged ? res.vars : (pageTheme === 'custom' && popupPalette ? GfThemeVars(popupPalette) : null);
+  if (pageTheme === 'custom' && popupPalette) popupExternalSource = popupExternalSource || 'custom';
   ApplyPopupAppearance(pageTheme);
+  if (changed) RenderThemePicker();
 }
 
 function RequestTabTheme(tabId) {
@@ -105,10 +161,8 @@ function RequestTabTheme(tabId) {
   });
 }
 
-// Version
 document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
 
-// Status ping
 chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
   const statusEl = document.getElementById('status');
   const onSmartschool = tab?.url?.includes('smartschool.be');
@@ -145,7 +199,6 @@ function _PopupText(key) {
   return GF_LANGS[code]?.[key] ?? GF_LANGS['nl']?.[key] ?? key;
 }
 
-let _gfPopupLang = 'auto';
 
 function _GfApplyPopupTranslations() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -165,12 +218,9 @@ chrome.storage.sync.get('gf-lang', res => {
   _GfApplyPopupTranslations();
 });
 
-// Personalization settings
-
 const GF_SETTINGS_KEY = 'gf-personalization';
 const GF_PFP_KEY      = 'gf-profile-picture';
 
-// DOM refs
 const nameToggle      = document.getElementById('name-changer-toggle');
 const nameSection     = document.getElementById('name-section');
 const customNameInput = document.getElementById('custom-name');
@@ -198,7 +248,6 @@ const confirmMessage  = document.getElementById('confirm-message');
 const confirmConfirm  = document.getElementById('confirm-confirm');
 const confirmCancel   = document.getElementById('confirm-cancel');
 
-// Storage helpers
 function GetPersonalization() {
   return new Promise(resolve => {
     chrome.storage.sync.get(GF_SETTINGS_KEY, res => {
@@ -237,7 +286,6 @@ function PutStoredProfilePic(dataUrl) {
   });
 }
 
-// Auto save state
 let _initializing = true;
 
 let _statusTimer;
@@ -302,7 +350,7 @@ function NotifySmartschoolTabs(settings, pfpDataUrl) {
     for (const tab of tabs) {
       if (!tab.id) continue;
       chrome.tabs.sendMessage(tab.id, { type: 'applySettings', settings }, () => {
-        void chrome.runtime.lastError; // suppress
+        void chrome.runtime.lastError;
       });
       if (settings.pfpChanger && pfpDataUrl) {
         chrome.tabs.sendMessage(tab.id, { type: 'applyPfp', dataUrl: pfpDataUrl }, () => {
@@ -364,7 +412,6 @@ async function SaveAndApply() {
   }
 }
 
-// Confirm dialog
 function ConfirmDialog(message) {
   return new Promise(resolve => {
     confirmMessage.textContent = message;
@@ -461,7 +508,6 @@ pfpFileInput.addEventListener('change', e => {
   if (file) ApplyImageFile(file);
 });
 
-// Drop zone: drag and drop
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
   dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); });
 });
@@ -515,7 +561,6 @@ newsValue.addEventListener('input', () => {
   newsValue.value = newsValue.value.replace(/[^0-9]/g, '') || '0';
 });
 
-// Buttons
 saveBtn.addEventListener('click', SaveAndApply);
 resetBtn.addEventListener('click', ResetAllSettings);
 

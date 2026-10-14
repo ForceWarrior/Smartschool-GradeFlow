@@ -21,7 +21,6 @@
     { id: 'g20', label: '20/20', sub: '100%', bg: '#f59e0b', fg: '#1a1a1a', perfect: true },
   ];
 
-  /* DIFFICULTIES */
   const DIFFICULTIES = [
     { id: 'easy',   label: () => _GameText('game_mem_easy'),   cols: 4, rows: 3, pairs: 6  },
     { id: 'medium', label: () => _GameText('game_mem_medium'), cols: 4, rows: 4, pairs: 8  },
@@ -34,9 +33,8 @@
   const CARD_GAP = 8;
 
   const LS_BEST = 'gf-mem-best';
-  const FLIP_DELAY_MS = 500; // how long to show a non match before flipping back
+  const FLIP_DELAY_MS = 500;
 
-  /* PERSISTENCE */
   function LoadBests() { try { return JSON.parse(localStorage.getItem(LS_BEST)) || {}; } catch (_) { return {}; } }
   function SaveBestScore(id, moves, secs) {
     const b = LoadBests();
@@ -47,7 +45,6 @@
   }
   function GetBestScore(id) { return LoadBests()[id] || null; }
 
-  /* STATE */
   let G = null;
   let _diffId = 'easy';
   let _timerInterval = null;
@@ -74,13 +71,13 @@
 
     G = {
       diff: d, deck,
-      open: [],          // up to 2 card uids currently face up (Unmatched)
-      locked: false,     // block clicks during flip-back animation
-      moves: 0,          // pairs attempted
+      open: [],
+      locked: false,
+      moves: 0,
       misses: 0,
-      matched: 0,        // pairs found
+      matched: 0,
       elapsed: 0,
-      status: 'playing', // playing | won
+      status: 'playing',
       startedTimer: false,
     };
 
@@ -89,7 +86,6 @@
     HideOverlay();
   }
 
-  /* CARD LOGIC */
   function FlipCard(uid) {
     if (!G || G.locked || G.status !== 'playing') return;
     const card = G.deck.find(c => c.uid === uid);
@@ -138,7 +134,6 @@
     }
   }
 
-  /* TIMER */
   function StartTimer() {
     _timerStart = Date.now();
     _timerInterval = setInterval(() => {
@@ -159,7 +154,6 @@
   }
   function FormatTime(s) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
 
-  /* DOM BOARD */
   function BuildBoard() {
     const d   = G.diff;
     const cw  = CARD_W[d.id], ch = CARD_H[d.id];
@@ -205,7 +199,6 @@
     inner.classList.toggle('gf-mem-flipped', card.state !== 'hidden');
   }
 
-  /* HUD */
   function SetText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
 
   function UpdateHUD() {
@@ -215,15 +208,12 @@
     SetText('gf-mem-moves',  String(G.moves));
     SetText('gf-mem-misses', String(G.misses));
     SetText('gf-mem-timer',  FormatTime(G.elapsed));
-    // Progress bar
     const bar = document.getElementById('gf-mem-prog');
     if (bar) bar.style.width = `${(G.matched / total * 100).toFixed(1)}%`;
-    // Diff buttons
     document.querySelectorAll('.gf-mem-diff-btn').forEach(btn =>
       btn.classList.toggle('gf-mem-diff-active', btn.dataset.diff === _diffId));
   }
 
-  /* OVERLAYS */
   function HideOverlay() {
     const el = document.getElementById('gf-mem-ovr'); if (el) el.style.display = 'none';
   }
@@ -250,7 +240,6 @@
     document.getElementById('gf-mem-again')?.addEventListener('click', NewGame);
   }
 
-  /* INPUT */
   let _kh = null;
   function OnKey(e) {
     const el = document.getElementById('gf-memory');
@@ -262,7 +251,6 @@
   function AttachKeys() { if (!_kh) { _kh = OnKey; document.addEventListener('keydown', _kh, true); } }
   function DetachKeys()  { if (_kh)  { document.removeEventListener('keydown', _kh, true); _kh = null; } }
 
-  /* THEME */
   function ApplyTheme() {
     const el = document.getElementById('gf-memory'); if (!el) return;
     if (typeof window._GfApplyThemeToHost === 'function') window._GfApplyThemeToHost(el);
@@ -274,7 +262,6 @@
   }
   const _tobs = new MutationObserver(ApplyTheme);
 
-  /* BUILD OVERLAY */
   function BuildOverlay() {
     if (document.getElementById('gf-memory')) return;
     InjectCSS();
@@ -333,7 +320,6 @@
     document.getElementById('gf-memory')?.addEventListener('click', e => { if (e.target.id === 'gf-memory') BossKeyMemory(); });
   }
 
-  /* PUBLIC API */
   function OpenGradeMemory() {
     if (!document.getElementById('gf-memory')) BuildOverlay();
     const el = document.getElementById('gf-memory');
@@ -402,7 +388,6 @@
 }
 #gf-memory{position:fixed;inset:0;z-index:2147483640;display:flex;align-items:center;justify-content:center;background:none;font-family:"IBM Plex Mono",monospace;}
 #gf-mem-modal{display:flex;flex-direction:column;background:var(--gm-modal);border:1px solid var(--gm-brd);border-radius:14px;box-shadow:var(--gm-sh);overflow:hidden;max-height:calc(100vh - 24px);max-width:calc(100vw - 24px);}
-/* Header */
 #gf-mem-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--gm-hdr);border-bottom:1px solid var(--gm-brd);flex-shrink:0;gap:8px;user-select:none;}
 .gf-mem-hl{display:flex;align-items:center;gap:8px;} .gf-mem-hr{display:flex;align-items:center;gap:5px;}
 #gf-mem-logo{width:28px;height:28px;background:linear-gradient(135deg,#a78bfa,#7c3aed);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0;letter-spacing:-.5px;}
@@ -414,43 +399,33 @@
 #gf-mem-new,#gf-mem-close{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid var(--gm-btn-brd);border-radius:6px;background:transparent;color:var(--gm-txt2);cursor:pointer;font-size:13px;padding:0;flex-shrink:0;transition:border-color .12s,color .12s,background .12s;}
 #gf-mem-new:hover{border-color:#a78bfa;color:#a78bfa;background:rgba(167,139,250,.1);}
 #gf-mem-close:hover{border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,.1);}
-/* Progress bar */
 #gf-mem-progress-track{height:3px;background:var(--gm-brd2);flex-shrink:0;}
 #gf-mem-prog{height:100%;width:0%;background:linear-gradient(90deg,#a78bfa,#7c3aed);border-radius:0 2px 2px 0;transition:width .3s ease;}
-/* Diff */
 #gf-mem-diff{display:flex;gap:6px;padding:8px 14px;border-bottom:1px solid var(--gm-brd);flex-shrink:0;}
 .gf-mem-diff-btn{padding:4px 12px;border:1px solid var(--gm-brd2);border-radius:6px;background:transparent;color:var(--gm-txt2);font-family:inherit;font-size:10px;font-weight:600;cursor:pointer;transition:border-color .12s,color .12s,background .12s;}
 .gf-mem-diff-btn:hover{border-color:#a78bfa;color:#a78bfa;background:rgba(167,139,250,.08);}
 .gf-mem-diff-active{border-color:#a78bfa!important;color:#a78bfa!important;background:rgba(167,139,250,.12)!important;}
-/* Body + board */
 #gf-mem-body{display:flex;align-items:center;justify-content:center;padding:16px;background:var(--gm-body);flex-shrink:0;}
 #gf-mem-board-wrap{position:relative;}
 #gf-mem-board{display:grid;gap:${CARD_GAP}px;}
-/* Card 3D flip */
 .gf-mem-card{perspective:600px;cursor:pointer;flex-shrink:0;}
 .gf-mem-card.gf-mem-matched{cursor:default;}
 .gf-mem-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform 0.35s cubic-bezier(.4,0,.2,1);}
 .gf-mem-inner.gf-mem-flipped{transform:rotateY(180deg);}
 .gf-mem-back,.gf-mem-front{position:absolute;inset:0;border-radius:8px;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;}
-/* Back face */
 .gf-mem-back{background:var(--gm-back);overflow:hidden;}
 .gf-mem-back::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,var(--gm-back-dot) 0,var(--gm-back-dot) 1px,transparent 0,transparent 50%) 0/8px 8px;}
 .gf-mem-back::after{content:'GM';font-size:11px;font-weight:800;color:rgba(255,255,255,.18);letter-spacing:1px;font-family:"IBM Plex Mono",monospace;}
-/* Front face */
 .gf-mem-front{transform:rotateY(180deg);gap:2px;box-shadow:inset 0 1px 0 rgba(255,255,255,.2),inset 0 -1px 0 rgba(0,0,0,.15);}
 .gf-mem-lbl{font-size:clamp(12px,18%,19px);font-weight:800;letter-spacing:-.5px;line-height:1;}
 .gf-mem-sub{font-size:clamp(8px,11%,12px);font-weight:600;opacity:.75;line-height:1;}
 .gf-mem-star{font-size:10px;opacity:.9;margin-top:2px;}
-/* Matched glow */
 .gf-mem-matched .gf-mem-front{box-shadow:0 0 0 2px rgba(255,255,255,.5),0 0 12px 2px rgba(255,255,255,.3),inset 0 1px 0 rgba(255,255,255,.2);}
 .gf-mem-matched{opacity:.82;}
-/* Perfect tile pulse */
 .gf-mem-perfect{animation:gm-perfect-pulse 1.6s ease-in-out infinite;}
 @keyframes gm-perfect-pulse{0%,100%{box-shadow:0 0 0 2px rgba(245,158,11,.6),0 0 18px rgba(245,158,11,.4),inset 0 1px 0 rgba(255,255,255,.2)}50%{box-shadow:0 0 0 2px rgba(245,158,11,.9),0 0 28px rgba(245,158,11,.6),inset 0 1px 0 rgba(255,255,255,.2)}}
-/* Hover lift on hidden cards */
 .gf-mem-card:not(.gf-mem-matched):hover .gf-mem-back{filter:brightness(1.15);}
 .gf-mem-card:not(.gf-mem-matched):active .gf-mem-inner{transform:scale(.94);}
-/* Win overlay */
 #gf-mem-ovr{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--gm-ovr);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:4px;padding:24px;text-align:center;}
 .gf-mem-ovr-icon{font-size:40px;line-height:1;}
 .gf-mem-ovr-title{font-size:22px;font-weight:800;letter-spacing:-.5px;}
@@ -462,7 +437,6 @@
 .gf-mem-ovr-sub{font-size:10px;color:var(--gm-txt2);}
 .gf-mem-btn{padding:9px 22px;border:1px solid #a78bfa;border-radius:7px;background:rgba(167,139,250,.12);color:#a78bfa;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.3px;transition:background .14s,box-shadow .14s,transform .12s;}
 .gf-mem-btn:hover{background:rgba(167,139,250,.22);box-shadow:0 4px 20px rgba(167,139,250,.3);transform:translateY(-1px);}
-/* Hint */
 #gf-mem-hint{font-size:9px;color:var(--gm-txt3);text-align:center;padding:6px 14px 10px;flex-shrink:0;background:var(--gm-hdr);border-top:1px solid var(--gm-brd);}
 `;
     document.head.appendChild(s);

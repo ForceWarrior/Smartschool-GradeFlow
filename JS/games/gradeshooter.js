@@ -22,7 +22,6 @@
     return 5;
   }
 
-  /* CONSTANTS */
   const COLS        = 11;
   const ROWS        = 12;
   const R           = 20;
@@ -34,7 +33,7 @@
   const DESCEND_EVERY = 18;
 
   function CanvasWidth()  { return R + COLS * DIAM + R; }
-  function CanvasHeight()  { return ROWS * ROW_H + R * 3 + 52; }  // +52 for cannon area
+  function CanvasHeight()  { return ROWS * ROW_H + R * 3 + 52; }
 
   function GetColsForRow(r) { return r % 2 === 1 ? COLS - 1 : COLS; }
 
@@ -47,7 +46,7 @@
     let bRow = 0, bCol = 0, bD = Infinity;
     for (let r = 0; r < ROWS + 2; r++) {
       for (let c = 0; c < GetColsForRow(r); c++) {
-        if (GameState.grid[r]?.[c]) continue;           // skip occupied cells
+        if (GameState.grid[r]?.[c]) continue;
         const { x, y } = GetBubblePos(r, c);
         const d = (x - px) ** 2 + (y - py) ** 2;
         if (d < bD) { bD = d; bRow = r; bCol = c; }
@@ -66,7 +65,6 @@
       .filter(({row:r,col:c}) => r >= 0 && c >= 0 && c < GetColsForRow(r));
   }
 
-  /* GAME STATE */
   let GameState   = null;
   let _raf = null;
   let _grades = [];
@@ -75,7 +73,6 @@
     return Array.from({ length: ROWS + 4 }, () => new Array(COLS).fill(null));
   }
 
-  /* Collect the set of distinct bands actually present in grades */
   let _bandPool = null;
 
   function InitGradeBandPool() {
@@ -127,23 +124,22 @@
     return {
       mode,
       grid: FillGrid(),
-      proj: null,               // { x, y, vx, vy, band }
+      proj: null,
       nextBand:    q[0].band,
       nextSubject: q[0].subject,
       queue: q.slice(1),
       score: 0, shots: 0, cleared: 0,
-      status: 'playing',        // 'playing'|'win'|'lose'
+      status: 'playing',
       _bossHidden: false,
       canW: CanvasWidth(), canH: CanvasHeight(),
       cannonX: CanvasWidth() / 2,
       cannonY,
-      aimAngle: -Math.PI / 2,  // straight up
-      falling: [],              // { x, y, vx, vy, band, alpha }
-      flashCells: [],           // { row, col, t } for match flash
+      aimAngle: -Math.PI / 2,
+      falling: [],
+      flashCells: [],
     };
   }
 
-  /* BFS HELPERS */
   function FindMatchingCluster(grid, row, col) {
     const band = grid[row]?.[col]?.band;
     if (band == null) return [];
@@ -183,7 +179,6 @@
     return floating;
   }
 
-  /* SHOOTING */
   function Shoot() {
     if (!GameState || GameState.proj || GameState.status !== 'playing') return;
     const a = GameState.aimAngle;
@@ -196,7 +191,6 @@
       vy: Math.sin(clampedA) * PROJ_SPD,
       band: GameState.nextBand,
     };
-    // advance queue
     const next = GameState.queue.shift();
     GameState.nextBand    = next.band;
     GameState.nextSubject = next.subject;
@@ -207,7 +201,6 @@
   }
 
   function DescendCeiling() {
-    // Insert 2 rows to preserve even/odd parity of all existing rows
     const row0 = new Array(COLS).fill(null);
     const row1 = new Array(COLS).fill(null);
     for (let c = 0; c < GetColsForRow(0); c++) row0[c] = { band: RandomBand() };
@@ -216,17 +209,14 @@
     while (GameState.grid.length > ROWS + 4) GameState.grid.pop();
   }
 
-  /* PROJECTILE STEP */
   function StepProjectile() {
     const p = GameState.proj;
     if (!p) return;
     p.x += p.vx; p.y += p.vy;
 
-    // Wall bounces
     if (p.x - R < 0) { p.x = R; p.vx = Math.abs(p.vx); }
     if (p.x + R > GameState.canW) { p.x = GameState.canW - R; p.vx = -Math.abs(p.vx); }
 
-    // Ceiling
     if (p.y - R <= 0) { p.y = R; Land(p.x, p.y, p.band); return; }
 
     if (p.y > GameState.canH + R * 4) { GameState.proj = null; return; }
@@ -243,7 +233,7 @@
   }
 
   function Land(px, py, band) {
-    GameState.proj = null;  // clear first band was passed in as parameter
+    GameState.proj = null;
     const { row, col } = SnapToGrid(px, py);
     const safeRow = Math.max(0, Math.min(row, ROWS + 2));
     const safeCol = Math.max(0, Math.min(col, GetColsForRow(safeRow) - 1));
@@ -251,7 +241,6 @@
     if (!GameState.grid[safeRow]) GameState.grid[safeRow] = new Array(COLS).fill(null);
     GameState.grid[safeRow][safeCol] = { band };
 
-    // Match
     const cluster = FindMatchingCluster(GameState.grid, safeRow, safeCol);
     if (cluster.length >= MATCH_MIN) {
       GameState.score += cluster.length * 10;
@@ -264,7 +253,6 @@
       }
       GameState.flashCells.push(...cluster.map(({row:r,col:c}) => ({ row:r, col:c, t:1 })));
 
-      // Floating
       const floating = FindFloatingBubbles(GameState.grid);
       for (const { row: r, col: c } of floating) {
         const { x, y } = GetBubblePos(r, c);
@@ -273,13 +261,11 @@
         GameState.score += 5; GameState.cleared++;
       }
 
-      // Win check
       if (GameState.mode === 'clear' && !GameState.grid.some(row => row.some(b => b))) {
         GameState.status = 'win'; StopLoop(); ShowResult(); return;
       }
     }
 
-    // Lose check
     for (let c = 0; c < GetColsForRow(ROWS - 1); c++) {
       if (GameState.grid[ROWS - 1]?.[c]) { GameState.status = 'lose'; StopLoop(); ShowResult(); return; }
     }
@@ -287,7 +273,6 @@
     UpdateHUD();
   }
 
-  /* RENDER LOOP */
   function StartLoop() {
     if (_raf) return;
     function Frame() { _raf = requestAnimationFrame(Frame); Draw(); }
@@ -307,26 +292,20 @@
     const ctx = cv.getContext('2d');
     const dark = IsDark();
 
-    // Step projectile
     if (GameState.proj) StepProjectile();
 
-    // Step falling
     GameState.falling = GameState.falling.filter(fb => {
       fb.x += fb.vx; fb.y += fb.vy; fb.vy += 0.4; fb.alpha -= 0.024;
       return fb.alpha > 0 && fb.y < GameState.canH + 120;
     });
 
-    // Step flash
     GameState.flashCells = GameState.flashCells.map(f => ({ ...f, t: f.t - 0.05 })).filter(f => f.t > 0);
 
-    // Background
     ctx.fillStyle = dark ? '#0a0908' : '#f0eeec';
     ctx.fillRect(0, 0, GameState.canW, GameState.canH);
 
-    // Aim guide
     DrawAim(ctx, dark);
 
-    // Grid
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < GetColsForRow(r); c++) {
         if (!GameState.grid[r]?.[c]) continue;
@@ -336,20 +315,16 @@
       }
     }
 
-    // Falling
     for (const fb of GameState.falling) DrawBubble(ctx, fb.x, fb.y, fb.band, R, fb.alpha, 0);
 
-    // Projectile
     if (GameState.proj) DrawBubble(ctx, GameState.proj.x, GameState.proj.y, GameState.proj.band, R, 1, 0);
 
-    // Danger line
     const dangerY = GetBubblePos(ROWS - 1, 0).y + R + 3;
     ctx.strokeStyle = 'rgba(239,68,68,0.35)';
     ctx.lineWidth = 1.5; ctx.setLineDash([6,5]);
     ctx.beginPath(); ctx.moveTo(0, dangerY); ctx.lineTo(GameState.canW, dangerY); ctx.stroke();
     ctx.setLineDash([]);
 
-    // Cannon
     DrawCannon(ctx, GameState.cannonX, GameState.cannonY, GameState.aimAngle, dark);
 
     ctx.globalAlpha = 0.85;
@@ -366,15 +341,12 @@
     ctx.fillStyle = band.bg; ctx.fill();
     ctx.strokeStyle = band.border; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.shadowBlur = 0;
-    // Flash overlay
     if (flashT > 0) {
       ctx.fillStyle = `rgba(255,255,255,${flashT * 0.55})`;
       ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI*2); ctx.fill();
     }
-    // Sheen
     ctx.fillStyle = 'rgba(255,255,255,.22)';
     ctx.beginPath(); ctx.arc(x - radius*.28, y - radius*.28, radius*.42, 0, Math.PI*2); ctx.fill();
-    // Text
     ctx.fillStyle = band.fg;
     ctx.font = `700 ${Math.round(radius*.7)}px "IBM Plex Mono",monospace`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -386,13 +358,11 @@
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(angle + Math.PI/2);
-    // Barrel
     ctx.fillStyle = dark ? '#6b7280' : '#374151';
     ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(-5, -30, 10, 30, 3);
     else ctx.rect(-5, -30, 10, 30);
     ctx.fill();
-    // Base
     ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI*2);
     ctx.fillStyle = dark ? '#374151' : '#1f2937'; ctx.fill();
     ctx.strokeStyle = dark ? '#9ca3af' : '#4b5563'; ctx.lineWidth = 2; ctx.stroke();
@@ -400,7 +370,7 @@
   }
 
   function DrawAim(ctx, dark) {
-    if (Math.sin(GameState.aimAngle) > -0.08) return;  // only show when pointing up
+    if (Math.sin(GameState.aimAngle) > -0.08) return;
     let x = GameState.cannonX, y = GameState.cannonY;
     let vx = Math.cos(GameState.aimAngle), vy = Math.sin(GameState.aimAngle);
     const Step = 9, maxSteps = 700, maxBounces = 3;
@@ -419,7 +389,6 @@
     ctx.stroke(); ctx.setLineDash([]); ctx.restore();
   }
 
-  /* HUD */
   function UpdateHUD() {
     const e = id => document.getElementById(id);
     const score   = e('gf-sh-score');
@@ -440,7 +409,6 @@
     if (nxtLbl) nxtLbl.textContent = GameState.nextSubject;
   }
 
-  /* RESULT */
   function ShowResult() {
     const ov = document.getElementById('gf-sh-result');
     if (!ov) return;
@@ -454,7 +422,6 @@
     ov.style.display = 'flex';
   }
 
-  /* AIM INPUT */
   function UpdateAim(mx, my) {
     if (!GameState || GameState.status !== 'playing') return;
     const dx = mx - GameState.cannonX, dy = my - GameState.cannonY;
@@ -471,7 +438,6 @@
     };
   }
 
-  /* OVERLAY BUILD */
   function id(s) { return document.getElementById(s); }
 
   function InjectCSS() {
@@ -496,7 +462,6 @@
     }
   }
 
-  /* MODE SELECT */
   function BuildModeSelect(grades) {
     if (id('gf-shooter')) return;
     InjectCSS();
@@ -548,7 +513,6 @@
     document.addEventListener('keydown', _Esc, true);
   }
 
-  /* GAME OVERLAY */
   function StartGame(mode, grades) {
     _grades = grades || [];
     GameState = InitGameState(mode);
@@ -565,13 +529,10 @@
       <div style="display:flex;flex-direction:row;align-items:flex-start;gap:14px;background:var(--sh-surf);border:1.5px solid var(--sh-brd);border-radius:16px;padding:14px;box-shadow:0 8px 40px rgba(0,0,0,.5);position:relative;">
         <button id="gf-sh-close" style="position:absolute;top:8px;right:10px;background:none;border:none;color:var(--sh-txt2);font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1;">✕</button>
 
-        <!-- Canvas col -->
         <div style="position:relative;flex-shrink:0;">
           <canvas id="gf-sh-canvas" width="${GameState.canW}" height="${GameState.canH}"
             style="display:block;border-radius:10px;cursor:crosshair;background:var(--sh-bg);"></canvas>
-          <!-- Mode badge -->
           <div style="position:absolute;top:7px;right:8px;background:rgba(0,0,0,.5);color:#fff;font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:.05em;">${modeTxt}</div>
-          <!-- Result overlay -->
           <div id="gf-sh-result" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.8);border-radius:10px;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#fff;">
             <div class="gf-sh-res-title" style="font-size:20px;font-weight:800;"></div>
             <div class="gf-sh-res-score" style="font-size:15px;font-weight:700;color:#f97316;"></div>
@@ -584,15 +545,12 @@
           </div>
         </div>
 
-        <!-- Side panel -->
         <div style="display:flex;flex-direction:column;gap:10px;min-width:106px;padding-top:4px;">
           <div style="color:var(--sh-txt);font-size:12px;font-weight:800;letter-spacing:.04em;">${_GameText('game_shoot_shooter')}</div>
-          <!-- Score -->
           <div style="background:var(--sh-surf2);border-radius:8px;padding:8px 10px;">
             <div style="color:var(--sh-txt2);font-size:9px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">${_GameText('game_score')}</div>
             <div id="gf-sh-score" style="color:var(--sh-acc);font-size:20px;font-weight:800;">0</div>
           </div>
-          <!-- Stats -->
           <div style="background:var(--sh-surf2);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <span style="color:var(--sh-txt2);font-size:9px;">${_GameText('game_shoot_cleared')}</span>
@@ -603,13 +561,11 @@
               <span id="gf-sh-shots" style="color:var(--sh-txt);font-size:11px;font-weight:700;">0</span>
             </div>
           </div>
-          <!-- Next bubble -->
           <div style="background:var(--sh-surf2);border-radius:8px;padding:8px 10px;text-align:center;">
             <div style="color:var(--sh-txt2);font-size:9px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">${_GameText('game_next')}</div>
             <div id="gf-sh-next" style="width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;border:2px solid transparent;margin:0 auto 4px;"></div>
             <div id="gf-sh-next-lbl" style="color:var(--sh-txt2);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:86px;"></div>
           </div>
-          <!-- Band legend -->
           <div style="background:var(--sh-surf2);border-radius:8px;padding:8px 10px;">
             <div style="color:var(--sh-txt2);font-size:9px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;">${_GameText('game_shoot_bands')}</div>
             ${BANDS.map(b=>`<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
@@ -617,11 +573,10 @@
               <span style="color:var(--sh-txt2);font-size:9px;">${b.range}</span>
             </div>`).join('')}
           </div>
-          <!-- Hint -->
           <div style="color:var(--sh-txt3);font-size:9px;line-height:1.7;">
             <b style="color:var(--sh-txt2);">${_GameText('game_shoot_mouse')}</b> ${_GameText('game_shoot_aim')}<br>
             <b style="color:var(--sh-txt2);">${_GameText('game_shoot_click')}</b> ${_GameText('game_shoot_shoot')}<br>
-            <b style="color:var(--sh-txt2);">F8</b> ${_GameText('game_shoot_hide')}
+            <b style="color:var(--sh-txt2);">${window.GfKeys ? GfKeys.label('arcade') : 'F8'}</b> ${_GameText('game_shoot_hide')}
           </div>
         </div>
       </div>`;
@@ -682,7 +637,6 @@
     return false;
   }
 
-  /* OPEN / CLOSE */
   function _Esc(e) {
     if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
     if (e.key === 'Escape') { e.preventDefault(); CloseGradeShooter(); }
@@ -701,7 +655,6 @@
     if (host) { host._tobs?.disconnect(); host.remove(); }
   }
 
-  /* PUBLIC */
   W.OpenGradeShooter  = OpenGradeShooter;
   W.CloseGradeShooter = CloseGradeShooter;
   W.BossKeyShooter    = BossKeyShooter;

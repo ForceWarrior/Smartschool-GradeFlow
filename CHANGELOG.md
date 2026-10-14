@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.3.0] - 2026-10-13
+
+### Added
+- Theme editor with 12 presets and fully custom colours. Custom themes recolour SmartSchool itself instead of inverting it, so images stay normal, and also style the panel, popup, chat, games, and grade colours. Themes can be saved and shared with a GFTHEME code.
+- Grades without points are now shown: labels, icon ratings with their goal breakdown, and percentage ranges like 60% - 90%. A new setting decides whether they count and what each label is worth.
+- Grade.io: agar.io with bots, solo or in a lobby with everyone on your network. The oldest player hosts and hosting moves on when they leave.
+- Crossy Grade, Grade Surfers, and Grade Hook arcade games.
+- Network chat: join everyone on the same network from the chat menu without codes.
+- Remappable shortcuts in the ? menu (panel, chat, arcade, pause, restart).
+- Discord link at the bottom of the ? menu.
+
+### Changed
+- Arcade games only load when you open them, which keeps every SmartSchool page lighter.
+- Planner items now come from SmartSchool's planner API instead of scanning the page.
+- Attendance only refreshes when needed instead of on every page change.
+- Grades SmartSchool marks as not counting are left out of the average by default and can be clicked to include them.
+
+### Fixed
+- Notifications, messages, and other page text no longer show up under Te laat (overdue) or Afwezig.
+- Dates like 2026-10-07 are no longer read as 10 July.
+- Duplicate attendance rows are merged.
+- Classic dark mode no longer inverts game canvases a second time.
+- Short subject keywords like "de" or "en" no longer give subjects such as Wiskunde a wrong flag icon.
+
 ## [1.2.6] - 2026-05-06
 
 ### Added

@@ -27,6 +27,8 @@ function SaveGradeDecimals(val) {
 }
 
 const GF_HOME_SUMMARY_ENABLED_KEY = 'gradeflow-home-summary-enabled';
+const GF_PLANNER_KEY = 'gradeflow-planner-v2';
+const GF_ATTENDANCE_KEY = 'gradeflow-attendance-v2';
 
 function IsHomeSummaryEnabledValue(value) {
   return value !== false && value !== '0' && value !== 'false';
@@ -37,7 +39,6 @@ function SaveHomeSummaryEnabled(value) {
   try { chrome.storage?.local?.set({ [GF_HOME_SUMMARY_ENABLED_KEY]: !!value }); } catch (_) {}
 }
 
-// Mode persistence
 function LoadWeightMode() {
   try {
     const v = localStorage.getItem('gradeflow-weightmode-v1');
@@ -63,7 +64,6 @@ function SaveUseFormula(val) {
   try { localStorage.setItem('gradeflow-useformula-v1', val ? '1' : '0'); } catch (_) {}
 }
 
-// Translations
 function LoadLangPref() {
   try { return localStorage.getItem('gradeflow-lang-v1') || 'auto'; } catch (_) { return 'auto'; }
 }
@@ -115,7 +115,6 @@ const _GF_DEFAULT_ICON_RULES = [
   { keys: 'deens,danish,danois,da',                    icon: '🇩🇰' },
   { keys: 'pools,polish,polonais,pl',                  icon: '🇵🇱' },
 
-  // Sciences
   { keys: 'wiskunde,math,mathématiques,calcul',        icon: '📐' },
   { keys: 'fysica,physics,physique,natuurkunde',       icon: '⚛️' },
   { keys: 'chemie,chemistry,chimie,scheikunde',        icon: '🧪' },
@@ -123,7 +122,6 @@ const _GF_DEFAULT_ICON_RULES = [
   { keys: 'wetenschappen,sciences,science',            icon: '🔬' },
   { keys: 'aardrijkskunde,geografie,geography,géo',   icon: '🌍' },
 
-  // Humanities
   { keys: 'geschiedenis,history,histoire',             icon: '📜' },
   { keys: 'latijn,latin',                              icon: '🏛️' },
   { keys: 'grieks,greek,grec',                         icon: '🏺' },
@@ -133,17 +131,14 @@ const _GF_DEFAULT_ICON_RULES = [
   { keys: 'religie,godsdienst,religion,levensbeschouw',icon: '✝️' },
   { keys: 'recht,juridisch,law,droit',                 icon: '⚖️' },
 
-  // Arts & music
   { keys: 'muziek,music,musique',                      icon: '🎵' },
   { keys: 'kunst,art,teken,beeldend,plastisch',        icon: '🎨' },
 
-  // Tech & economy
   { keys: 'informatica,computer,ict,programmeer',      icon: '💻' },
   { keys: 'economie,economy,économie',                 icon: '📊' },
   { keys: 'techniek,technology,technique,toegepaste',  icon: '🔧' },
   { keys: 'elektriciteit,elektro,electric',            icon: '⚡' },
 
-  // PE & projects
   { keys: 'sport,lichamelijk,gym,educatie fysieke,beweging', icon: '⚽' },
   { keys: 'project,stage,praktijk',                   icon: '📋' },
 ];
@@ -178,9 +173,11 @@ function SaveSubjectIcons(obj) {
 
 function EmojiForSubject(subj) {
   const lower = subj.toLowerCase();
+  const words = lower.split(/[^a-zà-ÿ0-9]+/).filter(Boolean);
+  const code = words.length <= 2 ? words[0] : '';
   for (const rule of GetIconRules()) {
     const keywords = rule.keys.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
-    if (keywords.some(k => lower.includes(k))) return rule.icon;
+    if (keywords.some(k => k.length <= 2 ? k === code : k.length === 3 ? words.includes(k) : lower.includes(k))) return rule.icon;
   }
   return '📘';
 }
@@ -196,17 +193,24 @@ function SubjectIconHtml(subj) {
   return `<span class="gf-subj-icon">${EmojiForSubject(subj)}</span>`;
 }
 
-// Theme sync
 const GF_EXTERNAL_THEME_PROPS = ['--orange', '--orange-dim', '--orange-bg', '--orange-bg2', '--bg-0', '--bg-1', '--bg-2', '--bg-3', '--bg-4', '--border', '--border-hi', '--text-0', '--text-1', '--text-2', '--text-3'];
 let _gfParentThemeSource = '';
+let _gfThemeEditing = false;
 
 function ClearExternalGradeTheme() {
   GF_EXTERNAL_THEME_PROPS.forEach(name => document.documentElement.style.removeProperty(name));
 }
 
 function ApplyGradeTheme(theme, vars = null) {
-  if (theme === 'smpp' && vars) {
-    document.documentElement.setAttribute('data-theme', 'smpp');
+  const root = document.documentElement;
+  const custom = theme === 'custom' && vars;
+  GF_GRADE_COLORS.good = custom ? vars.good : '#4ade80';
+  GF_GRADE_COLORS.mid = custom ? vars.mid : '#fbbf24';
+  GF_GRADE_COLORS.bad = custom ? vars.bad : '#f87171';
+  for (const k of ['good', 'mid', 'bad']) root.style.setProperty(`--grade-${k}`, GF_GRADE_COLORS[k]);
+  root.toggleAttribute('data-theme-custom', !!custom);
+  if ((theme === 'smpp' || custom) && vars) {
+    document.documentElement.setAttribute('data-theme', vars.isDark === false ? 'light' : 'smpp');
     document.documentElement.style.setProperty('--orange', vars.accent || '#f97316');
     document.documentElement.style.setProperty('--orange-dim', vars.accent || '#f97316');
     document.documentElement.style.setProperty('--orange-bg', `color-mix(in srgb, ${vars.accent || '#f97316'} 14%, transparent)`);
@@ -228,10 +232,13 @@ function ApplyGradeTheme(theme, vars = null) {
   document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
 }
 
-chrome.storage.local.get('gradeflow-theme', ({ 'gradeflow-theme': saved }) => {
-  const th = saved === 'dark' || saved === 'smpp' ? saved : 'light';
-  S.theme = th;
-  ApplyGradeTheme(th);
+chrome.storage.local.get(['gradeflow-theme', GF_THEME_PALETTE_KEY, GF_THEME_LIBRARY_KEY], r => {
+  const saved = r['gradeflow-theme'];
+  S.theme = saved === 'dark' || saved === 'custom' ? saved : 'light';
+  S.palette = GfCleanPalette(r[GF_THEME_PALETTE_KEY] || GF_THEME_PRESETS[0]);
+  S.themeLibrary = Array.isArray(r[GF_THEME_LIBRARY_KEY]) ? r[GF_THEME_LIBRARY_KEY].map(GfCleanPalette).slice(0, 30) : [];
+  if (_gfParentThemeSource) return;
+  ApplyGradeTheme(S.theme, S.theme === 'custom' ? GfThemeVars(S.palette) : null);
 });
 
 chrome.storage.local.get(GF_HOME_SUMMARY_ENABLED_KEY, result => {
@@ -241,13 +248,18 @@ chrome.storage.local.get(GF_HOME_SUMMARY_ENABLED_KEY, result => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes['gradeflow-theme']) {
-    const th = changes['gradeflow-theme'].newValue;
-    if (_gfParentThemeSource === 'smpp' && th !== 'smpp') return;
-    S.theme = th;
-    ApplyGradeTheme(th);
-    const overlay = document.getElementById('gf-settings-overlay');
-    if (overlay?.classList.contains('is-open')) RenderSettings();
+  if (area === 'local' && changes[GF_THEME_LIBRARY_KEY]) {
+    S.themeLibrary = (changes[GF_THEME_LIBRARY_KEY].newValue || []).map(GfCleanPalette);
+  }
+  if (area === 'local' && (changes['gradeflow-theme'] || changes[GF_THEME_PALETTE_KEY])) {
+    if (changes['gradeflow-theme']) S.theme = changes['gradeflow-theme'].newValue || 'light';
+    if (changes[GF_THEME_PALETTE_KEY]) S.palette = GfCleanPalette(changes[GF_THEME_PALETTE_KEY].newValue || GF_THEME_PRESETS[0]);
+    if (_gfParentThemeSource === 'smpp') return;
+    ApplyGradeTheme(S.theme, S.theme === 'custom' ? GfThemeVars(S.palette) : null);
+    if (!_gfThemeEditing) {
+      const overlay = document.getElementById('gf-settings-overlay');
+      if (overlay?.classList.contains('is-open')) RenderSettings();
+    }
   }
   if (area === 'local' && changes[GF_HOME_SUMMARY_ENABLED_KEY]) {
     S.homeSummaryEnabled = IsHomeSummaryEnabledValue(changes[GF_HOME_SUMMARY_ENABLED_KEY].newValue);
@@ -258,8 +270,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
     S.studySessions = NormalizeStudySessions(changes['gradeflow-study-sessions'].newValue);
     if (S.activeView === 'planner') RenderMainContent(false);
   }
-  if (area === 'local' && changes['gradeflow-attendance-items']) {
-    S.attendanceItems = NormalizeAttendanceItems(changes['gradeflow-attendance-items'].newValue);
+  if (area === 'local' && changes[GF_ATTENDANCE_KEY]) {
+    S.attendanceItems = NormalizeAttendanceItems(changes[GF_ATTENDANCE_KEY].newValue);
     if (S.activeView === 'attendance') RenderMainContent(false);
   }
   if (area === 'local' && changes['gf-profile-picture']) {
@@ -274,31 +286,30 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 window.addEventListener('message', e => {
   if (e.data?.type === 'gf-theme') {
-    _gfParentThemeSource = e.data.theme === 'smpp' ? 'smpp' : '';
-    S.theme = e.data.theme;
+    _gfParentThemeSource = e.data.theme === 'smpp' ? 'smpp' : e.data.theme || 'light';
+    if (e.data.theme !== 'smpp') S.theme = e.data.theme === 'custom' || e.data.theme === 'dark' ? e.data.theme : 'light';
     ApplyGradeTheme(e.data.theme, e.data.vars || null);
     const overlay = document.getElementById('gf-settings-overlay');
-    if (overlay?.classList.contains('is-open')) RenderSettings();
+    if (overlay?.classList.contains('is-open') && !_gfThemeEditing) RenderSettings();
+  }
+  if (e.data?.type === 'gf-theme-status') {
+    S.themeBlocked = e.data.blocked || 0;
+    const note = document.getElementById('gf-theme-blocked');
+    if (note) note.hidden = !S.themeBlocked;
   }
 
   if (e.data?.type === 'gf-grades-ready') {
-    const prevJSON = S.store ? JSON.stringify(S.store) : null;
     const prevStore = S.store ? JSON.parse(JSON.stringify(S.store)) : null;
-    chrome.storage.local.get(['gradeflow-grades', 'gradeflow-planner-items', 'gradeflow-study-sessions', 'gradeflow-attendance-items', 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
+    chrome.storage.local.get(['gradeflow-grades', GF_PLANNER_KEY, 'gradeflow-study-sessions', GF_ATTENDANCE_KEY, 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
       S.profilePicture = result?.['gf-profile-picture'] || S.profilePicture || '';
       S.detectedProfilePicture = result?.['gf-detected-profile-picture'] || S.detectedProfilePicture || '';
-      S.plannerItems = NormalizePlannerItems(result?.['gradeflow-planner-items']);
+      S.plannerItems = NormalizePlannerItems(result?.[GF_PLANNER_KEY]);
       S.studySessions = NormalizeStudySessions(result?.['gradeflow-study-sessions']);
-      S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
+      S.attendanceItems = NormalizeAttendanceItems(result?.[GF_ATTENDANCE_KEY]);
       const raw = result?.['gradeflow-grades'];
-      if (!raw || (prevJSON && prevJSON === raw)) return;
+      if (!raw || raw === S.rawJSON) return;
       const wasAlreadyLoaded = !!S.store;
-      S.store = JSON.parse(raw);
-      InvalidatePeriodCache();
-if (S.store?._courseIcons) {
-  S.courseIcons = S.store._courseIcons;
-  delete S.store._courseIcons;
-}
+      SetRawStore(JSON.parse(raw), raw);
       S.periods = ComputePeriods(S.store);
       if (!S.periods.includes(S.activePeriod)) S.activePeriod = 'Alle';
       if (wasAlreadyLoaded) {
@@ -346,7 +357,6 @@ if (S.store?._courseIcons) {
   }
 });
 
-// Formatting
 function FormatNumber(n) {
   if (isNaN(n) || n == null) return '?';
   const r = Math.round(n * 100) / 100;
@@ -357,7 +367,8 @@ function FormatNumber(n) {
   if (r % 1 === 0) return String(r);
   return r.toFixed(r * 10 % 1 === 0 ? 1 : 2).replace('.', GetDecimalSep());
 }
-const ColorForPercent = p => p >= 70 ? '#4ade80' : p >= 50 ? '#fbbf24' : '#f87171';
+const GF_GRADE_COLORS = { good: '#4ade80', mid: '#fbbf24', bad: '#f87171' };
+const ColorForPercent = p => p >= 70 ? GF_GRADE_COLORS.good : p >= 50 ? GF_GRADE_COLORS.mid : GF_GRADE_COLORS.bad;
 const BgForPercent    = p => p >= 70 ? '#bbf7d0' : p >= 50 ? '#fde68a' : '#fecaca';
 
 function ParseLocalDateToTime(value) {
@@ -374,13 +385,15 @@ function SortScoresChronologically(scores) {
     return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
   });
 }
+function PointsMax(scores) {
+  return scores.reduce((a, e) => a + e.max, 0);
+}
 function CalcPercent(scores) {
   const s = scores.reduce((a, e) => a + e.scored, 0);
   const m = scores.reduce((a, e) => a + e.max, 0);
   return m > 0 ? (s / m) * 100 : 0;
 }
 
-// Period helpers
 let _allPeriodCache = null;
 let _allPeriodCacheStore = null;
 
@@ -393,9 +406,9 @@ function BuildAllPeriodData(store) {
     if (key.startsWith('_')) continue;
     for (const [subject, payload] of Object.entries(subjects || {})) {
       if (!merged[subject]) merged[subject] = { scores: [] };
-      const seen = new Set(merged[subject].scores.map(x => x.title + '\0' + x.date + '\0' + x.scored + '\0' + x.max));
+      const seen = new Set(merged[subject].scores.map(x => x.title + '\0' + x.date + '\0' + x.scored + '\0' + x.max + '\0' + (x._extra ? ExtraLabelKey(x._extra) : '')));
       for (const score of (payload?.scores || [])) {
-        const k = score.title + '\0' + score.date + '\0' + score.scored + '\0' + score.max;
+        const k = score.title + '\0' + score.date + '\0' + score.scored + '\0' + score.max + '\0' + (score._extra ? ExtraLabelKey(score._extra) : '');
         if (!seen.has(k)) { seen.add(k); merged[subject].scores.push({ ...score, _period: key }); }
       }
     }
@@ -430,7 +443,6 @@ function ComputePeriods(store) {
   return ['Alle', ...SortPeriods(Object.keys(store || {}).filter(p => p !== 'Alle' && !p.startsWith('_')))];
 }
 
-// Hours
 function LoadManualHours() {
   try {
     const raw = localStorage.getItem('gradeflow-manual-hours-v1');
@@ -455,7 +467,10 @@ function GetHoursForSubject(subject) {
 function ComputeTotalWeightedHours(data) {
   if (S.weightMode !== 'hours' || !data) return null;
   let total = 0;
-  for (const subj of Object.keys(data)) { const h = GetHoursForSubject(subj); if (h) total += h; }
+  for (const [subj, { scores }] of Object.entries(data)) {
+    const h = GetHoursForSubject(subj);
+    if (h && PointsMax(EffectiveScores(subj, scores, S.activePeriod))) total += h;
+  }
   return total > 0 ? total : null;
 }
 function WeightedPct(data, period = S.activePeriod, includeWhatIf = period === S.activePeriod) {
@@ -463,13 +478,14 @@ function WeightedPct(data, period = S.activePeriod, includeWhatIf = period === S
   for (const [subject, { scores }] of Object.entries(data || {})) {
     const h = GetHoursForSubject(subject);
     if (!h || isNaN(h)) continue;
-    weighted += EffectiveSubjectPct(subject, scores, period, includeWhatIf) * h;
+    const eff = EffectiveScores(subject, scores, period, includeWhatIf);
+    if (!PointsMax(eff)) continue;
+    weighted += CalcPercent(eff) * h;
     totalHours += h;
   }
   return totalHours > 0 ? (weighted / totalHours) : 0;
 }
 
-// Formula
 function LoadFormula() {
   try {
     const raw = localStorage.getItem('gradeflow-formula-v1');
@@ -499,7 +515,7 @@ function FormulaSubjectPct(subject, store) {
       const pw = parseFloat(part.weight) || 0;
       if (!pw || !part.period) continue;
       const scores = EffectiveScores(subject, store[part.period]?.[subject]?.scores || [], part.period, false);
-      if (!scores.length) continue;
+      if (!PointsMax(scores)) continue;
       gws += CalcPercent(scores) * pw;
       gtw += pw;
     }
@@ -535,7 +551,6 @@ function FormulaOverallPct(store, useHours = false) {
   return count > 0 ? sum / count : 0;
 }
 
-// Decision-tool state
 function LoadJSONSetting(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -598,14 +613,17 @@ function GetScorePeriod(score, fallbackPeriod) {
   return score?._period || fallbackPeriod || S.activePeriod || 'Alle';
 }
 function GradeKey(period, subject, score) {
-  return [period || '', subject || '', score?.title || '', score?.date || '', String(score?.scored ?? ''), String(score?.max ?? '')]
+  const x = score?._extra;
+  return [period || '', subject || '', score?.title || '', score?.date || '', x ? `x:${x.id || ExtraLabelKey(x)}` : String(score?.scored ?? ''), x ? '' : String(score?.max ?? '')]
     .join('\u0001');
 }
 function GradeKeyFromScore(subject, score, fallbackPeriod) {
   return GradeKey(GetScorePeriod(score, fallbackPeriod), subject, score);
 }
 function IsGradeExcluded(period, subject, score) {
-  return !!S.excludedGrades?.[GradeKey(period, subject, score)];
+  const key = GradeKey(period, subject, score);
+  if (S.excludedGrades?.[key]) return true;
+  return !!score?.nc && !S.includedGrades?.[key];
 }
 function GetGradeWeight(period, subject, score) {
   const v = parseFloat(S.gradeWeights?.[GradeKey(period, subject, score)]);
@@ -614,6 +632,102 @@ function GetGradeWeight(period, subject, score) {
 function SaveExcludedGrades(map) {
   S.excludedGrades = { ...(map || {}) };
   SaveJSONSetting('gradeflow-excluded-grades-v1', S.excludedGrades);
+}
+function SaveIncludedGrades(map) {
+  S.includedGrades = { ...(map || {}) };
+  SaveJSONSetting('gradeflow-included-grades-v1', S.includedGrades);
+}
+const GF_EXTRA_LABEL_PCT = {
+  uitmuntend: 95, excellent: 95, 'zeer goed': 85, 'très bien': 85, 'tres bien': 85, 'heel goed': 85, goed: 75, bien: 75, good: 75,
+  'ruim voldoende': 68, voldoende: 60, suffisant: 60, sufficient: 60, 'op weg naar': 45, 'bijna voldoende': 45, 'en progrès': 45,
+  onvoldoende: 35, insuffisant: 35, insufficient: 35, zwak: 30, faible: 30, beginsituatie: 25, 'zeer zwak': 15, 'niet behaald': 20,
+  behaald: 70, 'a+': 97, a: 90, 'b+': 80, b: 75, c: 60, d: 45, e: 30, f: 15, '++': 90, '+': 70, '+/-': 55, '-': 35, '--': 15,
+};
+const GF_EXTRA_COLOR_PCT = [
+  [/red|watermelon|dynamite|salmon|candy/, 25],
+  [/orange|tangerine|hazelnut|brown|beach/, 45],
+  [/yellow|lemon|olive/, 60],
+  [/green|grass|kiwi|emerald|moss|sage|mint/, 75],
+  [/aqua|blue|ocean|heaven|jeans|dolphin|night|steel|lavender|violet|purple|jazz/, 92],
+];
+const GF_EXTRA_COLOR_HEX = [
+  [/red|watermelon|dynamite|salmon|candy/, '#f87171'],
+  [/orange|tangerine|hazelnut|brown|beach/, '#fb923c'],
+  [/yellow|lemon|olive/, '#facc15'],
+  [/green|grass|kiwi|emerald|moss|sage|mint/, '#4ade80'],
+  [/aqua|ocean|heaven|dolphin/, '#22d3ee'],
+  [/blue|jeans|night|steel|jazz/, '#60a5fa'],
+  [/lavender|violet|purple|pink/, '#c084fc'],
+];
+function LoadExtraSettings() {
+  const raw = LoadJSONSetting('gradeflow-extra-v1', {});
+  const weight = parseFloat(raw.weight);
+  return { count: !!raw.count, weight: Number.isFinite(weight) && weight > 0 ? weight : 10, map: raw.map && typeof raw.map === 'object' ? raw.map : {} };
+}
+function SaveExtraSettings(next) {
+  S.extraSettings = { ...S.extraSettings, ...next };
+  SaveJSONSetting('gradeflow-extra-v1', S.extraSettings);
+  S.store = DeriveStore(S.rawStore);
+  InvalidatePeriodCache();
+}
+function ExtraLabelKey(x) {
+  return String(x?.label || x?.icon || x?.color || '?').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function ExtraColorMatch(x, table) {
+  const hay = `${x.color || ''} ${x.icon || ''}`.toLowerCase();
+  return table.find(([re]) => re.test(hay))?.[1] ?? null;
+}
+function DefaultExtraPct(x) {
+  if (Number.isFinite(x.pct)) return x.pct;
+  const label = ExtraLabelKey(x);
+  if (label in GF_EXTRA_LABEL_PCT) return GF_EXTRA_LABEL_PCT[label];
+  return ExtraColorMatch(x, GF_EXTRA_COLOR_PCT);
+}
+function ExtraPct(x) {
+  const custom = parseFloat(S.extraSettings.map[ExtraLabelKey(x)]);
+  return Number.isFinite(custom) ? Math.max(0, Math.min(100, custom)) : DefaultExtraPct(x);
+}
+function ExtraColor(x) {
+  const pct = ExtraPct(x);
+  return ExtraColorMatch(x, GF_EXTRA_COLOR_HEX) || (pct == null ? '#a78bfa' : ColorForPercent(pct));
+}
+function ExtraToScore(x) {
+  const pct = ExtraPct(x);
+  const w = S.extraSettings.weight;
+  return { title: x.title || '', date: x.date || '', scored: pct == null ? 0 : pct / 100 * w, max: pct == null ? 0 : w, nc: !S.extraSettings.count || !!x.nc, _extra: x };
+}
+function DeriveStore(raw) {
+  if (!raw) return null;
+  const out = {};
+  for (const [period, subjects] of Object.entries(raw)) {
+    if (period.startsWith('_')) continue;
+    out[period] = {};
+    for (const [subject, payload] of Object.entries(subjects || {})) {
+      const scores = (payload?.scores || []).map(x => ({ ...x }));
+      for (const x of payload?.extra || []) scores.push(ExtraToScore(x));
+      if (scores.length) out[period][subject] = { scores };
+    }
+  }
+  return out;
+}
+function SetRawStore(raw, json) {
+  S.rawJSON = json || '';
+  S.courseIcons = raw?._courseIcons || S.courseIcons || {};
+  S.gradeIcons = raw?._gradeIcons || {};
+  S.rawStore = raw;
+  S.store = DeriveStore(raw);
+  InvalidatePeriodCache();
+}
+function ExtraLabel(x) {
+  if (x.kind === 'range' && Number.isFinite(x.lo)) return `${FormatNumber(x.lo)}-${FormatNumber(x.hi)}%`;
+  if (x.kind === 'percent' && Number.isFinite(x.pct)) return `${FormatNumber(x.pct)}%`;
+  if (x.label) return x.label;
+  const top = [...(x.goals || [])].sort((a, b) => b.count - a.count)[0];
+  return top?.label || (S.gradeIcons?.[x.icon] ? '' : '●');
+}
+function ExtraIconHtml(name, size = 16) {
+  const uri = S.gradeIcons?.[name];
+  return uri ? `<img class="gf-extra-icon" src="${uri}" width="${size}" height="${size}" alt="">` : '';
 }
 function SaveGradeWeights(map) {
   S.gradeWeights = { ...(map || {}) };
@@ -644,9 +758,6 @@ function EffectiveScores(subject, scores, fallbackPeriod, includeWhatIf = true) 
   const planned = includeWhatIf ? BuildWhatIfScore(subject) : null;
   return planned ? [...base, planned] : base;
 }
-function EffectiveSubjectPct(subject, scores, fallbackPeriod, includeWhatIf = true) {
-  return CalcPercent(EffectiveScores(subject, scores, fallbackPeriod, includeWhatIf));
-}
 function EffectiveTotals(data, fallbackPeriod, includeWhatIf = true) {
   return Object.entries(data || {}).flatMap(([subject, payload]) => EffectiveScores(subject, payload?.scores || [], fallbackPeriod, includeWhatIf));
 }
@@ -656,14 +767,16 @@ function NormalizePlannerItems(raw) {
     if (!Array.isArray(parsed)) return [];
     const seen = new Set();
     return parsed.map(item => ({
+      id: String(item?.id || '').trim(),
       title: String(item?.title || '').trim(),
       subject: String(item?.subject || '').trim(),
       dueDate: String(item?.dueDate || '').trim(),
       type: String(item?.type || '').trim(),
       url: String(item?.url || '').trim(),
+      resolved: !!item?.resolved,
       source: String(item?.source || '').trim(),
     })).filter(item => item.title || item.subject).filter(item => {
-      const key = [item.title, item.subject, item.dueDate].join('\u0001').toLowerCase();
+      const key = item.id || [item.title, item.subject, item.dueDate].join('\u0001').toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -684,7 +797,7 @@ function NormalizeAttendanceItems(raw) {
       code: String(item?.code || '').trim(),
       title: String(item?.title || '').trim(),
       detail: String(item?.detail || '').trim(),
-      type: String(item?.type || '').trim(),
+      type: ['late', 'absent', 'other'].includes(item?.type) ? item.type : '',
       source: String(item?.source || '').trim(),
     })).filter(item => {
       if (!item.date || junk.test(`${item.title} ${item.detail}`)) return false;
@@ -703,8 +816,8 @@ function NormalizeAttendanceItems(raw) {
 
 function LoadPlannerItems(done) {
   try {
-    chrome.storage.local.get('gradeflow-planner-items', result => {
-      S.plannerItems = NormalizePlannerItems(result?.['gradeflow-planner-items']);
+    chrome.storage.local.get(GF_PLANNER_KEY, result => {
+      S.plannerItems = NormalizePlannerItems(result?.[GF_PLANNER_KEY]);
       if (done) done(S.plannerItems);
     });
   } catch (_) {
@@ -714,8 +827,8 @@ function LoadPlannerItems(done) {
 }
 function LoadAttendanceItems(done) {
   try {
-    chrome.storage.local.get('gradeflow-attendance-items', result => {
-      S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
+    chrome.storage.local.get(GF_ATTENDANCE_KEY, result => {
+      S.attendanceItems = NormalizeAttendanceItems(result?.[GF_ATTENDANCE_KEY]);
       if (done) done(S.attendanceItems);
     });
   } catch (_) {
@@ -980,11 +1093,16 @@ async function CopyText(text) {
   area.remove();
   return ok;
 }
-function ToggleGradeExcluded(key) {
-  const next = { ...(S.excludedGrades || {}) };
-  const nowExcluded = !next[key];
-  if (nowExcluded) next[key] = 1; else delete next[key];
-  SaveExcludedGrades(next);
+function ToggleGradeExcluded(key, nc = false) {
+  const excluded = { ...(S.excludedGrades || {}) };
+  const included = { ...(S.includedGrades || {}) };
+  const nowExcluded = !(excluded[key] || (nc && !included[key]));
+  delete excluded[key];
+  delete included[key];
+  if (nowExcluded && !nc) excluded[key] = 1;
+  if (!nowExcluded && nc) included[key] = 1;
+  SaveExcludedGrades(excluded);
+  SaveIncludedGrades(included);
   ShowToast(nowExcluded ? Translate('notify_grade_excluded') : Translate('notify_grade_included'), '', nowExcluded ? 'warn' : 'ok');
   RenderMainContent(false);
   UpdateTopbar();
@@ -1040,13 +1158,12 @@ function NotifyNewGrades(previousStore, nextStore) {
   if (!added.length) return;
   if (added.length === 1) {
     const item = added[0];
-    ShowToast(Translate('notify_new_grade'), `${item.subject}: ${FormatNumber(item.score.scored)} / ${FormatNumber(item.score.max)}`, 'ok');
+    ShowToast(Translate('notify_new_grade'), `${item.subject}: ${item.score._extra ? ExtraLabel(item.score._extra) : `${FormatNumber(item.score.scored)} / ${FormatNumber(item.score.max)}`}`, 'ok');
   } else {
     ShowToast(Translate('notify_new_grades').replace('{count}', added.length), Translate('notify_new_grades_body'), 'ok');
   }
 }
 
-// State
 const S = {
   store: null,
   periods: [],
@@ -1055,6 +1172,11 @@ const S = {
   weightMode: LoadWeightMode(),
   useFormula: LoadUseFormula(),
   excludedGrades: LoadJSONSetting('gradeflow-excluded-grades-v1', {}),
+  includedGrades: LoadJSONSetting('gradeflow-included-grades-v1', {}),
+  extraSettings: LoadExtraSettings(),
+  rawStore: null,
+  rawJSON: '',
+  gradeIcons: {},
   gradeWeights: LoadJSONSetting('gradeflow-grade-weights-v1', {}),
   whatIfMode: LoadWhatIfMode(),
   whatIfScores: LoadJSONSetting('gradeflow-whatif-scores-v1', {}),
@@ -1075,6 +1197,9 @@ const S = {
   formula: LoadFormula(),
   bestSubjectMode: 'grade',
   theme: 'dark',
+  palette: GfCleanPalette(GF_THEME_PRESETS[0]),
+  themeLibrary: [],
+  themeBlocked: 0,
   lang: LoadLangPref(),
   customLang: LoadCustomLang(),
   decimalSep: LoadDecimalSep(),
@@ -1104,14 +1229,13 @@ function GetModeLabel() {
   return `${base} ${Translate('mode_desc_formula_off')}`;
 }
 
-// Best subject
 function GetBestSubject(data) {
   if (!data || !Object.keys(data).length) return null;
   const useValue = S.bestSubjectMode === 'value' && HasManualHours() && S.weightMode === 'hours';
   let best = null, bestScore = -Infinity;
   for (const [subj, { scores }] of Object.entries(data)) {
     const effective = EffectiveScores(subj, scores, S.activePeriod);
-    if (!effective.length) continue;
+    if (!PointsMax(effective)) continue;
     const subjPct = CalcPercent(effective);
     const score = useValue ? (GetHoursForSubject(subj) ? subjPct * GetHoursForSubject(subj) : -Infinity) : subjPct;
     if (score > bestScore) { bestScore = score; best = { subj, CalcPercent: subjPct, hours: GetHoursForSubject(subj), valueScore: score }; }
@@ -1119,7 +1243,6 @@ function GetBestSubject(data) {
   return best;
 }
 
-// Bottom bar
 function UpdateBottomBar() {
   const pctEl   = document.getElementById('gf-bb-pct');
   const fillEl  = document.getElementById('gf-bb-bar-fill');
@@ -1281,7 +1404,6 @@ function ImportCustomLang() {
   input.click();
 }
 
-// Settings modal
 function OpenSettings() {
   const overlay = document.getElementById('gf-settings-overlay');
   if (!overlay) return;
@@ -1296,9 +1418,12 @@ function CloseSettings() {
   document.getElementById('gf-settings-btn')?.classList.remove('is-open');
 }
 
-// Help modal
 const GF_GITHUB_URL = 'https://github.com/ForceWarrior/Smartschool-GradeFlow';
 const GF_CWS_URL    = 'https://chromewebstore.google.com/detail/gradeflow/mhcppcdlhnopfnkicmdmjakibpkbilkm';
+const GF_DISCORD_URL = 'https://discord.com/invite/WN7yMAfAkk';
+const GF_DISCORD_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.32 4.37a19.8 19.8 0 0 0-4.89-1.52.07.07 0 0 0-.08.04c-.21.38-.44.87-.61 1.25a18.27 18.27 0 0 0-5.49 0 12.64 12.64 0 0 0-.62-1.25.08.08 0 0 0-.08-.04 19.74 19.74 0 0 0-4.88 1.52.07.07 0 0 0-.03.03C.53 9.05-.32 13.58.1 18.06a.08.08 0 0 0 .03.05 19.9 19.9 0 0 0 5.99 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.23-1.99a.08.08 0 0 0-.04-.11 13.1 13.1 0 0 1-1.87-.89.08.08 0 0 1-.01-.13l.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01l.37.29a.08.08 0 0 1-.01.13 12.3 12.3 0 0 1-1.87.89.08.08 0 0 0-.04.11c.36.7.77 1.36 1.23 1.99a.08.08 0 0 0 .08.03 19.84 19.84 0 0 0 6-3.03.08.08 0 0 0 .03-.06c.5-5.18-.84-9.67-3.55-13.66a.06.06 0 0 0-.03-.03ZM8.02 15.33c-1.18 0-2.16-1.09-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.33-.96 2.42-2.16 2.42Zm7.97 0c-1.18 0-2.15-1.09-2.15-2.42 0-1.33.95-2.42 2.15-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.33-.95 2.42-2.16 2.42Z"/></svg>';
+const GF_HELP_KEYS = [['panel', 'help_action_panel'], ['chat', 'help_action_chat'], ['arcade', 'help_action_arcade'], ['pause', 'help_action_pause'], ['restart', 'help_action_restart']];
+let _gfRecordingKey = null;
 
 function OpenHelp() {
   const overlay = document.getElementById('gf-help-overlay');
@@ -1309,6 +1434,7 @@ function OpenHelp() {
   document.getElementById('gf-help-btn')?.classList.add('is-open');
 }
 function CloseHelp() {
+  _gfRecordingKey = null;
   document.getElementById('gf-help-overlay')?.classList.remove('is-open');
   document.getElementById('gf-help-overlay')?.setAttribute('aria-hidden', 'true');
   document.getElementById('gf-help-btn')?.classList.remove('is-open');
@@ -1328,22 +1454,26 @@ function RenderHelp() {
       <ul class="gf-help-list">
         <li>${Translate('help_feature_grades')}</li>
         <li>${Translate('help_feature_weighting')}</li>
-        <li>${Translate('help_feature_theme')}</li>
         <li>${Translate('help_feature_lang')}</li>
         <li>${Translate('help_feature_icons')}</li>
         <li>${Translate('help_feature_personalization')}</li>
+        <li>${Translate('help_feature_ratings')}</li>
+        <li>${Translate('help_feature_themes')}</li>
         <li>${Translate('help_feature_arcade')}</li>
-        <li>${Translate('help_feature_chat')}</li>
+        <li>${Translate('help_feature_chat').replace('F7', Esc(GfKeys.label('chat')))}</li>
+        <li>${Translate('help_feature_lan')}</li>
       </ul>
     </div>
     <div class="gf-help-section">
       <div class="gf-help-section-title">${Translate('help_shortcuts_title')}</div>
-      <div class="gf-help-shortcut">${Translate('help_shortcut_f6')}</div>
-      <div class="gf-help-shortcut">${Translate('help_shortcut_f7')}</div>
-      <div class="gf-help-shortcut">${Translate('help_shortcut_f8')}</div>
-      <div class="gf-help-shortcut">${Translate('help_shortcut_esc')}</div>
-      <div class="gf-help-shortcut">${Translate('help_shortcut_p')}</div>
-      <div class="gf-help-shortcut">${Translate('help_shortcut_r')}</div>
+      <div class="gf-help-keys">
+        ${GF_HELP_KEYS.map(([action, key]) => `<div class="gf-help-key-row">
+          <button class="gf-help-key${_gfRecordingKey === action ? ' is-recording' : ''}${GfKeys.isDefault(action) ? '' : ' is-custom'}" data-help-key="${action}">${_gfRecordingKey === action ? Translate('help_key_press') : Esc(GfKeys.label(action))}</button>
+          <span>${Translate(key)}</span>
+        </div>`).join('')}
+        <div class="gf-help-key-row"><span class="gf-help-key is-fixed">Esc</span><span>${Translate('help_action_close')}</span></div>
+      </div>
+      <div class="gf-help-key-foot"><span>${Translate('help_key_hint')}</span><button class="gf-help-key-reset" id="gf-help-key-reset">${Translate('help_key_reset')}</button></div>
     </div>
     <div class="gf-help-section">
       <div class="gf-help-links">
@@ -1356,8 +1486,50 @@ function RenderHelp() {
           ${Translate('help_cws_review')}
         </a>
       </div>
-    </div>`;
+    </div>
+    <a class="gf-help-discord" href="${GF_DISCORD_URL}" target="_blank" rel="noopener noreferrer">
+      ${GF_DISCORD_SVG}
+      <span><b>${Translate('help_discord')}</b><small>${Translate('help_discord_desc')}</small></span>
+    </a>`;
+  BindHelpKeys(body);
 }
+
+function BindHelpKeys(body) {
+  body.querySelectorAll('[data-help-key]').forEach(btn => btn.addEventListener('click', () => {
+    _gfRecordingKey = _gfRecordingKey === btn.dataset.helpKey ? null : btn.dataset.helpKey;
+    RenderHelp();
+  }));
+  body.querySelector('#gf-help-key-reset')?.addEventListener('click', () => {
+    _gfRecordingKey = null;
+    GfKeys.reset();
+    ShowToast(Translate('help_key_reset_done'), '', 'ok');
+    setTimeout(RenderHelp, 30);
+  });
+}
+
+window.addEventListener('keydown', e => {
+  if (!_gfRecordingKey) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const action = _gfRecordingKey;
+  if (e.key === 'Escape') { _gfRecordingKey = null; RenderHelp(); return; }
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    _gfRecordingKey = null;
+    GfKeys.reset(action);
+    setTimeout(RenderHelp, 30);
+    return;
+  }
+  const binding = GfKeys.fromEvent(e);
+  if (!binding) return;
+  const clash = GfKeys.conflict(action, binding);
+  if (clash) {
+    ShowToast(Translate('help_key_conflict'), Translate(GF_HELP_KEYS.find(([a]) => a === clash)?.[1] || ''), 'warn');
+    return;
+  }
+  _gfRecordingKey = null;
+  GfKeys.set(action, binding);
+  setTimeout(RenderHelp, 30);
+}, true);
 
 let _langSaveTimer = null;
 
@@ -1371,16 +1543,17 @@ function RenderSettings() {
   const decAuto   = !S.decimalSep || S.decimalSep === 'auto';
 
   body.innerHTML = `
-    <!-- Theme -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('theme')}</div>
-      <div class="gf-sett-toggle-row">
-        <button class="gf-sett-opt${S.theme === 'dark'  ? ' active' : ''}" data-sett-action="theme" data-sett-val="dark">${Translate('dark')}</button>
-        <button class="gf-sett-opt${S.theme === 'light' ? ' active' : ''}" data-sett-action="theme" data-sett-val="light">${Translate('light')}</button>
+      ${_gfParentThemeSource === 'smpp' ? `<div class="gf-mode-desc" style="margin-bottom:6px;color:var(--yellow);">${Translate('theme_smpp_active')}</div>` : ''}
+      <div class="gf-sett-toggle-row" style="grid-template-columns:repeat(3,1fr);">
+        <button class="gf-sett-opt${S.theme === 'light' ? ' active' : ''}" data-sett-action="theme" data-sett-val="light">${Translate('theme_smartschool')}</button>
+        <button class="gf-sett-opt${S.theme === 'dark' ? ' active' : ''}" data-sett-action="theme" data-sett-val="dark">${Translate('theme_classic_dark')}</button>
+        <button class="gf-sett-opt${S.theme === 'custom' ? ' active' : ''}" data-sett-action="theme" data-sett-val="custom">${Translate('theme_custom')}</button>
       </div>
+      ${S.theme === 'custom' ? BuildThemeEditor() : `<div class="gf-mode-desc" style="margin-top:6px;">${Translate('theme_custom_hint')}</div>`}
     </div>
 
-    <!-- Language -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('language')}</div>
       <select class="gf-sett-select" id="gf-sett-lang-select">
@@ -1391,7 +1564,6 @@ function RenderSettings() {
       ${S.lang === 'custom' ? BuildCustomLangEditor() : ''}
     </div>
 
-    <!-- Homepage summary -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('home_summary_setting')}</div>
       <div class="gf-sett-toggle-row">
@@ -1401,7 +1573,6 @@ function RenderSettings() {
       <div class="gf-mode-desc" style="margin-top:6px;">${Translate('home_summary_desc')}</div>
     </div>
 
-    <!-- Decimal separator -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('decimal_sep')}</div>
       <div class="gf-sett-toggle-row" style="grid-template-columns:1fr 1fr 1fr;">
@@ -1411,7 +1582,6 @@ function RenderSettings() {
       </div>
     </div>
 
-    <!-- Grade decimal places -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('grade_dec')}</div>
       <div class="gf-sett-toggle-row" style="grid-template-columns:repeat(4,1fr);">
@@ -1423,7 +1593,16 @@ function RenderSettings() {
       <div class="gf-mode-desc" style="margin-top:6px;">${Translate('grade_dec_desc')}</div>
     </div>
 
-    <!-- Base weighting method -->
+    <div class="gf-sett-section">
+      <div class="gf-sett-label">${Translate('extra_setting')}</div>
+      <div class="gf-sett-toggle-row">
+        <button class="gf-sett-opt${!S.extraSettings.count ? ' active' : ''}" data-sett-action="extraCount" data-sett-val="0">${Translate('extra_count_off')}</button>
+        <button class="gf-sett-opt${S.extraSettings.count ? ' active' : ''}" data-sett-action="extraCount" data-sett-val="1">${Translate('extra_count_on')}</button>
+      </div>
+      <div class="gf-mode-desc" style="margin-top:6px;">${Translate('extra_setting_desc')}</div>
+      ${BuildExtraEditor()}
+    </div>
+
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('base_method')}</div>
       <div class="gf-sett-toggle-row">
@@ -1435,7 +1614,6 @@ function RenderSettings() {
         : ''}
     </div>
 
-    <!-- Formula overlay -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('formula_overlay')}</div>
       <div class="gf-sett-toggle-row">
@@ -1445,14 +1623,12 @@ function RenderSettings() {
       <div class="gf-mode-desc" style="margin-top:6px;">${GetModeLabel()}</div>
     </div>
 
-    <!-- Subject icons -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('subject_icons')}</div>
       <div class="gf-mode-desc" style="margin-bottom:6px;">${Translate('icon_desc')}</div>
       ${BuildIconRulesEditor()}
     </div>
 
-    <!-- Best subject mode -->
     <div class="gf-sett-section">
       <div class="gf-sett-label">${Translate('best_subject_mode')}</div>
       <div class="gf-sett-toggle-row">
@@ -1473,7 +1649,7 @@ function RenderSettings() {
     btn.addEventListener('click', () => {
       const action = btn.dataset.settAction, val = btn.dataset.settVal;
       if (action === 'theme') {
-        chrome.storage.local.set({ 'gradeflow-theme': val });
+        chrome.storage.local.set(val === 'custom' ? { 'gradeflow-theme': val, [GF_THEME_PALETTE_KEY]: S.palette } : { 'gradeflow-theme': val });
         S.theme = val; RenderSettings();
       } else if (action === 'weightMode') {
         SaveWeightMode(val);
@@ -1493,6 +1669,8 @@ function RenderSettings() {
         SaveDecimalSep(val); RenderSettings(); Render();
       } else if (action === 'gradeDecimals') {
         SaveGradeDecimals(val); RenderSettings(); Render();
+      } else if (action === 'extraCount') {
+        SaveExtraSettings({ count: val === '1' }); RenderSettings(); Render();
       }
     });
   });
@@ -1503,6 +1681,175 @@ function RenderSettings() {
 
   BindCustomLangEditor(body);
   BindIconRulesEditor(body);
+  BindThemeEditor(body);
+  body.querySelector('#gf-extra-weight')?.addEventListener('change', e => { SaveExtraSettings({ weight: Math.max(0.1, parseFloat(e.target.value) || 10) }); Render(); });
+  body.querySelectorAll('[data-extra-label]').forEach(input => input.addEventListener('change', () => {
+    const map = { ...S.extraSettings.map };
+    const v = parseFloat(input.value);
+    if (Number.isFinite(v)) map[input.dataset.extraLabel] = Math.max(0, Math.min(100, v)); else delete map[input.dataset.extraLabel];
+    SaveExtraSettings({ map });
+    Render();
+  }));
+}
+
+function ThemePreviewHtml(p) {
+  return `<div class="gf-theme-preview" style="--p-bg:${p.bg};--p-surface:${p.surface};--p-surface2:${p.surface2};--p-surface3:${p.surface3};--p-border:${p.border};--p-text:${p.text};--p-muted:${p.muted};--p-accent:${p.accent};--p-good:${p.good};--p-mid:${p.mid};--p-bad:${p.bad};">
+    <div class="gf-tp-nav"><b>smartschool</b><span>${Translate('theme_preview_nav')}</span></div>
+    <div class="gf-tp-body">
+      <div class="gf-tp-card">
+        <div class="gf-tp-title">${Translate('theme_preview_title')}</div>
+        <div class="gf-tp-text">${Translate('theme_preview_text')}</div>
+        <div class="gf-tp-muted">${Translate('theme_preview_muted')}</div>
+        <div class="gf-tp-row"><span class="gf-tp-btn">${Translate('theme_preview_button')}</span><span class="gf-tp-input">${Translate('theme_preview_input')}</span></div>
+      </div>
+      <div class="gf-tp-grades"><span style="--g:var(--p-good)">16/20</span><span style="--g:var(--p-mid)">11/20</span><span style="--g:var(--p-bad)">6/20</span></div>
+    </div>
+  </div>`;
+}
+
+function BuildThemeEditor() {
+  const p = S.palette;
+  const all = [...GF_THEME_PRESETS.map(t => ({ ...t, user: false })), ...S.themeLibrary.map(t => ({ ...t, user: true }))];
+  const presets = all.map(t => {
+    const active = GF_THEME_TOKENS.every(k => t[k] === p[k]);
+    return `<button class="gf-theme-preset${active ? ' active' : ''}" data-theme-preset="${Esc(t.id)}" data-theme-user="${t.user ? 1 : 0}" title="${Esc(t.name)}">
+      <span class="gf-theme-swatch" style="background:${t.bg}"><i style="background:${t.surface2}"></i><i style="background:${t.accent}"></i><i style="background:${t.text}"></i></span>
+      <span class="gf-theme-preset-name">${Esc(t.name)}</span>${t.user ? `<b class="gf-theme-del" data-theme-del="${Esc(t.id)}" title="${Translate('theme_delete')}">×</b>` : ''}
+    </button>`;
+  }).join('');
+  const tokens = GF_THEME_TOKENS.map(k => `<label class="gf-theme-token">
+      <input type="color" data-theme-token="${k}" value="${p[k]}">
+      <span class="gf-theme-token-name">${Translate('theme_tok_' + k)}</span>
+      <input type="text" class="gf-theme-hex" data-theme-hex="${k}" value="${p[k]}" maxlength="7" spellcheck="false">
+    </label>`).join('');
+  return `<div class="gf-theme-editor" id="gf-theme-editor">
+    <div class="gf-theme-presets">${presets}</div>
+    ${ThemePreviewHtml(p)}
+    <div class="gf-theme-grid">${tokens}</div>
+    <label class="gf-theme-check"><input type="checkbox" data-theme-flag="site"${p.site ? ' checked' : ''}><span>${Translate('theme_apply_site')}</span></label>
+    <label class="gf-theme-check"><input type="checkbox" data-theme-flag="recolor"${p.recolor ? ' checked' : ''}><span>${Translate('theme_recolor')}</span></label>
+    <div class="gf-theme-actions">
+      <input id="gf-theme-name" type="text" maxlength="40" value="${Esc(p.name)}" placeholder="${Translate('theme_name')}">
+      <button class="gf-action-btn" id="gf-theme-save">${Translate('theme_save')}</button>
+      <button class="gf-action-btn" id="gf-theme-copy">${Translate('theme_copy_code')}</button>
+      <button class="gf-action-btn" id="gf-theme-import">${Translate('theme_import_code')}</button>
+    </div>
+    <div id="gf-theme-blocked" class="gf-theme-blocked"${S.themeBlocked ? '' : ' hidden'}><span>${Translate('theme_blocked')}</span><button class="gf-action-btn" id="gf-theme-grant">${Translate('theme_grant')}</button></div>
+  </div>`;
+}
+
+let _gfThemeSaveTimer = 0;
+let _gfThemeEditTimer = 0;
+function SaveThemePalette(next, immediate = false) {
+  S.palette = GfCleanPalette(next);
+  _gfThemeEditing = true;
+  clearTimeout(_gfThemeEditTimer);
+  _gfThemeEditTimer = setTimeout(() => { _gfThemeEditing = false; }, 600);
+  clearTimeout(_gfThemeSaveTimer);
+  const save = () => chrome.storage.local.set({ [GF_THEME_PALETTE_KEY]: S.palette, 'gradeflow-theme': 'custom' });
+  if (immediate) save(); else _gfThemeSaveTimer = setTimeout(save, 90);
+}
+
+function SaveThemeLibrary(list) {
+  S.themeLibrary = list.map(GfCleanPalette).slice(0, 30);
+  chrome.storage.local.set({ [GF_THEME_LIBRARY_KEY]: S.themeLibrary });
+}
+
+function RefreshThemePreview(root) {
+  const old = root.querySelector('.gf-theme-preview');
+  if (old) old.outerHTML = ThemePreviewHtml(S.palette);
+  root.querySelectorAll('.gf-theme-preset').forEach(btn => btn.classList.remove('active'));
+}
+
+function BindThemeEditor(body) {
+  const root = body.querySelector('#gf-theme-editor');
+  if (!root) return;
+  const setToken = (k, v) => {
+    if (!GfHexOk(v)) return;
+    SaveThemePalette({ ...S.palette, [k]: v.toLowerCase(), id: 'custom' });
+    const color = root.querySelector(`[data-theme-token="${k}"]`);
+    const hex = root.querySelector(`[data-theme-hex="${k}"]`);
+    if (color && color.value !== v) color.value = v;
+    if (hex && hex !== document.activeElement) hex.value = v;
+    RefreshThemePreview(root);
+  };
+  root.querySelectorAll('[data-theme-token]').forEach(input => input.addEventListener('input', () => setToken(input.dataset.themeToken, input.value)));
+  root.querySelectorAll('[data-theme-hex]').forEach(input => input.addEventListener('input', () => {
+    const v = input.value.trim().startsWith('#') ? input.value.trim() : '#' + input.value.trim();
+    input.classList.toggle('is-bad', !GfHexOk(v));
+    setToken(input.dataset.themeHex, v);
+  }));
+  root.querySelectorAll('[data-theme-flag]').forEach(input => input.addEventListener('change', () => SaveThemePalette({ ...S.palette, [input.dataset.themeFlag]: input.checked }, true)));
+  root.querySelectorAll('[data-theme-preset]').forEach(btn => btn.addEventListener('click', e => {
+    if (e.target.closest('[data-theme-del]')) return;
+    const list = btn.dataset.themeUser === '1' ? S.themeLibrary : GF_THEME_PRESETS;
+    const t = list.find(x => x.id === btn.dataset.themePreset);
+    if (!t) return;
+    SaveThemePalette({ ...t, site: S.palette.site, recolor: S.palette.recolor }, true);
+    _gfThemeEditing = false;
+    RenderSettings();
+  }));
+  root.querySelectorAll('[data-theme-del]').forEach(el => el.addEventListener('click', () => {
+    SaveThemeLibrary(S.themeLibrary.filter(t => t.id !== el.dataset.themeDel));
+    RenderSettings();
+  }));
+  root.querySelector('#gf-theme-save')?.addEventListener('click', () => {
+    const name = (root.querySelector('#gf-theme-name')?.value || '').trim() || Translate('theme_custom');
+    const entry = GfCleanPalette({ ...S.palette, name, id: 'u' + Date.now().toString(36) });
+    SaveThemeLibrary([...S.themeLibrary.filter(t => t.name.toLowerCase() !== name.toLowerCase()), entry]);
+    SaveThemePalette(entry, true);
+    ShowToast(Translate('theme_saved'), name, 'ok');
+    RenderSettings();
+  });
+  root.querySelector('#gf-theme-copy')?.addEventListener('click', async () => {
+    const ok = await CopyText(GfEncodePalette({ ...S.palette, name: (root.querySelector('#gf-theme-name')?.value || S.palette.name).trim() }));
+    ShowToast(ok ? Translate('theme_code_copied') : Translate('comparison_copy_failed'), '', ok ? 'ok' : 'warn');
+  });
+  root.querySelector('#gf-theme-import')?.addEventListener('click', () => {
+    const code = prompt(Translate('theme_import_prompt'));
+    if (code == null) return;
+    const p = GfDecodePalette(code);
+    if (!p) { ShowToast(Translate('theme_import_bad'), '', 'warn'); return; }
+    SaveThemePalette({ ...p, site: S.palette.site }, true);
+    RenderSettings();
+  });
+  root.querySelector('#gf-theme-grant')?.addEventListener('click', () => {
+    chrome.permissions.request({ origins: ['https://*.smart-school.net/*'] }, granted => {
+      ShowToast(granted ? Translate('theme_granted') : Translate('theme_not_granted'), '', granted ? 'ok' : 'warn');
+    });
+  });
+}
+
+function CollectExtraLabels() {
+  const found = new Map();
+  for (const [period, subjects] of Object.entries(S.rawStore || {})) {
+    if (period.startsWith('_')) continue;
+    for (const payload of Object.values(subjects || {})) for (const x of payload?.extra || []) {
+      const key = ExtraLabelKey(x);
+      const row = found.get(key) || { key, x, count: 0 };
+      row.count++;
+      found.set(key, row);
+    }
+  }
+  return [...found.values()].sort((a, b) => (DefaultExtraPct(b.x) ?? -1) - (DefaultExtraPct(a.x) ?? -1));
+}
+
+function BuildExtraEditor() {
+  const labels = CollectExtraLabels();
+  if (!labels.length) return `<div class="gf-mode-desc" style="margin-top:6px;color:var(--text-3);">${Translate('extra_none_found')}</div>`;
+  const rows = labels.map(({ key, x, count }) => {
+    const def = DefaultExtraPct(x);
+    const custom = S.extraSettings.map[key];
+    return `<div class="gf-extra-row">
+      <span class="gf-extra-chip" style="--gf-extra:${ExtraColor(x)};">${ExtraIconHtml(x.icon, 14)}${Esc(ExtraLabel(x) || x.icon || '?')}</span>
+      <span class="gf-extra-count">${count}×</span>
+      <input type="number" min="0" max="100" step="1" data-extra-label="${Esc(key)}" value="${custom ?? ''}" placeholder="${def == null ? '?' : FormatNumber(def)}"><span>%</span>
+    </div>`;
+  }).join('');
+  return `<div class="gf-extra-editor">
+    <label class="gf-extra-weight">${Translate('extra_weight')} <input id="gf-extra-weight" type="number" min="0.1" step="0.5" value="${S.extraSettings.weight}"> ${Translate('extra_points')}</label>
+    ${rows}
+  </div>`;
 }
 
 function BuildCustomLangEditor() {
@@ -1551,7 +1898,6 @@ function BindCustomLangEditor(body) {
   });
 }
 
-// Main views
 const GF_VIEW_DEFS = [
   { id: 'overview', icon: '▦', labelKey: 'view_overview' },
   { id: 'trends', icon: '↗', labelKey: 'view_trends' },
@@ -1583,11 +1929,11 @@ function RenderTabs() {
 }
 
 let _gfAttendanceRequestAt = 0;
-function RequestAttendanceRefresh() {
+function RequestAttendanceRefresh(force = false) {
   const now = Date.now();
-  if (now - _gfAttendanceRequestAt < 2500) return;
+  if (!force && now - _gfAttendanceRequestAt < 2500) return;
   _gfAttendanceRequestAt = now;
-  try { window.parent.postMessage({ type: 'gf-refresh-attendance' }, '*'); } catch (_) {}
+  window.parent.postMessage({ type: 'gf-refresh-attendance', force }, '*');
 }
 
 function RenderMainContent(animated = true) {
@@ -1707,7 +2053,7 @@ function RenderPlannerView() {
   const now = Date.now();
   const items = [...(S.plannerItems || [])].sort((a, b) => PlannerItemTime(a) - PlannerItemTime(b));
   const upcoming = items.filter(item => PlannerItemTime(item) >= now || !item.dueDate).slice(0, 40);
-  const overdue = items.filter(item => PlannerItemTime(item) < now).slice(0, 12);
+  const overdue = items.filter(item => !item.resolved && PlannerItemTime(item) < now).slice(-12);
   const subjects = Object.keys(data).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
   const selectedMonth = S.studyMonth || CurrentMonthValue();
   const defaultStart = new Date(Date.now() + 60 * 60 * 1000);
@@ -1728,9 +2074,9 @@ function RenderPlannerView() {
     const risk = MatchPlannerRisk(item, riskRows);
     const riskClass = risk?.status || 'flat';
     const subject = item.subject || risk?.subject || Translate('planner_unknown_subject');
-    return `<div class="gf-planner-row is-${riskClass}">
+    return `<div class="gf-planner-row is-${riskClass}${item.resolved ? ' is-done' : ''}">
       <div class="gf-planner-date">${Esc(item.dueDate || Translate('planner_no_date'))}</div>
-      <div class="gf-planner-main"><div class="gf-planner-title">${Esc(item.title || Translate('planner_untitled'))}</div><div class="gf-planner-meta">${Esc(subject)}${item.type ? ` · ${Esc(item.type)}` : ''}${risk ? ` · ${Translate(`risk_${risk.status === 'watch' ? 'watchlist' : risk.status}`)}` : ''}</div></div>
+      <div class="gf-planner-main"><div class="gf-planner-title">${Esc(item.title || Translate('planner_untitled'))}</div><div class="gf-planner-meta">${Esc(subject)}${item.type ? ` · ${Esc(item.type)}` : ''}${item.resolved ? ` · ${Translate('planner_done')}` : ''}${risk ? ` · ${Translate(`risk_${risk.status === 'watch' ? 'watchlist' : risk.status}`)}` : ''}</div></div>
       ${item.url ? `<a class="gf-tool-btn" href="${Esc(item.url)}" target="_blank" rel="noopener">${Translate('planner_open')}</a>` : ''}
     </div>`;
   }).join('') : `<div id="gf-state"><span>${Translate('planner_empty')}</span></div>`;
@@ -1909,9 +2255,10 @@ function BindComparisonEvents(root) {
 }
 
 function AttendanceType(item) {
-  const hay = `${item.code || ''} ${item.title || ''} ${item.type || ''}`.toLowerCase();
-  if (/te laat|late|retard|\bl\b/.test(hay)) return 'late';
-  if (/dokter|afwezig|absent|absence|attest|overmacht|ziek|\bd\b|\br\b|\bz\b/.test(hay)) return 'absent';
+  if (item.type) return item.type;
+  const hay = String(item.title || '').toLowerCase();
+  if (item.code === 'L' || /\bte\s*laat\b|\bretard|\blate\b/.test(hay)) return 'late';
+  if ('ZDBRQPMYUTJA'.includes(item.code || '-') || /afwezig|ziek|attest|dokter|overmacht|absen/.test(hay)) return 'absent';
   return 'other';
 }
 
@@ -1946,7 +2293,7 @@ function RenderAttendanceView() {
     <section class="gf-tool-panel"><div class="gf-tool-panel-head"><div><div class="gf-tool-panel-title">${Translate('attendance_recent')}</div><div class="gf-tool-panel-sub">${Translate('attendance_hint')}</div></div><span class="gf-planner-count">${items.length}</span></div><div class="gf-att-list">${rows}</div></section>
   </div>`;
   wrap.querySelector('#gf-attendance-refresh')?.addEventListener('click', () => {
-    RequestAttendanceRefresh();
+    RequestAttendanceRefresh(true);
     ShowToast(Translate('attendance_refreshing'), '', 'info');
   });
 }
@@ -2015,15 +2362,15 @@ function RenderDecisionView() {
     for (const score of SortScoresChronologically(payload?.scores || [])) {
       const period = GetScorePeriod(score, S.activePeriod);
       const key = GradeKey(period, subject, score);
-      const excluded = !!S.excludedGrades?.[key];
+      const excluded = IsGradeExcluded(period, subject, score);
       const weight = GetGradeWeight(period, subject, score);
       gradeRows.push(`<tr>
         <td>${Esc(period)}</td>
         <td>${Esc(subject)}</td>
         <td>${Esc(score.title || '')}</td>
-        <td>${FormatNumber(score.scored)} / ${FormatNumber(score.max)}</td>
+        <td>${score._extra ? Esc(ExtraLabel(score._extra)) : `${FormatNumber(score.scored)} / ${FormatNumber(score.max)}`}</td>
         <td><input type="number" min="0.1" step="0.1" data-grade-weight="${encodeURIComponent(key)}" value="${weight === 1 ? '' : String(weight)}" placeholder="1"></td>
-        <td><button class="gf-tool-btn${excluded ? ' active' : ''}" data-grade-toggle="${encodeURIComponent(key)}">${excluded ? Translate('excluded') : Translate('included')}</button></td>
+        <td><button class="gf-tool-btn${excluded ? ' active' : ''}" data-grade-toggle="${encodeURIComponent(key)}"${score.nc ? ' data-gf-nc="1"' : ''}>${excluded ? Translate('excluded') : Translate('included')}</button></td>
       </tr>`);
     }
   }
@@ -2096,7 +2443,7 @@ function BindDecisionEvents(root) {
       UpdateBottomBar();
     });
   });
-  root.querySelectorAll('[data-grade-toggle]').forEach(btn => btn.addEventListener('click', () => ToggleGradeExcluded(decodeURIComponent(btn.dataset.gradeToggle || ''))));
+  root.querySelectorAll('[data-grade-toggle]').forEach(btn => btn.addEventListener('click', () => ToggleGradeExcluded(decodeURIComponent(btn.dataset.gradeToggle || ''), btn.dataset.gfNc === '1')));
   root.querySelectorAll('[data-grade-weight]').forEach(input => input.addEventListener('change', () => SetGradeWeight(decodeURIComponent(input.dataset.gradeWeight || ''), input.value)));
 }
 
@@ -2109,9 +2456,9 @@ function BuildExportRows() {
         const key = GradeKey(period, subject, score);
         rows.push({
           period, subject, title: score.title || '', date: score.date || '',
-          scored: score.scored, max: score.max,
+          scored: score.scored, max: score.max, label: score._extra ? ExtraLabel(score._extra) : '',
           percent: score.max > 0 ? score.scored / score.max * 100 : 0,
-          excluded: !!S.excludedGrades?.[key], weight: GetGradeWeight(period, subject, score),
+          excluded: IsGradeExcluded(period, subject, score), weight: GetGradeWeight(period, subject, score),
         });
       }
     }
@@ -2128,7 +2475,7 @@ function GroupExportRowsByPeriod(rows) {
 }
 
 function ExportTableRows(rows) {
-  return rows.map(row => `<tr class="${row.excluded ? 'is-excluded' : ''}"><td>${Esc(row.period)}</td><td>${Esc(row.subject)}</td><td>${Esc(row.title)}</td><td>${Esc(row.date)}</td><td>${FormatNumber(row.scored)} / ${FormatNumber(row.max)}</td><td>${FormatPercent(row.percent)}%</td><td>${row.excluded ? Translate('excluded') : Translate('included')}</td><td>${FormatNumber(row.weight)}</td></tr>`).join('');
+  return rows.map(row => `<tr class="${row.excluded ? 'is-excluded' : ''}"><td>${Esc(row.period)}</td><td>${Esc(row.subject)}</td><td>${Esc(row.title)}</td><td>${Esc(row.date)}</td><td>${row.label ? Esc(row.label) : `${FormatNumber(row.scored)} / ${FormatNumber(row.max)}`}</td><td>${FormatPercent(row.percent)}%</td><td>${row.excluded ? Translate('excluded') : Translate('included')}</td><td>${FormatNumber(row.weight)}</td></tr>`).join('');
 }
 
 function CsvCell(value) {
@@ -2143,8 +2490,8 @@ function DownloadBlob(filename, blob) {
   URL.revokeObjectURL(url);
 }
 function ExportGradesCsv() {
-  const header = ['period', 'subject', 'title', 'date', 'scored', 'max', 'percent', 'excluded', 'weight'];
-  const rows = BuildExportRows().map(row => [row.period, row.subject, row.title, row.date, row.scored, row.max, FormatPercent(row.percent), row.excluded ? 'yes' : 'no', row.weight]);
+  const header = ['period', 'subject', 'title', 'date', 'scored', 'max', 'rating', 'percent', 'excluded', 'weight'];
+  const rows = BuildExportRows().map(row => [row.period, row.subject, row.title, row.date, row.label ? '' : row.scored, row.label ? '' : row.max, row.label, row.max > 0 ? FormatPercent(row.percent) : '', row.excluded ? 'yes' : 'no', row.weight]);
   const csv = [header, ...rows].map(row => row.map(CsvCell).join(';')).join('\n');
   DownloadBlob('gradeflow-export.csv', new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   ShowToast(Translate('export_done'), Translate('export_csv'), 'ok');
@@ -2157,7 +2504,7 @@ function ExportGradesPdf() {
   }).join('');
   const grouped = GroupExportRowsByPeriod(rows);
   const allRows = rows.slice().sort((a, b) => String(a.period).localeCompare(String(b.period), undefined, { sensitivity: 'base' }) || String(a.subject).localeCompare(String(b.subject), undefined, { sensitivity: 'base' }) || String(a.date).localeCompare(String(b.date), undefined, { sensitivity: 'base' }));
-  const periodPages = Object.entries(grouped).map(([period, periodRows]) => `<section class="page"><div class="page-kicker">GradeFlow</div><h2>${Esc(period)}</h2><table><thead><tr><th>${Translate('subjects')}</th><th>${Translate('results')}</th><th>Date</th><th>${Translate('score')}</th><th>%</th><th>${Translate('status')}</th><th>${Translate('coeff')}</th></tr></thead><tbody>${periodRows.map(row => `<tr class="${row.excluded ? 'is-excluded' : ''}"><td>${Esc(row.subject)}</td><td>${Esc(row.title)}</td><td>${Esc(row.date)}</td><td>${FormatNumber(row.scored)} / ${FormatNumber(row.max)}</td><td>${FormatPercent(row.percent)}%</td><td>${row.excluded ? Translate('excluded') : Translate('included')}</td><td>${FormatNumber(row.weight)}</td></tr>`).join('')}</tbody></table></section>`).join('');
+  const periodPages = Object.entries(grouped).map(([period, periodRows]) => `<section class="page"><div class="page-kicker">GradeFlow</div><h2>${Esc(period)}</h2><table><thead><tr><th>${Translate('subjects')}</th><th>${Translate('results')}</th><th>Date</th><th>${Translate('score')}</th><th>%</th><th>${Translate('status')}</th><th>${Translate('coeff')}</th></tr></thead><tbody>${periodRows.map(row => `<tr class="${row.excluded ? 'is-excluded' : ''}"><td>${Esc(row.subject)}</td><td>${Esc(row.title)}</td><td>${Esc(row.date)}</td><td>${row.label ? Esc(row.label) : `${FormatNumber(row.scored)} / ${FormatNumber(row.max)}`}</td><td>${FormatPercent(row.percent)}%</td><td>${row.excluded ? Translate('excluded') : Translate('included')}</td><td>${FormatNumber(row.weight)}</td></tr>`).join('')}</tbody></table></section>`).join('');
   const printWin = window.open('', '_blank', 'width=900,height=700');
   if (!printWin) { ShowToast(Translate('export_failed'), Translate('export_popup_blocked'), 'warn'); return; }
   printWin.document.write(`<!doctype html><html><head><title>GradeFlow export</title><style>
@@ -2181,7 +2528,6 @@ function RenderExportView() {
   wrap.querySelector('#gf-export-pdf')?.addEventListener('click', ExportGradesPdf);
 }
 
-// Sidebar
 function RenderSidebar() {
   const scroll = document.getElementById('gf-sidebar-scroll');
   if (!scroll) return;
@@ -2328,7 +2674,6 @@ function BindSidebarEvents() {
   BindDraggableFormulaGroups();
 }
 
-// Table
 function RenderTable(animated = true) {
   const wrap = document.getElementById('gf-table-wrap');
   if (!wrap) return;
@@ -2366,7 +2711,9 @@ function RenderTable(animated = true) {
     const rawSubjPct      = CalcPercent(effectiveScores);
     const formulaPctValue = useFormulaPct ? FormulaSubjectPct(subj, S.store) : null;
     const subjPct         = formulaPctValue ?? rawSubjPct;
-    const subjTotalMax    = effectiveScores.reduce((a, e) => a + e.max, 0);
+    const subjTotalMax    = PointsMax(effectiveScores);
+    const pctColor        = formulaPctValue == null && !subjTotalMax ? 'var(--text-3)' : ColorForPercent(subjPct);
+    const pctText         = formulaPctValue == null && !subjTotalMax ? '–' : `${FormatPercent(subjPct)}%`;
     const subjTotalScored = effectiveScores.reduce((a, e) => a + e.scored, 0);
     const activeHours     = GetHoursForSubject(subj);
 
@@ -2374,7 +2721,7 @@ function RenderTable(animated = true) {
       const ep         = e.max > 0 ? (e.scored / e.max) * 100 : 0;
       const period     = GetScorePeriod(e, S.activePeriod);
       const key        = GradeKey(period, subj, e);
-      const excluded   = !!S.excludedGrades?.[key];
+      const excluded   = IsGradeExcluded(period, subj, e);
       const weight     = GetGradeWeight(period, subj, e);
       const modeled    = ApplyScoreModel(subj, e, S.activePeriod);
       const contrib_pp = (!excluded && subjTotalMax > 0) ? (modeled.max / subjTotalMax) * 100 : 0;
@@ -2389,11 +2736,14 @@ function RenderTable(animated = true) {
         subj_pct: rawSubjPct.toFixed(1),
         formula_pct: formulaPctValue != null ? formulaPctValue.toFixed(1) : null,
         hours: activeHours || null, total_hours: totalWeightedHours || null,
-        weighted_contrib_pp: wpp, mode: tipMode,
+        weighted_contrib_pp: wpp, mode: tipMode, nc: !!e.nc, excluded,
+        extra: e._extra ? { label: ExtraLabel(e._extra), detail: e._extra.detail || '', goals: e._extra.goals || [], pct: ExtraPct(e._extra), kind: e._extra.kind } : null,
       }));
 
-      const cls = `gf-grade-cell${excluded ? ' gf-grade-excluded' : ''}${weight !== 1 ? ' gf-grade-weighted' : ''}`;
-      return `<td class="${cls}" data-gf-grade="${tip}" data-gf-grade-key="${encodeURIComponent(key)}" style="background:${BgForPercent(ep)};">${FormatNumber(e.scored)}/${FormatNumber(e.max)}</td>`;
+      const cls = `gf-grade-cell${excluded ? ' gf-grade-excluded' : ''}${weight !== 1 ? ' gf-grade-weighted' : ''}${e.nc ? ' gf-grade-nc' : ''}${e._extra ? ' gf-grade-extra' : ''}`;
+      const attrs = `class="${cls}" data-gf-grade="${tip}" data-gf-grade-key="${encodeURIComponent(key)}"${e.nc ? ' data-gf-nc="1"' : ''}`;
+      if (e._extra) return `<td ${attrs} style="--gf-extra:${ExtraColor(e._extra)};">${ExtraIconHtml(e._extra.icon)}<span>${Esc(ExtraLabel(e._extra))}</span></td>`;
+      return `<td ${attrs} style="background:${BgForPercent(ep)};">${FormatNumber(e.scored)}/${FormatNumber(e.max)}</td>`;
     });
     const planned = BuildWhatIfScore(subj);
     if (planned) {
@@ -2418,8 +2768,8 @@ function RenderTable(animated = true) {
     return `<tr ${rowStyle}>
       <td class="gf-subject-cell" data-gf-subj="${subj.replace(/"/g, '&quot;')}">${SubjectIconHtml(subj)}${subj}${hoursBadge}</td>
       ${filledHtml}${emptyCells}
-      <td class="gf-pct-cell" data-gf-pct-tip="1" style="color:${ColorForPercent(subjPct)};">
-        <span class="gf-pct-badge" style="--pct-color:${ColorForPercent(subjPct)};">${FormatPercent(subjPct)}%</span>${formulaTag}
+      <td class="gf-pct-cell" data-gf-pct-tip="1" style="color:${pctColor};">
+        <span class="gf-pct-badge" style="--pct-color:${pctColor};">${pctText}</span>${formulaTag}
       </td>
     </tr>`;
   }).join('');
@@ -2461,7 +2811,6 @@ function RenderTable(animated = true) {
   }));
 }
 
-// Topbar
 function UpdateTopbar() {
   const data = S.store ? GetPeriodData(S.store, S.activePeriod) : {};
   const n    = Object.values(data).reduce((a, { scores }) => a + scores.length, 0);
@@ -2481,7 +2830,6 @@ function UpdateTopbar() {
   }
 }
 
-// Scroll button
 function UpdateScrollButton() {
   const wrap = document.getElementById('gf-table-wrap');
   const btn  = document.getElementById('gf-scroll-recent-btn');
@@ -2520,13 +2868,13 @@ document.addEventListener('click', e => {
   if (overlay?.classList.contains('is-open') && e.target === overlay) CloseSettings();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { CloseSettings(); CloseHelp(); }
-  if (e.key === 'F6') { e.preventDefault(); window.parent.postMessage({ type: 'gf-open-gradeflow' }, '*'); }
-  if (e.key === 'F8') { e.preventDefault(); window.parent.postMessage({ type: 'gf-f8' }, '*'); }
-  if (e.key === 'F7') { e.preventDefault(); window.parent.postMessage({ type: 'gf-chat-f7' }, '*'); }
+  if (e.key === 'Escape' && !_gfRecordingKey) { CloseSettings(); CloseHelp(); }
+  if (_gfRecordingKey) return;
+  if (GfKeys.match(e, 'panel')) { e.preventDefault(); window.parent.postMessage({ type: 'gf-open-gradeflow' }, '*'); }
+  if (GfKeys.match(e, 'arcade')) { e.preventDefault(); window.parent.postMessage({ type: 'gf-f8' }, '*'); }
+  if (GfKeys.match(e, 'chat')) { e.preventDefault(); window.parent.postMessage({ type: 'gf-chat-f7' }, '*'); }
 });
 
-// Tooltip
 function PositionTooltip(tt, cx, cy) {
   const tw = tt.offsetWidth || 280, th = tt.offsetHeight || 140;
   let x = cx + 14, y = cy + 14;
@@ -2537,7 +2885,7 @@ function PositionTooltip(tt, cx, cy) {
 
 function BuildTooltipHTML(d) {
   const pctNum   = parseFloat(d.CalcPercent);
-  const pctColor = pctNum >= 70 ? '#4ade80' : pctNum >= 50 ? '#fbbf24' : '#f87171';
+  const pctColor = ColorForPercent(pctNum);
   const divider  = `<div style="grid-column:1/-1;border-top:1px solid var(--border-hi);margin:4px 0 2px;"></div>`;
 
   let extra = '';
@@ -2556,8 +2904,22 @@ function BuildTooltipHTML(d) {
       <span>${ApplyDecimalSep(d.subj_pct)}%</span>`;
   }
 
-  const titleRow = d.title ? `<div style="font-weight:600;font-size:12px;margin-bottom:2px;color:var(--text-0);">${d.title}</div>` : '';
-  const dateRow  = d.date  ? `<div style="color:var(--text-3);font-size:10px;margin-bottom:8px;">${d.date}</div>` : '';
+  const titleRow = d.title ? `<div style="font-weight:600;font-size:12px;margin-bottom:2px;color:var(--text-0);">${Esc(d.title)}</div>` : '';
+  const dateRow  = d.date  ? `<div style="color:var(--text-3);font-size:10px;margin-bottom:8px;">${Esc(d.date)}</div>` : '';
+  const ncRow = d.nc ? `<div class="gf-tip-note">${Translate(d.excluded ? 'extra_not_counted' : 'extra_counted_manual')}</div>` : '';
+  if (d.extra) {
+    const goals = d.extra.goals.length ? `${divider}<span style="color:var(--text-3);">${Translate('extra_goals')}</span><span>${d.extra.goals.map(g => `${g.count}× ${Esc(g.label || g.icon)}`).join('<br>')}</span>` : '';
+    const counted = d.extra.pct == null ? Translate('extra_no_value') : `${FormatPercent(d.extra.pct)}%`;
+    return `${titleRow}${dateRow}
+    <div style="display:grid;grid-template-columns:auto auto;gap:2px 14px;">
+      <span style="color:var(--text-3);">${Translate('extra_rating')}</span>
+      <span style="font-weight:700;">${Esc(d.extra.label || '?')}</span>
+      ${d.extra.detail ? `<span style="color:var(--text-3);">${Translate('extra_detail')}</span><span>${Esc(d.extra.detail)}</span>` : ''}
+      <span style="color:var(--text-3);">${Translate('extra_value')}</span>
+      <span>${counted}</span>
+      ${goals}
+    </div>${ncRow}`;
+  }
   return `${titleRow}${dateRow}
     <div style="display:grid;grid-template-columns:auto auto;gap:2px 14px;">
       <span style="color:var(--text-3);">${Translate('score')}</span>
@@ -2565,7 +2927,7 @@ function BuildTooltipHTML(d) {
       <span style="color:var(--text-3);">${Translate('contribution')}</span>
       <span>${FormatNumber(d.scored)}/${FormatNumber(d.subj_max)} (${ApplyDecimalSep(d.contrib_pp)}%)</span>
       ${extra}
-    </div>`;
+    </div>${ncRow}`;
 }
 
 function BindTableListeners() {
@@ -2598,7 +2960,7 @@ function BindTableListeners() {
   wrap.addEventListener('click', e => {
     const gradeCell = e.target.closest('[data-gf-grade-key]');
     if (gradeCell) {
-      ToggleGradeExcluded(decodeURIComponent(gradeCell.dataset.gfGradeKey || ''));
+      ToggleGradeExcluded(decodeURIComponent(gradeCell.dataset.gfGradeKey || ''), gradeCell.dataset.gfNc === '1');
       return;
     }
 
@@ -2680,11 +3042,8 @@ function _GfApplyPressToAll(root) {
 function InitInteractAnimations() {
   if (typeof interact === 'undefined') return;
 
-  // Initial pass over what exists now
   _GfApplyPressToAll();
 
-  // Lazy: hook each element only on first user interaction. No DOM scanning,
-  // no MutationObserver.
   function lazyAttach(e) {
     const t = e.target.closest && e.target.closest(_GF_PRESS_SEL);
     if (t && !t._gfPress) _GfApplyPressTo(t);
@@ -2692,7 +3051,6 @@ function InitInteractAnimations() {
   document.addEventListener('pointerdown', lazyAttach, { capture: true, passive: true });
 }
 
-// Master Render
 function Render(animated = true) {
   RenderTabs();
   RenderSidebar();
@@ -2708,7 +3066,6 @@ function Render(animated = true) {
   }));
 }
 
-// Refresh
 function BindRefreshButton() {
   document.getElementById('gf-refresh-btn')?.addEventListener('click', () => {
     const label = document.getElementById('gf-refresh-label');
@@ -2725,7 +3082,6 @@ function BindRefreshButton() {
   });
 }
 
-// Init
 window.addEventListener('DOMContentLoaded', () => {
   BindRefreshButton();
   InitCollapseBtn();
@@ -2765,12 +3121,12 @@ window.addEventListener('DOMContentLoaded', () => {
     window.parent.postMessage({ type: 'gf-close' }, '*'));
 
   try {
-    chrome.storage.local.get(['gradeflow-grades', 'gradeflow-planner-items', 'gradeflow-study-sessions', 'gradeflow-attendance-items', 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
+    chrome.storage.local.get(['gradeflow-grades', GF_PLANNER_KEY, 'gradeflow-study-sessions', GF_ATTENDANCE_KEY, 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
       S.profilePicture = result?.['gf-profile-picture'] || S.profilePicture || '';
       S.detectedProfilePicture = result?.['gf-detected-profile-picture'] || S.detectedProfilePicture || '';
-      S.plannerItems = NormalizePlannerItems(result?.['gradeflow-planner-items']);
+      S.plannerItems = NormalizePlannerItems(result?.[GF_PLANNER_KEY]);
       S.studySessions = NormalizeStudySessions(result?.['gradeflow-study-sessions']);
-      S.attendanceItems = NormalizeAttendanceItems(result?.['gradeflow-attendance-items']);
+      S.attendanceItems = NormalizeAttendanceItems(result?.[GF_ATTENDANCE_KEY]);
       CleanupExpiredStudySessions();
       const raw = result?.['gradeflow-grades'];
       const wrap = document.getElementById('gf-table-wrap');
@@ -2778,9 +3134,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (wrap) wrap.innerHTML = `<div id="gf-state"><div class="gf-spinner"></div><span>${Translate('fetching')}</span></div>`;
         UpdateBottomBar(); return;
       }
-      S.store = JSON.parse(raw);
-      InvalidatePeriodCache();
-      if (S.store?._courseIcons) { S.courseIcons = S.store._courseIcons; delete S.store._courseIcons; }
+      SetRawStore(JSON.parse(raw), raw);
       S.periods = ComputePeriods(S.store);
       S.activePeriod = S.periods.includes('Alle') ? 'Alle' : (S.periods[0] || 'Alle');
       Render(false);

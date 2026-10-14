@@ -6,22 +6,20 @@
   const CV_W = 480;
   const CV_H = 240;
   const GROUND_H = 32;
-  const GRAVITY = 0.0031;       // px/ms²
-  const JUMP_VEL = -0.64;       // px/ms (single-jump impulse)
-  const DOUBLE_VEL = -0.52;     // weaker for the second jump
+  const GRAVITY = 0.0031;
+  const JUMP_VEL = -0.64;
+  const DOUBLE_VEL = -0.52;
   const PLAYER_X = 70;
   const PLAYER_W = 26;
   const PLAYER_H = 30;
 
   const LS_BEST = 'gf-runner-best';
 
-  /* ── Storage ─────────────────────────────────────────────── */
   function StorageGet(k, d) { try { const v = localStorage.getItem(k); return v != null ? JSON.parse(v) : d; } catch (_) { return d; } }
   function StorageSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
   function LoadBest() { return StorageGet(LS_BEST, 0); }
   function SaveBest(v) { if (v > LoadBest()) StorageSet(LS_BEST, v); }
 
-  /* ── Grades ──────────────────────────────────────────────── */
   function NormalizeGrades(raw) {
     if (!Array.isArray(raw) || !raw.length) return FallbackGrades();
     return raw.map((g, i) => {
@@ -57,7 +55,6 @@
     return g.length ? g[0 | Math.random() * g.length] : PickGrade();
   }
 
-  /* ── State ───────────────────────────────────────────────── */
   let GS = null, _grades = [], _raf = null, _kh = null, _khU = null, _tobs = null;
 
   function NewGameState() {
@@ -76,8 +73,8 @@
       particles: [],
       score: 0,
       distance: 0,
-      speed: 0.32,             // px/ms ground speed
-      speedRamp: 0.000004,     // accel per ms
+      speed: 0.32,
+      speedRamp: 0.000004,
       spawnTimer: 600,
       pickupTimer: 1200,
       shakeT: 0,
@@ -88,7 +85,6 @@
     };
   }
 
-  /* ── Physics ─────────────────────────────────────────────── */
   function Jump() {
     if (!GS) return;
     if (GS.status === 'start')    { GS.status = 'playing'; GS.lastTs = performance.now(); ShowScreen(null); StartLoop(); }
@@ -150,7 +146,6 @@
     GS.distance += GS.speed * dt;
     GS.speed = Math.min(0.95, GS.speed + GS.speedRamp * dt);
 
-    // Player physics
     if (!GS.onGround) {
       GS.playerVel += GRAVITY * dt;
       GS.playerY += GS.playerVel * dt;
@@ -168,11 +163,9 @@
       if (GS.slideTimer <= 0) GS.sliding = false;
     }
 
-    // Scrolling
     GS.groundX = (GS.groundX + GS.speed * dt) % 32;
     GS.cloudX  = (GS.cloudX  + GS.speed * dt * 0.18) % 200;
 
-    // Spawn timers
     GS.spawnTimer -= dt;
     if (GS.spawnTimer <= 0) {
       SpawnObstacle();
@@ -185,29 +178,24 @@
       GS.pickupTimer = 800 + Math.random() * 1600;
     }
 
-    // Move obstacles
     for (const o of GS.obstacles) o.x -= GS.speed * dt;
     GS.obstacles = GS.obstacles.filter(o => o.x + o.w > -10);
 
-    // Move pickups
     for (const p of GS.pickups) p.x -= GS.speed * dt;
     GS.pickups = GS.pickups.filter(p => p.x + p.r > -10 && !p.picked);
 
-    // Particles
     for (const p of GS.particles) {
       p.x += p.vx * dt; p.y += p.vy * dt;
-      p.vy += 0.0008 * dt; // mild gravity
+      p.vy += 0.0008 * dt;
       p.age += dt;
     }
     GS.particles = GS.particles.filter(p => p.age < p.life);
 
-    // Player hitbox
     const ph = GS.sliding ? PLAYER_H * 0.55 : PLAYER_H;
     const py = GS.sliding ? GS.playerY + (PLAYER_H - ph) : GS.playerY;
     const px = PLAYER_X;
     const pw = PLAYER_W;
 
-    // Pickup collision
     for (const p of GS.pickups) {
       if (p.picked) continue;
       const cx = Math.max(px, Math.min(p.x, px + pw));
@@ -224,7 +212,6 @@
       }
     }
 
-    // Obstacle collision
     for (const o of GS.obstacles) {
       if (o.x + o.w < px || o.x > px + pw) continue;
       if (o.y + o.h < py || o.y > py + ph) continue;
@@ -232,7 +219,6 @@
       return;
     }
 
-    // Score from distance
     GS.score = Math.max(GS.score, Math.floor(GS.distance / 10));
 
     if (GS.shakeT > 0) GS.shakeT = Math.max(0, GS.shakeT - dt);
@@ -249,7 +235,6 @@
     ShowGameOver();
   }
 
-  /* ── Draw ────────────────────────────────────────────────── */
   function Draw() {
     const cv = document.getElementById('gf-rn-canvas');
     if (!cv || !GS) return;
@@ -260,14 +245,12 @@
     const sy = GS.shakeT > 0 ? (Math.random() - 0.5) * 6 * (GS.shakeT / 350) : 0;
     ctx.save(); ctx.translate(sx, sy);
 
-    // Sky
     const skyG = ctx.createLinearGradient(0, 0, 0, CV_H - GROUND_H);
     if (dark) { skyG.addColorStop(0, '#0a0e1a'); skyG.addColorStop(1, '#172033'); }
     else      { skyG.addColorStop(0, '#7dd3fc'); skyG.addColorStop(1, '#bae6fd'); }
     ctx.fillStyle = skyG;
     ctx.fillRect(0, 0, CV_W, CV_H - GROUND_H);
 
-    // Clouds
     ctx.fillStyle = dark ? 'rgba(180,200,230,0.10)' : 'rgba(255,255,255,0.85)';
     for (let i = 0; i < 4; i++) {
       const cx = ((i * 200) - GS.cloudX + 800) % 800 - 100;
@@ -279,7 +262,6 @@
       ctx.fill();
     }
 
-    // Ground
     const groundY = CV_H - GROUND_H;
     ctx.fillStyle = dark ? '#1f2937' : '#d4b886';
     ctx.fillRect(0, groundY, CV_W, GROUND_H);
@@ -294,7 +276,6 @@
       ctx.stroke();
     }
 
-    // Pickups
     for (const p of GS.pickups) {
       if (p.picked) continue;
       const pulse = 0.92 + 0.08 * Math.sin((performance.now() - p.born) / 200);
@@ -311,15 +292,12 @@
       ctx.fillText(`${Math.round(p.grade.Pct ?? 60)}`, p.x, p.y);
     }
 
-    // Obstacles
     for (const o of GS.obstacles) {
       ctx.fillStyle = o.color;
       if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 4); ctx.fill(); }
       else ctx.fillRect(o.x, o.y, o.w, o.h);
-      // top highlight
       ctx.fillStyle = 'rgba(255,255,255,0.22)';
       ctx.fillRect(o.x + 2, o.y + 2, o.w - 4, 3);
-      // grade label
       if (o.h >= 24) {
         ctx.fillStyle = 'rgba(0,0,0,0.7)';
         ctx.font = '700 8px "IBM Plex Mono",monospace';
@@ -328,7 +306,6 @@
       }
     }
 
-    // Player
     const ph = GS.sliding ? PLAYER_H * 0.55 : PLAYER_H;
     const py = GS.sliding ? GS.playerY + (PLAYER_H - ph) : GS.playerY;
     ctx.save();
@@ -338,16 +315,13 @@
     if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(PLAYER_X, py, PLAYER_W, ph, 6); ctx.fill(); }
     else ctx.fillRect(PLAYER_X, py, PLAYER_W, ph);
     ctx.restore();
-    // body highlight
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.fillRect(PLAYER_X + 2, py + 2, PLAYER_W - 4, ph * 0.35);
-    // eye
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(PLAYER_X + PLAYER_W - 7, py + 8, 3, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#111';
     ctx.beginPath(); ctx.arc(PLAYER_X + PLAYER_W - 6, py + 8, 1.6, 0, Math.PI * 2); ctx.fill();
 
-    // Particles
     for (const p of GS.particles) {
       const a = 1 - p.age / p.life;
       ctx.globalAlpha = a;
@@ -356,7 +330,6 @@
     }
     ctx.globalAlpha = 1;
 
-    // HUD overlay (in-canvas score)
     ctx.fillStyle = dark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.78)';
     ctx.font = '700 18px "IBM Plex Mono",monospace';
     ctx.textAlign = 'right'; ctx.textBaseline = 'top';
@@ -365,7 +338,6 @@
     ctx.fillStyle = dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
     ctx.fillText(_GameText('game_score').toUpperCase(), CV_W - 12, 32);
 
-    // Pickup flash
     if (GS.flashT > 0) {
       ctx.globalAlpha = (GS.flashT / 250) * 0.18;
       ctx.fillStyle = GS.gradeColor;
@@ -376,7 +348,6 @@
     ctx.restore();
   }
 
-  /* ── Loop ────────────────────────────────────────────────── */
   function StartLoop() {
     StopLoop();
     _raf = requestAnimationFrame(function Frame(ts) {
@@ -391,7 +362,6 @@
   }
   function StopLoop() { if (_raf) { cancelAnimationFrame(_raf); _raf = null; } }
 
-  /* ── UI flow ─────────────────────────────────────────────── */
   const SCREENS = ['gf-rn-start', 'gf-rn-pause', 'gf-rn-gameover'];
   function ShowScreen(id) {
     SCREENS.forEach(s => { const e = document.getElementById(s); if (e) e.style.display = s === id ? 'flex' : 'none'; });
@@ -430,7 +400,6 @@
     else if (GS.status === 'paused') { GS.status = 'playing'; GS.lastTs = performance.now(); ShowScreen(null); StartLoop(); }
   }
 
-  /* ── Input ───────────────────────────────────────────────── */
   function OnKey(e) {
     if (!GS || !document.getElementById('gf-rn')) return;
     if (e.type !== 'keydown') return;
@@ -470,7 +439,6 @@
 
   function OnVisibilityChange() { if (document.hidden && GS?.status === 'playing') DoPause(); }
 
-  /* ── Theme ───────────────────────────────────────────────── */
   function ApplyTheme() {
     const el = document.getElementById('gf-rn');
     if (!el) return;
@@ -482,7 +450,6 @@
     }
   }
 
-  /* ── Build ───────────────────────────────────────────────── */
   function BuildOverlay() {
     if (document.getElementById('gf-rn')) return;
     InjectCSS();
@@ -558,7 +525,6 @@
     }
   }
 
-  /* ── Public API ──────────────────────────────────────────── */
   function OpenGradeRunner(grades) {
     if (grades?.length) _grades = NormalizeGrades(grades);
     if (!document.getElementById('gf-rn')) BuildOverlay();
@@ -607,7 +573,6 @@
   W.ToggleGradeRunner = ToggleGradeRunner;
   W.BossKeyRunner     = BossKeyRunner;
 
-  /* ── CSS ─────────────────────────────────────────────────── */
   function InjectCSS() {
     if (document.getElementById('gf-rn-css')) return;
     const s = document.createElement('style');

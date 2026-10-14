@@ -1,6 +1,6 @@
 # GradeFlow - Privacy Policy
 
-**Last updated: April 2026**
+**Last updated: October 2026**
 
 GradeFlow is a Chrome extension built for SmartSchool users. This policy explains what data the extension accesses, how it is used, and how it is stored.
 
@@ -8,9 +8,11 @@ GradeFlow is a Chrome extension built for SmartSchool users. This policy explain
 
 ## 1. Data we access
 
-When you open the GradeFlow panel on a SmartSchool page where you are already logged in, the extension calls SmartSchool's own internal API (`/results/api/v1/evaluations`) to retrieve your grade data. This is the same data SmartSchool displays to you natively.
+When you open the GradeFlow panel on a SmartSchool page where you are already logged in, the extension calls SmartSchool's own internal API (`/results/api/v1/evaluations`) to retrieve your grade data. For grades that only have a label or icon (no points), it also opens that evaluation's detail (`/results/api/v1/evaluations/{id}`) to read the goal ratings. This is the same data SmartSchool displays to you natively.
 
-The extension also reads SmartSchool page styles to extract subject icon classes and visual theme/layout variables, including Smartschool++ variables when that extension is installed, so GradeFlow can show matching icons and follow the active page theme.
+The planner tab reads your own planned assignments and to-dos from SmartSchool's planner API (`/planner/api/v1/planned-elements/user/...`). The attendance tab reads your absences and late arrivals from your own Studentcard page.
+
+The extension also reads SmartSchool page styles to extract subject icon classes and visual theme/layout variables, including Smartschool++ variables when that extension is installed, so GradeFlow can show matching icons and follow the active page theme. When you use a custom theme, GradeFlow reads SmartSchool's stylesheets (and, if you allow it, fetches the ones hosted on SmartSchool's own `smart-school.net` CDN) to recolour the page locally in your browser.
 
 No Smartschool++ account data, settings content, or external profile data is collected. No other data is accessed.
 
@@ -32,6 +34,12 @@ All data is stored locally on your device only:
 | Settings (decimal, icons, best subject mode) | `localStorage` | Restore your preferences |
 | Subject icon overrides | `localStorage` | Per-subject icon choices |
 | Custom language strings | `localStorage` | User-defined translations |
+| Planner items and attendance entries | `chrome.storage.local` | Planner and attendance tabs |
+| Evaluation detail cache (goal ratings) | `chrome.storage.local` | Avoid refetching label/icon grades |
+| Custom theme, saved themes | `chrome.storage.local` | Theme editor |
+| Recoloured theme stylesheet cache | `localStorage` | Show your theme without a flash on page load |
+| Keyboard shortcuts | `chrome.storage.local` | Remapped shortcuts |
+| Game best scores and progress | `localStorage` | Arcade high scores |
 
 `chrome.storage.local` and `chrome.storage.sync` are private to the extension and not accessible to websites. `localStorage` entries are scoped to the SmartSchool domain.
 
@@ -47,9 +55,9 @@ GradeFlow does **not**:
 - Share data with third parties
 - Collect personally identifiable information
 
-All network requests made by the extension go exclusively to the SmartSchool domain you are already visiting (same-origin API calls that require your existing login session). The only exception is fetching SmartSchool's own CDN icons, which are public assets hosted by SmartSchool.
+All network requests made by the extension go exclusively to the SmartSchool domain you are already visiting (same-origin API calls that require your existing login session). The exceptions are fetching SmartSchool's own CDN icons and stylesheets, which are public assets hosted by SmartSchool, and the optional chat and network features below.
 
-The optional **peer-to-peer chat feature** (see section 3a) connects directly to other users you explicitly invite and makes one request to a public STUN server to assist with the connection. No chat content, metadata, or user identifiers are ever sent to the extension authors or any third-party server.
+The optional **peer-to-peer chat feature** (see section 3a) connects directly to other users you explicitly invite and makes one request to a public STUN server to assist with the connection. The optional **network features** (see section 3b) also use public relays to find other GradeFlow users on the same network. No chat content, game data, metadata, or user identifiers are ever sent to the extension authors.
 
 ---
 
@@ -92,6 +100,27 @@ No chat data is written to `chrome.storage` or to disk.
 
 ---
 
+## 3b. Network chat and Grade.io network mode (optional)
+
+Network chat (in the chat overlay) and the Network mode of Grade.io let you join everyone on the same network without sharing a code. Both are off until you start them yourself.
+
+**How it works**
+
+- GradeFlow asks a public STUN server (`stun.l.google.com:19302`) for your public IP address. If that fails, it asks `api.ipify.org`. Everyone behind the same school or home connection shares that public IP, which is how GradeFlow knows who is "on the same network".
+- From that IP, GradeFlow derives a random-looking room name (a SHA-256 hash) and an encryption key (HKDF, AES-GCM 256). Your IP itself is never sent as part of a message.
+- To find each other, browsers exchange short connection offers through public MQTT relays: `broker.emqx.io`, `broker.hivemq.com` and `test.mosquitto.org`. These offers are encrypted with the room key, so the relays only see encrypted bytes, the room name, and the IP address you connect from (as with any website).
+- After that, chat messages and game data go **directly between the browsers** over WebRTC. They never pass through the relays or any server.
+- Anyone who shares your public IP can join the same room. Treat it like a public room for your school network.
+
+**Data that is necessarily exposed**
+
+- The relays see your IP address and that you joined a room, like any server you connect to.
+- Every peer in the room sees your nickname and, like in section 3a, your local and public IP address.
+
+Nothing from these features is written to disk. Closing the chat room or the game leaves the room.
+
+---
+
 ## 4. Data retention
 
 Grade data in `chrome.storage.local` is overwritten each time you refresh grades and is deleted when you uninstall the extension. `chrome.storage.sync` data (personalisation settings) syncs across your Chrome profile and is removed on uninstall. `localStorage` entries (settings, hours, formula, custom translations) remain until you clear your browser data for the SmartSchool domain or uninstall the extension.
@@ -106,8 +135,11 @@ The extension requests the following permissions:
 |-----------|--------|
 | `storage` | Store grades, settings, and personalisation data locally |
 | `tabs` | Communicate between the popup and SmartSchool tabs to apply settings and trigger refreshes |
-| `offscreen` | Host the peer-to-peer chat WebRTC connection in a hidden background page so it survives page navigations inside SmartSchool |
+| `offscreen` | Host the chat and network WebRTC connections in a hidden background page so they survive page navigations inside SmartSchool |
+| `alarms`, `notifications` | Show the study reminders you plan yourself |
+| `scripting` | Load an arcade game only when you open it, so SmartSchool pages stay fast |
 | `host_permissions: *.smartschool.be` | Inject the GradeFlow panel and call SmartSchool's API on SmartSchool pages |
+| optional `*.smart-school.net` | Only asked when you press "Allow access" in the theme editor, to read SmartSchool's CDN stylesheets for full theming |
 
 No other permissions are requested.
 

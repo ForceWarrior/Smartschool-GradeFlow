@@ -3,7 +3,7 @@
 
   if (window.self !== window.top) {
     document.addEventListener('keydown', (e) => {
-      if (e.key !== 'F7') return;
+      if (!GfKeys.match(e, 'chat')) return;
       e.preventDefault();
       e.stopPropagation();
       try { window.parent.postMessage({ type: 'gf-chat-f7' }, '*'); } catch (_) {}
@@ -61,7 +61,7 @@
   function _syncThemeState() {
     if (!root) return;
     const doc = document.documentElement;
-    const source = doc.getAttribute('data-gf-theme-source') === 'smpp' ? 'smpp' : 'gradeflow';
+    const source = /^(smpp|custom)$/.test(doc.getAttribute('data-gf-theme-source') || '') ? 'smpp' : 'gradeflow';
     const isDark = source === 'smpp'
       ? doc.getAttribute('data-gf-external-dark') === '1'
       : doc.getAttribute('data-gf-theme') === 'dark';
@@ -93,9 +93,6 @@
 
   function _installPersistenceObservers() {
     if (!bodyObserver && document.body) {
-      // Only watch direct children of body for removals, vastly cheaper than
-      // a deep subtree observer. Our chat root is a direct child of body, so
-      // this catches every case where it gets removed.
       bodyObserver = new MutationObserver(_reattach);
       bodyObserver.observe(document.body, { childList: true, subtree: false });
     }
@@ -200,6 +197,7 @@
       if (typeof window.GF_LANGS !== 'undefined') s = window.GF_LANGS?.en?.[key] || key;
       else s = key;
     }
+    if (window.GfKeys && !GfKeys.isDefault('chat')) s = s.replace(/\bF7\b/g, GfKeys.label('chat'));
     if (vars) {
       for (const k of Object.keys(vars)) {
         s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), String(vars[k]));
@@ -245,6 +243,7 @@
     if (s.role === 'host' && s.roomCodeStr) return 'host-room';
     if (s.role === 'joiner' && s.hostConnected) return 'joiner-room';
     if (s.role === 'joiner' && s.joinerAnswerPacked) return 'join-answer-pending';
+    if (s.role === 'lan') return 'lan-room';
     return 'menu';
   }
 
@@ -260,6 +259,7 @@
       case 'join-prompt': return s.ipAcknowledged && !s.role;
       case 'join-answer-pending': return s.role === 'joiner' && !s.hostConnected;
       case 'joiner-room': return s.role === 'joiner' && s.hostConnected;
+      case 'lan-room': return s.role === 'lan';
       case 'error': return true;
       default: return true;
     }
@@ -320,6 +320,7 @@
       case 'join-prompt': renderJoinPrompt(); break;
       case 'join-answer-pending': renderJoinerAnswerPending(); break;
       case 'joiner-room': renderChatRoomJoiner(); break;
+      case 'lan-room': renderLanRoom(); break;
       case 'error': renderError(localScreenData?.text, localScreenData?.back); break;
       default: renderMenu();
     }
@@ -367,6 +368,14 @@
           onclick: () => _captureNickAndThen(() => setScreen('join-prompt')),
         }, _t('chat_join_room')),
       ]),
+      _el('button', {
+        class: 'gf-chat-btn gf-chat-btn-lan gf-chat-w',
+        onclick: () => _captureNickAndThen(async () => {
+          const r = await sendCmd('lan:join');
+          if (!r?.ok) return setScreen('error', { text: r?.error || _t('chat_something_wrong'), back: () => setScreen('menu') });
+          setScreen('lan-room');
+        }),
+      }, [_el('b', {}, _t('chat_lan_join')), _el('span', {}, _t('chat_lan_join_desc'))]),
     ]));
     setTimeout(() => document.getElementById('gf-chat-nick-in')?.focus(), 0);
   }
@@ -638,6 +647,28 @@
     _scrollMessagesToEnd();
   }
 
+  function renderLanRoom() {
+    const peers = snap.lanPeers || [];
+    const status = snap.lanStatus || 'discovering';
+    const statusText = status === 'online'
+      ? (peers.length ? _t('chat_lan_online', { count: peers.length }) : _t('chat_lan_alone'))
+      : status === 'offline' ? _t('chat_lan_offline') : _t('chat_lan_searching');
+    _renderTo(_el('div', { class: 'gf-chat-card' }, [
+      _header(_t('chat_lan_title'), null),
+      _el('div', { class: 'gf-chat-status ' + (status === 'offline' ? 'gf-chat-status-err' : 'gf-chat-status-ok') }, statusText),
+      peers.length > 0 && _el('div', { class: 'gf-chat-peerlist' }, [
+        _el('div', { class: 'gf-chat-peer' }, [_el('span', { class: 'gf-chat-peer-dot' }), _el('span', { class: 'gf-chat-peer-name' }, (snap.nickname || 'You') + ' ' + _t('chat_you_suffix'))]),
+        ...peers.map(name => _el('div', { class: 'gf-chat-peer' }, [_el('span', { class: 'gf-chat-peer-dot' }), _el('span', { class: 'gf-chat-peer-name' }, name)])),
+      ]),
+      renderChatStrip(),
+      _el('button', {
+        class: 'gf-chat-btn gf-chat-btn-danger gf-chat-w',
+        onclick: async () => { await sendCmd('lan:leave'); _clearFormCache(); setScreen('menu'); },
+      }, _t('chat_leave_room')),
+    ]));
+    _scrollMessagesToEnd();
+  }
+
   function renderChatStrip() {
     const list = _el('div', { class: 'gf-chat-list', id: 'gf-chat-list' });
     for (const m of snap.messages) {
@@ -693,7 +724,7 @@
   async function toggleOverlay() { await sendCmd('toggleOverlay'); }
 
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'F7') return;
+    if (!GfKeys.match(e, 'chat')) return;
     e.preventDefault();
     e.stopPropagation();
     toggleOverlay();
