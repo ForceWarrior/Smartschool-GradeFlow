@@ -6,7 +6,7 @@
   const SHEET_PREFIX = 'gf-te:';
   const INDEX_KEY = 'gf-te-index';
   const CACHE_BUDGET = 1500000;
-  const ENGINE_VERSION = 'e2';
+  const ENGINE_VERSION = 'e3';
   const BORDER_SIDES = ['border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color'];
   const PROPS = {
     'color': 'fg', 'background-color': 'bg', 'background-image': 'bg',
@@ -18,6 +18,7 @@
   const TOKEN_SRC = `#[0-9a-f]{3,8}\\b|(?:rgba?|hsla?)\\([^()]*\\)|\\b(?:${NAMED})\\b`;
   const TOKEN_RE = new RegExp(TOKEN_SRC, 'gi');
   const TOKEN_TEST = new RegExp(TOKEN_SRC, 'i');
+  const VAR_TOKEN_RE = new RegExp(`--[\\w-]+|${TOKEN_SRC}`, 'gi');
   const QUICK_RE = /#|rgb|hsl|color|background|border|fill|stroke|shadow|outline/i;
   const VAR_ROLE = [[/background|-bg\b|bg-|surface|fill/i, 'bg'], [/border|outline|divider|separator|shadow/i, 'border'], [/(^|-)color(-|$)|text|foreground|-fg\b|link|icon/i, 'fg']];
   const SMSC_VARS = {
@@ -243,7 +244,8 @@
 
   function MapTokens(value, role, known) {
     let changed = false;
-    const out = value.replace(TOKEN_RE, tok => {
+    const out = value.replace(VAR_TOKEN_RE, tok => {
+      if (tok.startsWith('--')) return tok;
       const c = Parse(tok);
       if (!c || c.a === 0 || (known && outKeys.has(role + Key(c)))) return tok;
       const m = MapColor(tok, role);
@@ -274,10 +276,11 @@
     if (!value || /^(inherit|initial|unset|revert|currentcolor|none|auto)$/i.test(value)) return null;
     if (role === 'shadow') return /inset/i.test(value) ? MapShadow(value, false) : null;
     if (/url\(/i.test(value) && !/gradient/i.test(value)) return null;
-    if (!TOKEN_TEST.test(value.replace(/var\([^)]*\)/g, ''))) return null;
+    if (!TOKEN_TEST.test(value.replace(/--[\w-]+/g, ''))) return null;
     let changed = false;
     const segments = value.split(/(url\([^)]*\))/i);
-    const out = segments.map(seg => /^url\(/i.test(seg) ? seg : seg.replace(TOKEN_RE, tok => {
+    const out = segments.map(seg => /^url\(/i.test(seg) ? seg : seg.replace(VAR_TOKEN_RE, tok => {
+      if (tok.startsWith('--')) return tok;
       const m = MapColor(tok, role);
       if (m !== tok) changed = true;
       return m;
@@ -299,7 +302,8 @@
       const prop = m[1].toLowerCase();
       const role = PROPS[prop] || (prop === 'border-color' ? 'border' : prop.startsWith('--') ? VarRole(prop) : null);
       if (!role) continue;
-      for (const tok of m[2].match(TOKEN_RE) || []) {
+      for (const tok of m[2].match(VAR_TOKEN_RE) || []) {
+        if (tok.startsWith('--')) continue;
         const c = Parse(tok);
         if (c) outKeys.add(role + Key(c));
       }
@@ -308,6 +312,10 @@
 
   function Rules(sheet) {
     try { return sheet.cssRules; } catch (_) { return null; }
+  }
+
+  function MediaWrap(mq) {
+    return mq && !/^\s*(all|screen)?\s*$/i.test(mq) ? `@media ${mq}{` : '';
   }
 
   function Extract(rules, wrap, out) {
@@ -331,7 +339,7 @@
         Extract(rule.cssRules, `${wrap}@layer ${rule.name}{`, out);
       } else if (rule.styleSheet) {
         const inner = Rules(rule.styleSheet);
-        if (inner) Extract(inner, wrap, out);
+        if (inner) Extract(inner, wrap + MediaWrap(rule.media?.mediaText), out);
       }
     }
   }
@@ -371,6 +379,9 @@ body{background-color:${v('bg')};color:${v('text')}}
 :where(a:link,a:visited){color:${MapColor('#1a73e8', 'fg')}}
 ::selection{background-color:${Fmt({ ...P.accent, a: 0.38 })}}
 ::placeholder{color:${v('muted')}}
+td[background*="images/frame_"]{background:${v('surface')}!important}
+td[background*="images/frame_r1_"]{background:${v('surface2')}!important}
+img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
 `;
   }
 
@@ -406,8 +417,9 @@ body{background-color:${v('bg')};color:${v('text')}}
         const parsed = new CSSStyleSheet();
         parsed.replaceSync(res.css.replace(/@import[^;]+;/g, ''));
         const decls = [];
-        Extract(parsed.cssRules, '', decls);
-        st.sheets.set(href, { count: -2, decls, css: null, sig: '', fetched: true });
+        const mq = sheet.media?.mediaText || '';
+        Extract(parsed.cssRules, MediaWrap(mq), decls);
+        st.sheets.set(href, { count: -2, decls, css: null, sig: '', fetched: true, mq });
         Render(doc);
       } catch (_) {
         st.sheets.set(href, { count: -1, decls: [], css: '', sig, blocked: true });
@@ -429,7 +441,7 @@ body{background-color:${v('bg')};color:${v('text')}}
       if (!rules) {
         if (prev) continue;
         const cached = doc === document && CacheGet(key);
-        if (cached && cached.sig === sig && cached.count === -2) { st.sheets.set(key, { count: -2, decls: null, css: cached.css, sig, fetched: true }); changed = true; }
+        if (cached && cached.sig === sig && cached.count === -2) { st.sheets.set(key, { count: -2, decls: null, css: cached.css, sig, fetched: true, mq: sheet.media?.mediaText || '' }); changed = true; }
         else FetchSheet(doc, st, sheet);
         continue;
       }
@@ -439,7 +451,7 @@ body{background-color:${v('bg')};color:${v('text')}}
         st.sheets.set(key, { count: rules.length, decls: null, css: cached.css, sig, sheet });
       } else {
         const decls = [];
-        Extract(rules, '', decls);
+        Extract(rules, MediaWrap(sheet.media?.mediaText), decls);
         st.sheets.set(key, { count: rules.length, decls, css: null, sig: '', sheet });
       }
       changed = true;
@@ -467,11 +479,11 @@ body{background-color:${v('bg')};color:${v('text')}}
           const rules = e.sheet && Rules(e.sheet);
           if (!rules) {
             st.sheets.delete(key);
-            if (e.fetched) FetchSheet(doc, st, { href: key });
+            if (e.fetched) FetchSheet(doc, st, { href: key, media: { mediaText: e.mq || '' } });
             continue;
           }
           e.decls = [];
-          Extract(rules, '', e.decls);
+          Extract(rules, MediaWrap(e.sheet.media?.mediaText), e.decls);
         }
         e.css = Build(e.decls);
         e.sig = sig;
@@ -881,5 +893,52 @@ body{background-color:${v('bg')};color:${v('text')}}
     return n;
   }
 
-  W.GfThemeEngine = { start: Start, stop: Stop, early: Early, blocked: Blocked, refetch: Refetch, map: (c, role) => P ? MapColor(c, role) : c };
+  function Inspect(target) {
+    const doc = target.ownerDocument;
+    const st = DocState(doc);
+    const PROPS_RE = /background|box-shadow|color|border|filter|opacity|outline/i;
+    const rules = [];
+    const walk = (list, href, depth = 0) => {
+      for (const r of list) {
+        if (r.selectorText && r.style) rules.push([href, r.selectorText, r.style.cssText]);
+        else if (r.cssRules && depth < 6) walk(r.cssRules, href, depth + 1);
+      }
+    };
+    for (const sheet of doc.styleSheets) {
+      const href = sheet.href || '#' + (sheet.ownerNode?.id || 'inline');
+      const list = Rules(sheet);
+      if (list) walk(list, href);
+      else {
+        const e = st.sheets.get(sheet.href);
+        if (e?.decls) for (const [, sel, decls] of e.decls) rules.push(['fetched ' + sheet.href, sel, decls.map(d => d[0] + ':' + d[1] + (d[3] ? '!important' : '')).join(';')]);
+      }
+    }
+    const Info = el => {
+      const c = getComputedStyle(el), b = getComputedStyle(el, '::before'), a = getComputedStyle(el, '::after');
+      const matched = [];
+      for (const [href, sel, text] of rules) {
+        if (!PROPS_RE.test(text)) continue;
+        const clean = sel.replace(/::?(before|after|placeholder|selection|marker|-webkit-[a-z-]+)/g, '');
+        let hit = false;
+        try { hit = !!clean.trim() && el.matches(clean); } catch (_) {}
+        if (hit) matched.push([href.slice(-70), sel.slice(0, 140), text.slice(0, 260)]);
+        if (matched.length > 25) break;
+      }
+      return {
+        tag: el.tagName, id: el.id, cls: String(el.className?.baseVal ?? el.className).slice(0, 160), dyn: el.getAttribute(DYN_ATTR), inline: (el.getAttribute('style') || '').slice(0, 200),
+        bg: c.backgroundColor, img: c.backgroundImage.slice(0, 160), shadow: c.boxShadow.slice(0, 160), color: c.color, border: `${c.borderTopWidth} ${c.borderTopStyle} ${c.borderTopColor}`, filter: c.filter, opacity: c.opacity, scheme: c.colorScheme, shadowRoot: !!el.shadowRoot,
+        before: b.content === 'none' ? null : `${b.backgroundColor} ${b.backgroundImage.slice(0, 80)}`, after: a.content === 'none' ? null : `${a.backgroundColor} ${a.backgroundImage.slice(0, 80)}`,
+        rules: matched,
+      };
+    };
+    const chain = [];
+    for (let el = target; el && el.nodeType === 1 && chain.length < 7; el = el.parentElement) chain.push(Info(el));
+    return {
+      active, sig, url: doc.location?.pathname, theme: document.documentElement.getAttribute('data-gf-theme'), source: document.documentElement.getAttribute('data-gf-theme-source'),
+      sheets: [...doc.styleSheets].map(s => { const e = st.sheets.get(SheetKey(s)); return `${Rules(s) ? 'read' : e?.blocked ? 'BLOCKED' : e?.fetched ? 'fetched' : 'locked'} ${(s.href || '#' + (s.ownerNode?.id || 'inline')).slice(-90)}`; }),
+      dynRules: st.dyn ? st.dyn.ids.size : 0, outKeys: outKeys.size, chain,
+    };
+  }
+
+  W.GfThemeEngine = { start: Start, stop: Stop, early: Early, blocked: Blocked, refetch: Refetch, inspect: Inspect, map: (c, role) => P ? MapColor(c, role) : c };
 })(window);

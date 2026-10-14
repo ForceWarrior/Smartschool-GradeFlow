@@ -2078,6 +2078,33 @@ try {
   }
 } catch (_) {}
 
+let _gfInspectAt = [0, 0];
+document.addEventListener('mousemove', e => { _gfInspectAt = [e.clientX, e.clientY]; }, { passive: true, capture: true });
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey && e.altKey && e.shiftKey && e.code === 'KeyD')) return;
+  e.preventDefault();
+  const el = document.elementFromPoint(_gfInspectAt[0], _gfInspectAt[1]);
+  if (!el) return;
+  const text = JSON.stringify({ gf: '1.3.0', ...GfThemeEngine.inspect(el) });
+  const done = ok => {
+    const t = document.createElement('div');
+    t.id = 'gf-inspect-toast';
+    t.textContent = ok ? 'GradeFlow: diagnose gekopieerd, plak ze in je chat' : 'GradeFlow: kopiëren mislukt';
+    t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;background:#111;color:#fff;padding:10px 16px;border-radius:8px;font:600 13px system-ui;box-shadow:0 6px 24px rgba(0,0,0,.4)';
+    document.documentElement.appendChild(t);
+    setTimeout(() => t.remove(), 2600);
+  };
+  navigator.clipboard.writeText(text).then(() => done(true), () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.documentElement.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    done(ok);
+  });
+}, true);
+
 document.addEventListener('keydown', (e) => {
   if (GfKeys.match(e, 'panel')) {
     e.preventDefault();
