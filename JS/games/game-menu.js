@@ -1807,12 +1807,12 @@
     s.textContent = `
 #gf-arcade {
   --bg:#ffffff; --surf:#f5f5f5; --surf2:#ececec; --brd:#e0e0e0;
-  --txt:#111; --txt2:#555; --txt3:#aaa;
+  --txt:#111; --txt2:#555; --txt3:#868686;
   --sh1:rgba(0,0,0,0.06); --sh2:rgba(0,0,0,0.14);
 }
 #gf-arcade[data-theme="dark"] {
   --bg:#111; --surf:#1a1a1a; --surf2:#222; --brd:#2a2a2a;
-  --txt:#eee; --txt2:#888; --txt3:#555;
+  --txt:#eee; --txt2:#999; --txt3:#777;
   --sh1:rgba(0,0,0,0.3); --sh2:rgba(0,0,0,0.55);
 }
 
@@ -1857,7 +1857,7 @@
 #gf-arc-x:hover { border-color:#ef4444; color:#ef4444; background:rgba(239,68,68,0.08); }
 #gf-arc-grid {
   display:grid; grid-template-columns:repeat(3,1fr);
-  grid-auto-rows:176px; gap:14px; padding:18px; overflow-y:auto; flex:1; min-height:0;
+  grid-auto-rows:198px; gap:14px; padding:18px; overflow-y:auto; flex:1; min-height:0;
 }
 #gf-arc-grid::-webkit-scrollbar { width:6px; }
 #gf-arc-grid::-webkit-scrollbar-track { background:transparent; }

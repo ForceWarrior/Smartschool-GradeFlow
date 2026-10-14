@@ -31,6 +31,22 @@ function GfCleanPalette(raw) {
   return out;
 }
 
+const GF_CDN_ORIGINS = ['https://*.smart-school.net/*'];
+
+function GfRequestCdnAccess(force = false) {
+  if (!chrome.permissions?.request) return;
+  if (!force) {
+    try {
+      if (localStorage.getItem('gf-cdn-asked')) return;
+      localStorage.setItem('gf-cdn-asked', '1');
+    } catch (_) {}
+  }
+  chrome.permissions.request({ origins: GF_CDN_ORIGINS }, granted => {
+    void chrome.runtime.lastError;
+    if (typeof force === 'function') force(granted);
+  });
+}
+
 function GfLuma(hex) {
   const n = parseInt(hex.slice(1), 16);
   return ((n >> 16 & 255) * 299 + (n >> 8 & 255) * 587 + (n & 255) * 114) / 255000;

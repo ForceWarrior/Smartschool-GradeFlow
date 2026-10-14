@@ -6,7 +6,7 @@
   const SHEET_PREFIX = 'gf-te:';
   const INDEX_KEY = 'gf-te-index';
   const CACHE_BUDGET = 1500000;
-  const ENGINE_VERSION = 'e1';
+  const ENGINE_VERSION = 'e2';
   const BORDER_SIDES = ['border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color'];
   const PROPS = {
     'color': 'fg', 'background-color': 'bg', 'background-image': 'bg',
@@ -30,7 +30,13 @@
   let ctx2d = null;
   const parseCache = new Map();
   const docs = new Set();
-  let P = null, sig = '', mapCache = new Map(), active = false, pollTimer = 0;
+  let P = null, sig = '', mapCache = new Map(), active = false, pollTimer = 0, outKeys = new Set();
+  const DYN_ATTR = 'data-gf-d';
+  const DYN_HOLD = 'data-gf-dr';
+  const DYN_SKIP = new Set(['head', 'script', 'style', 'link', 'meta', 'title', 'template', 'noscript', 'svg', 'img', 'video', 'canvas', 'iframe', 'picture', 'object', 'embed', 'br', 'wbr', 'source', 'track', 'math']);
+  const GF_ID = /^(gf-|gradeflow-panel-host$)/;
+  const GF_HOSTS = '[id^="gf-"],#gradeflow-panel-host,svg,math';
+  const SIDES = ['top', 'right', 'bottom', 'left'];
 
   function Clamp(v, a = 0, b = 1) { return v < a ? a : v > b ? b : v; }
 
@@ -52,11 +58,18 @@
       const m = key.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/);
       if (m) out = { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4] };
       else {
-        if (!ctx2d) ctx2d = document.createElement('canvas').getContext('2d');
+        if (!ctx2d) ctx2d = Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true });
         ctx2d.fillStyle = '#010203';
         ctx2d.fillStyle = key;
         const v = ctx2d.fillStyle;
-        if (v !== '#010203' || key === '#010203') out = v[0] === '#' ? ParseHex(v) : Parse(v);
+        if (v[0] === '#' && (v !== '#010203' || key === '#010203')) out = ParseHex(v);
+        else if (v !== '#010203' && v !== key && /^rgba?\(/.test(v)) out = Parse(v);
+        else if (v !== '#010203') {
+          ctx2d.clearRect(0, 0, 1, 1);
+          ctx2d.fillRect(0, 0, 1, 1);
+          const [r, g, b, a] = ctx2d.getImageData(0, 0, 1, 1).data;
+          out = { r, g, b, a: a / 255 };
+        }
       }
     }
     if (parseCache.size > 4000) parseCache.clear();
@@ -82,6 +95,20 @@
       return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
     };
     return s === 0 ? { r: l * 255, g: l * 255, b: l * 255, a } : { r: f(h + 1 / 3) * 255, g: f(h) * 255, b: f(h - 1 / 3) * 255, a };
+  }
+
+  function Key(c) {
+    return `${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)},${Math.round(c.a * 255)}`;
+  }
+
+  function Lum(c) {
+    const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+  }
+
+  function Contrast(a, b) {
+    const x = Lum(a), y = Lum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
   }
 
   function Mix(a, b, t) {
@@ -152,6 +179,7 @@
 
   function Saturated(src, role, hsl) {
     let { h, s, l } = hsl;
+    let brand = false;
     if (P.recolor) {
       for (const [hue, range, minS] of BRAND_HUES) {
         const d = Math.abs(((h - hue) % 360 + 540) % 360 - 180);
@@ -159,6 +187,7 @@
           h = P.accentHsl.h;
           s = Clamp(P.accentHsl.s * Math.min(1.1, s / 0.85));
           if (hue === 19) l = Clamp(l + (P.accentHsl.l - 0.53));
+          brand = true;
           break;
         }
       }
@@ -166,7 +195,11 @@
     if (!P.dark) return FromHsl(h, s, l, src.a);
     if (role === 'bg') {
       if (l > 0.8) return FromHsl(h, Math.min(s, 0.55), Clamp(P.surfaceL + 0.05 + (0.97 - l) * 0.45, 0, 0.42), src.a);
-      if (l > 0.58) return FromHsl(h, s, l * 0.86, src.a);
+      if (l > 0.45 && !brand) {
+        s = Math.min(s, 0.8);
+        l = 0.3 + (l - 0.45) * 0.35;
+        while (l > 0.16 && Contrast(FromHsl(h, s, l), P.text) < 4.5) l -= 0.02;
+      }
       return FromHsl(h, s, l, src.a);
     }
     if (role === 'border') {
@@ -190,6 +223,8 @@
     }
     if (mapCache.size > 20000) mapCache.clear();
     mapCache.set(key, res);
+    const out = Parse(res);
+    if (out) outKeys.add(role + Key(out));
     return res;
   }
 
@@ -212,6 +247,20 @@
     if (/^--c-[a-z-]+--\d+$/.test(name)) return null;
     for (const [re, role] of VAR_ROLE) if (re.test(name)) return role;
     return null;
+  }
+
+  function NoteCss(css) {
+    const re = /(--[\w-]+|[a-z-]+)\s*:\s*([^;{}]+)/gi;
+    let m;
+    while ((m = re.exec(css))) {
+      const prop = m[1].toLowerCase();
+      const role = PROPS[prop] || (prop === 'border-color' ? 'border' : prop.startsWith('--') ? VarRole(prop) : null);
+      if (!role) continue;
+      for (const tok of m[2].match(TOKEN_RE) || []) {
+        const c = Parse(tok);
+        if (c) outKeys.add(role + Key(c));
+      }
+    }
   }
 
   function Rules(sheet) {
@@ -304,7 +353,11 @@ body{background-color:${v('bg')};color:${v('text')}}
     chrome.runtime.sendMessage({ type: 'gf-fetch-css', url: href }, res => {
       void chrome.runtime.lastError;
       st.fetching.delete(href);
-      if (!res?.css || !active) { st.sheets.set(href, { count: -1, decls: [], css: '', sig, blocked: true }); return; }
+      if (!res?.css || !active) {
+        st.sheets.set(href, { count: -1, decls: [], css: '', sig, blocked: true });
+        if (active) DynHover(doc, st);
+        return;
+      }
       try {
         const parsed = new CSSStyleSheet();
         parsed.replaceSync(res.css.replace(/@import[^;]+;/g, ''));
@@ -314,6 +367,7 @@ body{background-color:${v('bg')};color:${v('text')}}
         Render(doc);
       } catch (_) {
         st.sheets.set(href, { count: -1, decls: [], css: '', sig, blocked: true });
+        DynHover(doc, st);
       }
     });
   }
@@ -377,8 +431,10 @@ body{background-color:${v('bg')};color:${v('text')}}
         }
         e.css = Build(e.decls);
         e.sig = sig;
+        e.noted = true;
         if (doc === document && !e.blocked && e.css.length < 500000) CacheSet(key, { sig, count: e.count, css: e.css });
       }
+      if (!e.noted) { NoteCss(e.css); e.noted = true; }
       css += e.css;
       if (e.blocked) continue;
       keys.push(key);
@@ -394,6 +450,161 @@ body{background-color:${v('bg')};color:${v('text')}}
         Prune(used);
       } catch (_) {}
     }
+    if ([...st.sheets.values()].some(e => e.blocked)) DynHover(doc, st);
+    DynQueue(doc, null, true);
+  }
+
+  function DynState(doc, st) {
+    if (!st.dyn) {
+      const style = doc.createElement('style');
+      style.id = 'gf-theme-dyn';
+      style.textContent = `[${DYN_HOLD}]{transition:none!important}`;
+      st.dyn = { style, ids: new Map(), queue: new Set(), solo: new Set(), pending: [], full: false, raf: 0, hover: null };
+    }
+    const head = doc.head || doc.documentElement;
+    if (st.dyn.style.parentNode !== head) head.appendChild(st.dyn.style);
+    return st.dyn;
+  }
+
+  function DynQueue(doc, el, full, shallow = false) {
+    if (!active || !doc.defaultView) return;
+    const d = DynState(doc, DocState(doc));
+    if (full) d.full = true;
+    else if (el === doc.documentElement || el === doc.body) d.solo.add(el);
+    else if (el && shallow && el.getElementsByTagName('*').length > 400) { d.solo.add(el); for (const c of el.children) d.solo.add(c); }
+    else if (el) d.queue.add(el);
+    if (!d.raf) d.raf = doc.defaultView.requestAnimationFrame(() => DynFlush(doc));
+  }
+
+  function DynHover(doc, st) {
+    const d = DynState(doc, st);
+    if (d.hover) return;
+    d.hover = e => {
+      let el = e.target;
+      for (let i = 0; el && el.nodeType === 1 && i < 3; i++, el = el.parentElement) d.solo.add(el);
+      if (!d.raf) d.raf = doc.defaultView.requestAnimationFrame(() => DynFlush(doc));
+    };
+    for (const t of ['mouseover', 'mouseout', 'focusin', 'focusout']) doc.addEventListener(t, d.hover, true);
+  }
+
+  function OwnText(el) {
+    for (let n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.data.trim()) return true;
+    return false;
+  }
+
+  function Collect(doc, root, out, seen) {
+    if (root.nodeType !== 1 || DYN_SKIP.has(root.localName)) return;
+    const walker = doc.createTreeWalker(root, 1, { acceptNode: n => DYN_SKIP.has(n.localName) || (n.id && GF_ID.test(n.id)) ? 2 : 1 });
+    for (let n = root; n; n = walker.nextNode()) if (!seen.has(n)) { seen.add(n); out.push(n); }
+  }
+
+  function DynFlush(doc) {
+    const st = DocState(doc), d = st.dyn;
+    if (!d) return;
+    d.raf = 0;
+    if (!active || !doc.body) return;
+    if (d.full || (!d.pending.length && d.queue.size)) {
+      const roots = d.full ? [doc.body] : [...d.queue].filter(n => n.isConnected).sort((a, b) => a.compareDocumentPosition(b) & 2 ? 1 : -1);
+      const seen = new Set();
+      d.pending = [];
+      d.full = false;
+      d.queue.clear();
+      for (const root of roots) if (root === doc.body || !root.closest(GF_HOSTS)) Collect(doc, root, d.pending, seen);
+    }
+    const els = d.pending.splice(0, 2500).filter(n => n.isConnected);
+    const seen = new Set(els);
+    let extra = false;
+    for (const el of d.solo) if (el.isConnected && !seen.has(el) && !DYN_SKIP.has(el.localName) && !el.closest(GF_HOSTS)) { els.push(el); extra = true; }
+    d.solo.clear();
+    if (extra) els.sort((a, b) => a === b ? 0 : a.compareDocumentPosition(b) & 2 ? 1 : -1);
+    if (els.length) DynApply(doc, d, els);
+    if ((d.pending.length || d.queue.size || d.full) && !d.raf) d.raf = doc.defaultView.requestAnimationFrame(() => DynFlush(doc));
+  }
+
+  function Remap(str, role) {
+    const c = Parse(str);
+    if (!c || c.a === 0 || outKeys.has(role + Key(c))) return null;
+    const m = MapColor(str, role);
+    const mc = Parse(m);
+    return mc && Key(mc) !== Key(c) ? m : null;
+  }
+
+  function DynApply(doc, d, els) {
+    const view = doc.defaultView;
+    const held = [];
+    for (const el of els) {
+      if (!el.hasAttribute(DYN_ATTR)) continue;
+      el.setAttribute(DYN_HOLD, '');
+      el.removeAttribute(DYN_ATTR);
+      held.push(el);
+    }
+    const ebg = new Map();
+    const Effective = el => {
+      if (!el || el === doc.documentElement) return P.bg;
+      if (ebg.has(el)) return ebg.get(el);
+      const cs = view.getComputedStyle(el);
+      let r;
+      if (cs.backgroundImage !== 'none') r = null;
+      else {
+        const c = Parse(Remap(cs.backgroundColor, 'bg') || cs.backgroundColor);
+        r = c && c.a >= 0.6 ? c : Effective(el.parentElement);
+      }
+      ebg.set(el, r);
+      return r;
+    };
+    const writes = [];
+    for (const el of els) {
+      const cs = view.getComputedStyle(el);
+      let body = '';
+      const bg = Remap(cs.backgroundColor, 'bg');
+      if (bg) body += `background-color:${bg}!important;`;
+      const sides = [];
+      for (const side of SIDES) {
+        if (cs[`border-${side}-style`] === 'none' || !parseFloat(cs[`border-${side}-width`]) || cs[`border-${side}-color`] === cs.color) continue;
+        const m = Remap(cs[`border-${side}-color`], 'border');
+        if (m) sides.push([side, m]);
+      }
+      if (sides.length === 4 && sides.every(x => x[1] === sides[0][1])) body += `border-color:${sides[0][1]}!important;`;
+      else for (const [side, m] of sides) body += `border-${side}-color:${m}!important;`;
+      let fg = Remap(cs.color, 'fg');
+      const own = Parse(bg || cs.backgroundColor);
+      const eb = cs.backgroundImage !== 'none' ? null : own && own.a >= 0.6 ? own : Effective(el.parentElement);
+      ebg.set(el, eb);
+      if (eb && OwnText(el)) {
+        const tc = Parse(fg || cs.color);
+        if (tc && tc.a > 0.4 && Contrast(tc, eb) < 3) {
+          const best = Contrast(P.text, eb) >= Contrast(P.bg, eb) ? P.text : P.bg;
+          if (Key(best) !== Key(tc)) fg = Fmt(best);
+        }
+      }
+      if (fg) body += `color:${fg}!important;`;
+      if (body) {
+        writes.push([el, body]);
+        if (!el.hasAttribute(DYN_HOLD) && /[1-9]/.test(cs.transitionDuration)) { el.setAttribute(DYN_HOLD, ''); held.push(el); }
+      }
+    }
+    let rules = '';
+    for (const [el, body] of writes) {
+      let id = d.ids.get(body);
+      if (id == null) {
+        id = d.ids.size;
+        d.ids.set(body, id);
+        rules += `[${DYN_ATTR}="${id}"]{${body}}`;
+      }
+      el.setAttribute(DYN_ATTR, id);
+    }
+    if (rules) d.style.textContent += `@layer gf-dyn{${rules}}`;
+    if (held.length) view.requestAnimationFrame(() => { for (const el of held) el.removeAttribute(DYN_HOLD); });
+  }
+
+  function DynStop(doc, st) {
+    const d = st.dyn;
+    if (!d) return;
+    if (d.raf) doc.defaultView?.cancelAnimationFrame(d.raf);
+    if (d.hover) for (const t of ['mouseover', 'mouseout', 'focusin', 'focusout']) doc.removeEventListener(t, d.hover, true);
+    d.style.remove();
+    doc.querySelectorAll(`[${DYN_ATTR}],[${DYN_HOLD}]`).forEach(el => { el.removeAttribute(DYN_ATTR); el.removeAttribute(DYN_HOLD); });
+    st.dyn = null;
   }
 
   const INLINE_PROPS = Object.keys(PROPS);
@@ -439,6 +650,7 @@ body{background-color:${v('bg')};color:${v('text')}}
     st.observer = null;
     st.style?.remove();
     st.base?.remove();
+    DynStop(doc, st);
     doc.querySelectorAll('[style],[bgcolor],font[color]').forEach(el => {
       const orig = st.inline.get(el);
       if (!orig) return;
@@ -476,7 +688,12 @@ body{background-color:${v('bg')};color:${v('text')}}
     st.observer = new MutationObserver(muts => {
       let sheets = false;
       for (const m of muts) {
-        if (m.type === 'attributes') { if (m.target.nodeType === 1) Inline(m.target, st); continue; }
+        if (m.type === 'attributes') {
+          if (m.target.nodeType !== 1) continue;
+          if (m.attributeName !== 'class') Inline(m.target, st);
+          DynQueue(doc, m.target, false, true);
+          continue;
+        }
         for (const n of m.addedNodes) {
           if (n.nodeType !== 1) continue;
           if (n.tagName === 'STYLE' || (n.tagName === 'LINK' && /stylesheet/i.test(n.rel))) {
@@ -487,6 +704,7 @@ body{background-color:${v('bg')};color:${v('text')}}
           else {
             InlineAll(n, st);
             n.querySelectorAll?.('iframe').forEach(f => Frame(f, st));
+            DynQueue(doc, n);
           }
         }
       }
@@ -495,7 +713,7 @@ body{background-color:${v('bg')};color:${v('text')}}
         requestAnimationFrame(() => { pending = false; if (active && Scan(doc)) Render(doc); });
       }
     });
-    st.observer.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'bgcolor', 'color'] });
+    st.observer.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'bgcolor', 'color', 'class'] });
   }
 
   function Signature(palette) {
@@ -504,10 +722,17 @@ body{background-color:${v('bg')};color:${v('text')}}
 
   function Start(palette) {
     const nextSig = Signature(palette);
-    const repaint = active && nextSig !== sig;
+    const changed = nextSig !== sig;
+    const repaint = active && changed;
     P = Prepare(palette);
     sig = nextSig;
-    mapCache = new Map();
+    if (changed || !outKeys.size) {
+      mapCache = new Map();
+      outKeys = new Set();
+    }
+    for (const k of ['bg', 'surface', 'surface2', 'surface3', 'accent']) outKeys.add('bg' + Key(P[k]));
+    for (const k of ['text', 'muted', 'accent', 'bg']) outKeys.add('fg' + Key(P[k]));
+    for (const k of ['border', 'surface3']) outKeys.add('border' + Key(P[k]));
     active = true;
     if (repaint) for (const doc of docs) { Restore(doc); }
     const go = () => {
@@ -517,6 +742,7 @@ body{background-color:${v('bg')};color:${v('text')}}
         if (active && Scan(document)) Render(document);
         document.getElementById('gf-theme-early')?.remove();
         document.getElementById('gf-theme-early-base')?.remove();
+        DynQueue(document, null, true);
       };
       if (document.readyState === 'complete') loaded();
       else addEventListener('load', loaded, { once: true });
@@ -567,11 +793,20 @@ body{background-color:${v('bg')};color:${v('text')}}
     } catch (_) {}
   }
 
+  function Refetch() {
+    for (const doc of docs) {
+      const st = DocState(doc);
+      let any = false;
+      for (const [k, e] of st.sheets) if (e.blocked) { st.sheets.delete(k); any = true; }
+      if (any) Scan(doc);
+    }
+  }
+
   function Blocked() {
     let n = 0;
     for (const doc of docs) for (const s of DocState(doc).sheets.values()) if (s.blocked) n++;
     return n;
   }
 
-  W.GfThemeEngine = { start: Start, stop: Stop, early: Early, blocked: Blocked, map: (c, role) => P ? MapColor(c, role) : c };
+  W.GfThemeEngine = { start: Start, stop: Stop, early: Early, blocked: Blocked, refetch: Refetch, map: (c, role) => P ? MapColor(c, role) : c };
 })(window);
