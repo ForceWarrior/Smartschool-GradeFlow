@@ -6,8 +6,10 @@
 - Theme editor with 12 presets and fully custom colours. Custom themes recolour SmartSchool itself instead of inverting it, so images stay normal, and also style the panel, popup, chat, games, and grade colours. Parts that SmartSchool loads from its own CDN are recoloured too, and text on bright colours is kept readable. Themes can be saved and shared with a GFTHEME code.
 - Grades without points are now shown: labels, icon ratings with their goal breakdown, and percentage ranges like 60% - 90%. A new setting decides whether they count and what each label is worth.
 - Grade.io: agar.io with bots, solo or in a lobby with everyone on your network. One player hosts and another takes over when they leave or crash.
-- Crossy Grade, Grade Surfers, and Grade Hook arcade games. Grade Surfers has a coin shop with characters, boards, upgrades, and hoverboards. Grade Hook has a level editor with share codes that work without a server.
-- GradeTower is rebuilt with 3 maps, 30 waves per map, bosses, 6 towers with branching upgrades, new enemy types, stars, and new art.
+- Crossy Grade, Grade Surfers, and Grade Hook arcade games. Crossy Grade has six zones that change as you go, weather events, and characters to unlock. Grade Surfers has missions that raise your multiplier up to x30 and a coin shop with characters, boards, upgrades, hoverboards, and boosters. Grade Hook has 32 levels and a level editor with multi-select, an adjustable death zone, cannons, spike bars, wind, checkpoints, 10 map themes, skins, and share codes that work without a server.
+- GradeTower is rebuilt with a 10-map story, an endless mode, challenges, bosses, 11 towers with branching upgrades, new enemy types, stars, and new art.
+- Grade.io has Rush, Teams, and Royale modes, power-ups, map events, skins, and bots with different play styles.
+- Every arcade game has new art and effects, and the menu shows a real screenshot of each one.
 - Network chat: join everyone on the same network from the chat menu without codes.
 - Remappable shortcuts in the ? menu (panel, chat, arcade, pause, restart).
 - Discord link at the bottom of the ? menu.
@@ -27,6 +29,10 @@
 - Native date and number fields in the panel follow dark and custom themes.
 - Project evaluations now use their goals: scores count as points and ratings like Goed use the evaluation's scale instead of a colour guess.
 - Custom themes also recolour inset shadows, gradients, pseudo-elements, and layered styles, which left parts of the planner white.
+- Custom themes no longer apply SmartSchool's print styles on screen, which made the Ga naar menu see-through.
+- Custom themes recolour the planner and results sidebar and the frames around older pages like the news.
+- Grade.io viruses no longer make big cells lose mass.
+- Grade Surfers no longer hides your runner on top of a train after a hoverboard crash.
 - Short subject keywords like "de" or "en" no longer give subjects such as Wiskunde a wrong flag icon.
 
 ## [1.2.6] - 2026-05-06
