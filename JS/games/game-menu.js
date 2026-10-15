@@ -23,7 +23,7 @@
       accent: '#38bdf8',
       ready: true,
       isNew: true,
-      buildPreview: PreviewAgar,
+      buildPreview: PreviewShot('gradeio'),
       launch(gr) { CloseGameMenu(); W.OpenGradeIo?.(gr); },
       stop()     { W.CloseGradeIo?.(); },
     },
@@ -35,7 +35,7 @@
       accent: '#22c55e',
       ready: true,
       isNew: true,
-      buildPreview: PreviewCross,
+      buildPreview: PreviewShot('gradecross'),
       launch(gr) { CloseGameMenu(); W.OpenGradeCross?.(gr); },
       stop()     { W.CloseGradeCross?.(); },
     },
@@ -1470,74 +1470,7 @@
     };
   }
 
-  function PreviewAgar(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
-    const COLORS = ['#f43f5e', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#06b6d4', '#f97316'];
-    const pellets = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: Math.random() * H, c: COLORS[RandomInt(0, COLORS.length - 1)] }));
-    const cells = Array.from({ length: 5 }, (_, i) => ({ x: Math.random() * W, y: Math.random() * H, r: 6 + i * 3, a: Math.random() * 6.28, c: COLORS[i] }));
-    function Tick() {
-      if (!cv.isConnected) return false;
-      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
-      ctx.fillStyle = dark ? '#111318' : '#f8fafc';
-      ctx.fillRect(0, 0, W, H);
-      ctx.strokeStyle = dark ? '#1f232b' : '#e2e8f0';
-      ctx.lineWidth = 1;
-      for (let x = 0.5; x < W; x += 12) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-      for (let y = 0.5; y < H; y += 12) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-      for (const p of pellets) { ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, 6.28); ctx.fill(); }
-      for (const c of cells) {
-        c.a += (Math.random() - 0.5) * 0.25;
-        const sp = 1.6 / Math.sqrt(c.r / 6);
-        c.x = (c.x + Math.cos(c.a) * sp + W) % W;
-        c.y = (c.y + Math.sin(c.a) * sp + H) % H;
-        for (const p of pellets) if ((p.x - c.x) ** 2 + (p.y - c.y) ** 2 < c.r * c.r) { p.x = Math.random() * W; p.y = Math.random() * H; c.r = Math.min(20, c.r + 0.15); }
-        if (c.r > 19) c.r = 6;
-        ctx.fillStyle = c.c;
-        ctx.strokeStyle = 'rgba(0,0,0,.22)';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, 6.28); ctx.fill(); ctx.stroke();
-      }
-      return true;
-    }
-    RegisterPreview(Tick);
-  }
 
-  function PreviewCross(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
-    const lanes = ['grass', 'road', 'road', 'grass', 'water', 'road', 'grass'];
-    const LH = 15;
-    const cars = lanes.map((t, i) => t === 'road' ? { x: Math.random() * W, v: (i % 2 ? 1 : -1) * (0.8 + Math.random()), c: ['#ef4444', '#3b82f6', '#eab308'][i % 3] } : t === 'water' ? { x: Math.random() * W, v: 0.6, log: true } : null);
-    let hop = 0, row = 6;
-    function Tick() {
-      if (!cv.isConnected) return false;
-      hop++;
-      if (hop % 40 === 0) row = row > 0 ? row - 1 : 6;
-      lanes.forEach((t, i) => {
-        const y = i * LH;
-        ctx.fillStyle = t === 'grass' ? (i % 2 ? '#86d36b' : '#7cc95f') : t === 'road' ? '#4b5563' : '#38bdf8';
-        ctx.fillRect(0, y, W, LH);
-        if (t === 'road') { ctx.fillStyle = '#e5e7eb'; for (let x = 4; x < W; x += 20) ctx.fillRect(x, y + LH - 1, 10, 1); }
-        if (t === 'grass' && i % 2 === 0) { ctx.fillStyle = '#2f7d32'; ctx.fillRect(20 + i * 7, y + 3, 8, 9); ctx.fillStyle = '#6b4423'; ctx.fillRect(23 + i * 7, y + 10, 2, 3); }
-        const car = cars[i];
-        if (!car) return;
-        car.x = (car.x + car.v + W + 40) % (W + 40) - 20;
-        if (car.log) { ctx.fillStyle = '#92400e'; ctx.fillRect(car.x, y + 3, 34, 9); ctx.fillStyle = '#b45309'; ctx.fillRect(car.x, y + 3, 34, 3); }
-        else { ctx.fillStyle = car.c; ctx.fillRect(car.x, y + 3, 20, 9); ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(car.x + (car.v > 0 ? 13 : 3), y + 4, 4, 7); }
-      });
-      const t = (hop % 40) / 40;
-      const py = row * LH + 2 - (t < 0.3 ? Math.sin(t / 0.3 * Math.PI) * 5 : 0);
-      ctx.fillStyle = '#fff'; ctx.fillRect(74, py, 11, 11);
-      ctx.fillStyle = '#ef4444'; ctx.fillRect(77, py - 3, 5, 3);
-      ctx.fillStyle = '#f97316'; ctx.fillRect(84, py + 4, 3, 2);
-      ctx.fillStyle = '#111'; ctx.fillRect(81, py + 2, 2, 2);
-      return true;
-    }
-    RegisterPreview(Tick);
-  }
 
   function PreviewHook(el) {
     const W = 160, H = 105;
