@@ -38,6 +38,12 @@
   const HUD_PU = ['jet', 'sneak', 'magnet', 'double', 'board'];
   const BAR_COL = { L: ['#e53935', '#f7f7f7'], H: ['#fbc02d', '#1d1d1d'], M: ['#1e9e57', '#f7f7f7'], S: ['#ff3b30', '#2c2f36', '#f5c518'] };
   const BAR_DIM = { L: [2.4, 1.1], H: [2.4, 2.95], M: [2.4, 1.5], S: [1.5, 3.45] };
+  const BAR_TOP = { L: 0.96, M: 1.45 };
+  const BAR_BOT = { L: 0.52, M: 0.77 };
+  const BAR_DEP = 3.2;
+  const BAR_Z = 0.15;
+  const BAR_F = 0.45;
+  const BAR_TOL = 0.25;
   const LIVERY = [
     { body: '#e2463c', trim: '#ffd23f' },
     { body: '#2f7de1', trim: '#f2f2f2' },
@@ -418,6 +424,27 @@
     RR(g, 5, 252, 140, 92, 8); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 3; g.stroke();
     g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(9, 255, 132, 3);
     out.S = c;
+    for (const [k, c0, c1, c2] of [['L', '#e53935', '#6e1414', 0.6], ['M', '#1e9e57', '#0d4a28', -0.7]]) {
+      const base = night ? '#d9d6e4' : '#f7f7f7';
+      c = Cv(120, 200); g = c.getContext('2d');
+      g.fillStyle = base; g.fillRect(0, 0, 120, 200);
+      g.save(); g.translate(120, 0); g.rotate(Math.PI / 2); Stripes(g, 0, 0, 200, 120, 20, c0, c2); g.restore();
+      g.fillStyle = Lin(g, 0, 0, 120, 0, [0, 'rgba(0,0,0,0.32)', 0.16, 'rgba(255,255,255,0.18)', 0.5, 'rgba(255,255,255,0.05)', 0.84, 'rgba(255,255,255,0.18)', 1, 'rgba(0,0,0,0.32)']);
+      g.fillRect(0, 0, 120, 200);
+      g.fillStyle = Lin(g, 0, 0, 0, 200, [0, 'rgba(255,255,255,0.5)', 0.06, 'rgba(255,255,255,0)', 0.8, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0.35)']);
+      g.fillRect(0, 0, 120, 200);
+      g.fillStyle = c1; g.fillRect(0, 0, 5, 200); g.fillRect(115, 0, 5, 200); g.fillRect(0, 192, 120, 8);
+      g.fillStyle = 'rgba(0,0,0,0.25)';
+      for (let v = 40; v < 190; v += 40) g.fillRect(5, v, 110, 2);
+      const top = c;
+      c = Cv(200, 44); g = c.getContext('2d');
+      g.fillStyle = Shade(base, -0.12); g.fillRect(0, 0, 200, 44);
+      Stripes(g, 0, 0, 200, 44, 18, Shade(c0, -0.18), c2);
+      g.fillStyle = Lin(g, 0, 0, 0, 44, [0, 'rgba(255,255,255,0.3)', 0.3, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0.4)']);
+      g.fillRect(0, 0, 200, 44);
+      g.strokeStyle = c1; g.lineWidth = 4; g.strokeRect(2, 2, 196, 40);
+      out[k + 'd'] = { top, side: c };
+    }
     return out;
   }
 
@@ -928,7 +955,7 @@
       status: 'start', t: 0, last: 0, dist: 0, speed: V0, score: 0, coins: 0, mult: 1, base: BaseMult(), boost: 0, multT: 0, onRoof: false,
       run: { coins: 0, jump: 0, roll: 0, power: 0, score: 0, dist: 0, roof: 0, hurdle: 0, board: 0 }, rb: { coins: 0, score: 0, dist: 0 },
       toast: null, toastT: 0, toastQ: [], sets: 0,
-      lane: 0, x: 0, prevX: 0, y: 0, vy: 0, ground: true, surf: 0, rollT: 0, rollE: 0, rollAir: false, lean: 0, phase: 0, banked: false,
+      lane: 0, x: 0, prevX: 0, y: 0, vy: 0, ground: true, surf: 0, bar: null, rollT: 0, rollE: 0, rollAir: false, lean: 0, phase: 0, banked: false,
       dur: Durs(),
       jet: 0, jetFall: false, sneak: 0, magnet: 0, double: 0, board: 0, boardAvail: true, invT: 0,
       stumbleT: 0, wobT: 0, insT: 2.6, insZ: -2.4, insX: -0.8, insY: 0, dogY: 0, crashT: 0, crashKind: '', shake: 0, flash: 0, lastSpace: -9,
@@ -1018,7 +1045,8 @@
         }
         G.obj[l] = t; G.mv[l] = t.mv;
         GS.T.push(t);
-      } else if (c !== 'E') GS.B.push({ x, z, type: c, L: 0, dead: false, pass: false });
+      } else if (c === 'L' || c === 'M') GS.B.push({ x, z: z - BAR_DEP / 2, type: c, L: BAR_DEP, dead: false, pass: false });
+      else if (c !== 'E') GS.B.push({ x, z, type: c, L: 0, dead: false, pass: false });
     }
     const opts = [];
     for (let l = 0; l < 3; l++) { if (mask >> (l + 3) & 1) opts.push(l + 3, l + 3); if (mask >> l & 1) opts.push(l); }
@@ -1107,6 +1135,17 @@
     }
     return top;
   }
+  function BarSurf(p) {
+    const tol = p.vy > 0 ? 0 : BAR_TOL;
+    let top = 0;
+    p.bar = null;
+    for (let i = 0; i < p.B.length; i++) {
+      const b = p.B[i], bt = BAR_TOP[b.type];
+      if (!bt || b.dead || bt <= top || p.dist - b.z - b.L > BAR_Z || b.z - p.dist > BAR_F || Math.abs(p.x - b.x) > 1.2 || p.y < bt - tol) continue;
+      top = bt; p.bar = b;
+    }
+    return top;
+  }
 
   const PARTS = Array.from({ length: 260 }, () => ({ on: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, age: 0, s: 0, ds: 0, g: 0, img: null, add: 0, rot: 0, vr: 0 }));
   function Part(img, x, y, vx, vy, life, s, ds, g, add, rot, vr) {
@@ -1122,6 +1161,16 @@
     if (!Proj(GS.x, GS.surf, GS.dist)) return;
     const k = PK / 65, F = SPR.fx;
     for (let i = 0; i < 7; i++) Part(F.puff, PX + Rnd(36) * k, PY - 3 * k, Rnd(150) * k, (-14 - Math.random() * 36) * k, 0.5 + Math.random() * 0.2, (12 + Math.random() * 8) * k, 40 * k, 30, 0, Math.random() * 6, Rnd(2));
+  }
+  function BarPuff() {
+    const p = GS;
+    if (!Proj(p.x, p.surf, p.dist)) return;
+    const k = PK / 65, F = SPR.fx, cols = BAR_COL[p.bar.type];
+    for (let i = 0; i < 6; i++) {
+      const d = i % 2 ? 1 : -1;
+      Part(F.puff, PX + d * (6 + Math.random() * 12) * k, PY - 2 * k, d * (70 + Math.random() * 70) * k, (-6 - Math.random() * 18) * k, 0.32 + Math.random() * 0.12, (7 + Math.random() * 5) * k, 34 * k, 20, 0, Math.random() * 6, Rnd(2));
+    }
+    for (let i = 0; i < 4; i++) Part(F.Conf(cols[i % 2]), PX + Rnd(30) * k, PY - 3 * k, Rnd(160) * k, (-60 - Math.random() * 60) * k, 0.35 + Math.random() * 0.15, (4 + Math.random() * 3) * k, -4 * k, 500, 0, Math.random() * 6, Rnd(14));
   }
   function Sparkle(c) {
     if (!Proj(c.x, c.y, c.z)) return;
@@ -1271,8 +1320,8 @@
     }
     for (let i = 0; i < p.B.length; i++) {
       const b = p.B[i], tp = b.type, ox = tp === 'S' ? 1.05 : 1.25;
-      if (b.dead || p.invT > 0 || Math.abs(z - b.z) > 0.45 || Math.abs(p.x - b.x) >= ox) continue;
-      const hit = tp === 'L' ? y < 0.95 : tp === 'H' ? y + h > 1.3 && y < 2.7 : tp === 'M' ? y + h > 0.78 && y < 1.42 : y < 3.3;
+      if (b.dead || p.invT > 0 || z < b.z - 0.45 || z > b.z + (b.L ? b.L + 0.1 : 0.45) || Math.abs(p.x - b.x) >= ox) continue;
+      const hit = b.L ? y < BAR_TOP[tp] - 0.02 : tp === 'H' ? y + h > 1.3 && y < 2.7 : y < 3.3;
       if (!hit) continue;
       Hit(Math.abs(p.prevX - b.x) < ox, b, false);
       return;
@@ -1285,12 +1334,14 @@
     p.x += (tx - p.x) * (1 - Math.exp(-dt * 20));
     if (Math.abs(tx - p.x) < 0.01) p.x = tx;
     p.lean += ((tx - p.x) * 0.13 - p.lean) * Math.min(1, dt * 14);
-    p.surf = Surface(p.x, p.dist);
+    const ts = Surface(p.x, p.dist), bs = p.jet > 0 ? 0 : BarSurf(p);
+    if (bs <= ts) p.bar = null;
+    p.surf = Math.max(ts, bs);
     if (p.jet > 0) {
       p.y += (JET_Y - p.y) * (1 - Math.exp(-dt * 3)); p.vy = 0;
     } else if (p.jetFall) {
       p.y -= dt * 7;
-      if (p.y <= p.surf) { p.y = p.surf; p.jetFall = false; p.ground = true; p.invT = Math.max(p.invT, 1); Dust(); }
+      if (p.y <= p.surf) { p.y = p.surf; p.jetFall = false; p.ground = true; p.invT = Math.max(p.invT, 1); if (p.bar) BarPuff(); else Dust(); }
     } else {
       if (p.ground) {
         if (p.surf > p.y && p.surf - p.y < 0.75) p.y = p.surf;
@@ -1303,7 +1354,7 @@
         if (p.y <= p.surf && y0 >= p.surf - 0.45) {
           p.y = p.surf; p.vy = 0; p.ground = true;
           if (p.rollAir) { p.rollAir = false; p.rollT = Math.max(p.rollT, ROLL_T * 0.7); }
-          Dust();
+          if (p.bar) BarPuff(); else Dust();
         }
       }
     }
@@ -1348,7 +1399,8 @@
   function Camera(dt) {
     const p = GS, flying = p.jet > 0 || p.jetFall;
     camX += (p.x * 0.75 - camX) * (1 - Math.exp(-dt * 6));
-    let ty = CAM_H + (flying ? p.y * 0.9 : p.surf * 0.88 + Math.max(0, p.y - p.surf) * 0.3);
+    const sf = p.bar ? 0 : p.surf;
+    let ty = CAM_H + (flying ? p.y * 0.9 : sf * 0.88 + Math.max(0, p.y - sf) * 0.3);
     if (ty > 6.15 && ty < 8.3 && BridgeAt(camZ, 18, 5.5)) ty = 6.15;
     camY += (ty - camY) * (1 - Math.exp(-dt * 4));
     camZ = p.dist - CAM_BACK;
@@ -1777,7 +1829,27 @@
     }
   }
 
+  function DrawBlock(b) {
+    const a = FogA(b.z - camZ), z0 = b.z, z1 = b.z + b.L, zn = camZ + NEAR;
+    if (a <= 0 || z1 <= zn) return;
+    const tp = b.type, hw = BAR_DIM[tp][0] / 2, top = BAR_TOP[tp], bot = BAR_BOT[tp], xl = b.x - hw, xr = b.x + hw, D = SPR.bars[tp + 'd'];
+    ctx.globalAlpha = a * 0.28; ctx.fillStyle = '#000';
+    QuadY(0.02, xl - 0.12, xr + 0.12, z0 - 0.1, z1 + 0.25);
+    ctx.globalAlpha = a; ctx.fillStyle = SPR.night ? '#55586a' : '#3f434b';
+    for (let s = -1; s <= 1; s += 2) if (z1 - 0.12 > zn) QuadZ(z1 - 0.12, b.x + s * 0.96 - 0.07, b.x + s * 0.96 + 0.07, 0, bot);
+    const side = camX < xl ? xl : camX > xr ? xr : null;
+    if (side !== null) {
+      DrawFace(D.side, 0, 0, D.side.width, D.side.height, side, z0, z1, bot, top);
+      ctx.fillStyle = SPR.night ? '#55586a' : '#3f434b';
+      QuadX(side + (side < b.x ? 0.03 : -0.03), 0, bot, Math.max(z1 - 0.16, zn), z1 - 0.04);
+    }
+    if (camY > top) DrawRoof(D.top, xl, xr, z0, z1, top);
+    if (z0 > zn && Proj(b.x, 0, z0)) ctx.drawImage(SPR.bars[tp], PX - hw * PK, PY - BAR_DIM[tp][1] * PK, hw * 2 * PK, BAR_DIM[tp][1] * PK);
+    ctx.globalAlpha = 1;
+  }
+
   function DrawBar(b) {
+    if (b.L) { DrawBlock(b); return; }
     const a = FogA(b.z - camZ);
     if (a <= 0 || !Proj(b.x, 0, b.z)) return;
     const d = BAR_DIM[b.type], w = d[0] * PK, h = d[1] * PK;
@@ -2583,19 +2655,22 @@
   }
 
   function Lat(t) { return Math.abs(t.x - camX); }
+  function Solid(e) { return e.t === 1 || (e.t === 2 && e.o.L > 0); }
   function TrainOrder() {
     for (let pass = 0, sw = 1; sw && pass < 8; pass++) {
       sw = 0;
       for (let i = 0; i < LOW.length; i++) {
         const a = LOW[i];
-        if (a.t !== 1) continue;
+        if (!Solid(a)) continue;
         const ta = a.o, a0 = ta.z - (ta.ramp ? RAMP : 0), a1 = ta.z + ta.L;
         for (let j = i + 1; j < LOW.length; j++) {
           const b = LOW[j];
-          if (b.t !== 1) continue;
+          if (!Solid(b)) continue;
           const tb = b.o;
           if (Math.abs(ta.x - tb.x) < 0.1 || tb.z - (tb.ramp ? RAMP : 0) > a1 || tb.z + tb.L < a0 || Lat(tb) <= Lat(ta) + 0.1) continue;
-          LOW[i] = b; LOW[j] = a; sw = 1;
+          if (a.t === 1 && b.t === 1) { LOW[i] = b; LOW[j] = a; }
+          else { for (let k = j; k > i; k--) LOW[k] = LOW[k - 1]; LOW[i] = b; }
+          sw = 1;
           break;
         }
         if (sw) break;
@@ -2612,7 +2687,7 @@
       if (t.dead || t.z - (t.ramp ? RAMP : 0) > zf || t.z + t.L < zn) continue;
       Add(LOW, TrainKey(t, P), 1, t);
     }
-    for (let i = 0; i < p.B.length; i++) { const b = p.B[i]; if (!b.dead && b.z < zf && b.z > zn) Add(LOW, b.z, 2, b); }
+    for (let i = 0; i < p.B.length; i++) { const b = p.B[i]; if (!b.dead && b.z < zf && b.z > zn) Add(LOW, p.bar === b ? Math.max(b.z + b.L, P + 0.02) : b.z + b.L, 2, b); }
     for (let i = 0; i < p.C.length; i++) {
       const c = p.C[i];
       if (c.dead || c.z > zf || c.z < zn) continue;
