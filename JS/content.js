@@ -395,6 +395,7 @@ const GF_DARK_MEDIA_NEVER_SELECTOR = [
   '.toolbar-bottom',
   '.resize-handle',
   '.leftContainer .border',
+  '.news_tab',
   '.icon-label-btn--no-icon .icon-label[class*="smsc-svg--undefined" i]'
 ].join(',');
 const GF_DARK_TEXT_ICON_SELECTOR = [
