@@ -59,7 +59,7 @@
       accent: '#ec4899',
       ready: true,
       isNew: true,
-      buildPreview: PreviewHook,
+      buildPreview: PreviewShot('gradehook'),
       launch(gr) { CloseGameMenu(); W.OpenGradeHook?.(gr); },
       stop()     { W.CloseGradeHook?.(); },
     },
@@ -334,44 +334,6 @@
 
 
 
-  function PreviewHook(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
-    const hooks = [{ x: 40, y: 22 }, { x: 95, y: 18 }, { x: 150, y: 26 }];
-    let hi = 0, ang = -1.1, vel = 0.055, len = 34, flyT = 0, fx = 0, fy = 0, fvx = 0, fvy = 0, cam = 0;
-    function Tick() {
-      if (!cv.isConnected) return false;
-      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
-      ctx.fillStyle = dark ? '#111827' : '#e0f2fe';
-      ctx.fillRect(0, 0, W, H);
-      let px, py;
-      const h = hooks[hi];
-      if (flyT > 0) {
-        fvy += 0.12; fx += fvx; fy += fvy; flyT--;
-        px = fx; py = fy;
-        if (!flyT) { hi = (hi + 1) % hooks.length; const nh = hooks[hi]; len = Math.hypot(px - nh.x, py - nh.y); ang = Math.atan2(px - nh.x, py - nh.y); vel = 0.04; if (hi === 0) cam = 0; }
-      } else {
-        vel += -Math.sin(ang) * 0.004;
-        ang += vel;
-        px = h.x + Math.sin(ang) * len; py = h.y + Math.cos(ang) * len;
-        if (ang > 0.9 && vel > 0) { flyT = 22; fx = px; fy = py; fvx = Math.cos(ang) * vel * len * 1.15; fvy = -Math.sin(ang) * vel * len * 0.9; }
-      }
-      cam += ((px - 60) - cam) * 0.08;
-      ctx.save(); ctx.translate(-Math.max(0, cam), 0);
-      ctx.fillStyle = '#f472b6'; ctx.fillRect(170, 90, 50, 6);
-      for (const k of hooks) { ctx.fillStyle = '#ec4899'; ctx.beginPath(); ctx.arc(k.x, k.y, 5, 0, 6.28); ctx.fill(); ctx.fillStyle = '#fbcfe8'; ctx.beginPath(); ctx.arc(k.x - 1.5, k.y - 1.5, 1.6, 0, 6.28); ctx.fill(); }
-      if (!flyT) { ctx.strokeStyle = dark ? '#e5e7eb' : '#1f2937'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(px, py); ctx.stroke(); }
-      const rot = flyT ? (22 - flyT) * 0.3 : ang;
-      ctx.translate(px, py); ctx.rotate(-rot * 0.6);
-      ctx.strokeStyle = dark ? '#f9fafb' : '#111827'; ctx.lineWidth = 2; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.arc(0, 4, 3, 0, 6.28); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, 7); ctx.lineTo(0, 16); ctx.moveTo(0, 9); ctx.lineTo(0, 0); ctx.moveTo(0, 10); ctx.lineTo(5, 13); ctx.moveTo(0, 16); ctx.lineTo(-4, 22); ctx.moveTo(0, 16); ctx.lineTo(4, 22); ctx.stroke();
-      ctx.restore();
-      return true;
-    }
-    RegisterPreview(Tick);
-  }
 
   const _GAME_CLOSE_SEL = {
     gradestack:   '#gf-tt-close',
