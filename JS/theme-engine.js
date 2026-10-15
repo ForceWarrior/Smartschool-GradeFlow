@@ -31,7 +31,7 @@
   let ctx2d = null;
   const parseCache = new Map();
   const docs = new Set();
-  let P = null, sig = '', mapCache = new Map(), active = false, pollTimer = 0, outKeys = new Set();
+  let P = null, sig = '', mapCache = new Map(), active = false, pollTimer = 0, shieldTimer = 0, outKeys = new Set();
   const DYN_ATTR = 'data-gf-d';
   const DYN_HOLD = 'data-gf-dr';
   const DYN_SKIP = new Set(['head', 'script', 'style', 'link', 'meta', 'title', 'template', 'noscript', 'svg', 'img', 'video', 'canvas', 'iframe', 'picture', 'object', 'embed', 'br', 'wbr', 'source', 'track', 'math']);
@@ -827,8 +827,11 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
         if (active && Scan(document)) Render(document);
         document.getElementById('gf-theme-early')?.remove();
         document.getElementById('gf-theme-early-base')?.remove();
+        Unshield();
         DynQueue(document, null, true);
       };
+      if (Scan(document)) Render(document);
+      Unshield();
       if (document.readyState === 'complete') loaded();
       else addEventListener('load', loaded, { once: true });
       clearInterval(pollTimer);
@@ -843,14 +846,27 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
     }
   }
 
+  function Unshield() {
+    clearTimeout(shieldTimer);
+    document.getElementById('gf-theme-shield')?.remove();
+  }
+
   function Early(palette) {
     try {
       const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
       const want = Signature(palette);
-      if (!cache || cache.sig !== want) return false;
-      const css = (cache.keys || []).map(k => { const c = CacheGet(k); return c && c.sig === want ? c.css : ''; }).join('');
+      const hit = cache && cache.sig === want;
+      if (!P) P = Prepare(palette);
+      const css = hit ? (cache.keys || []).map(k => { const c = CacheGet(k); return c && c.sig === want ? c.css : ''; }).join('') : '';
       const head = document.head || document.documentElement;
-      for (const [id, text] of [['gf-theme-early-base', cache.base], ['gf-theme-early', css]]) {
+      if (!document.body && !document.getElementById('gf-theme-shield')) {
+        const s = document.createElement('style');
+        s.id = 'gf-theme-shield';
+        s.textContent = `html{background-color:${Fmt(P.bg)}!important}body{opacity:0!important}`;
+        head.appendChild(s);
+        shieldTimer = setTimeout(Unshield, 1200);
+      }
+      for (const [id, text] of [['gf-theme-early-base', hit ? cache.base : BaseCss()], ['gf-theme-early', css]]) {
         if (!text || document.getElementById(id)) continue;
         const s = document.createElement('style');
         s.id = id;
@@ -868,6 +884,7 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
     docs.clear();
     document.getElementById('gf-theme-early')?.remove();
     document.getElementById('gf-theme-early-base')?.remove();
+    Unshield();
     try {
       localStorage.removeItem(CACHE_KEY);
       localStorage.removeItem(INDEX_KEY);
