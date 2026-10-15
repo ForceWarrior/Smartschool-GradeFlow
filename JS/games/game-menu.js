@@ -143,7 +143,7 @@
       desc: 'Smash grade bricks with the ball and rack up points',
       accent: '#f43f5e',
       ready: true,
-      buildPreview: PreviewBreakout,
+      buildPreview: PreviewShot('gradebreakout'),
       launch(gr) { CloseGameMenu(); if (typeof OpenGradeBreakout === 'function') OpenGradeBreakout(gr); },
       stop()     { if (typeof CloseGradeBreakout === 'function') CloseGradeBreakout(); },
     },
@@ -155,7 +155,7 @@
       desc: 'Beat the AI in a grade-powered game of pong',
       accent: '#06b6d4',
       ready: true,
-      buildPreview: PreviewPong,
+      buildPreview: PreviewShot('gradepong'),
       launch(gr) { CloseGameMenu(); if (typeof OpenGradePong === 'function') OpenGradePong(gr); },
       stop()     { if (typeof CloseGradePong === 'function') CloseGradePong(); },
     },
@@ -167,7 +167,7 @@
       desc: 'Fly through the pipes and dodge bad grades',
       accent: '#eab308',
       ready: true,
-      buildPreview: PreviewFlappy,
+      buildPreview: PreviewShot('gradeflappy'),
       launch(gr) { CloseGameMenu(); if (typeof OpenGradeFlappy === 'function') OpenGradeFlappy(gr); },
       stop()     { if (typeof CloseGradeFlappy === 'function') CloseGradeFlappy(); },
     },
@@ -179,7 +179,7 @@
       desc: 'Sprint, jump, and slide through a grade-powered endless run',
       accent: '#4ade80',
       ready: true,
-      buildPreview: PreviewRunner,
+      buildPreview: PreviewShot('graderunner'),
       launch(gr) { CloseGameMenu(); if (typeof OpenGradeRunner === 'function') OpenGradeRunner(gr); },
       stop()     { if (typeof CloseGradeRunner === 'function') CloseGradeRunner(); },
     },
@@ -760,315 +760,9 @@
     RegisterPreview(Tick);
   }
 
-  function PreviewBreakout(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
 
-    const BCOLS = 7, BROWS = 3, BW = W / BCOLS, BH = 8;
-    const BCLR = ['#4ade80','#a3e635','#f97316','#f87171','#60a5fa','#a78bfa'];
-    const bricks = [];
-    for (let r = 0; r < BROWS; r++)
-      for (let c = 0; c < BCOLS; c++)
-        bricks.push({ x: c*BW, y: 6+r*(BH+2), w: BW-2, h: BH, clr: BCLR[(r*BCOLS+c)%BCLR.length], alive: true });
 
-    const PW = 28, PH = 5;
-    let px = W/2 - PW/2, bx = W/2, by = H-18, bvx = 1.6, bvy = -1.8;
-    let particles = [], respawnT = 0;
 
-    function Reset() {
-      bx = W/2; by = H-18; bvx = 1.5*(Math.random()>.5?1:-1); bvy = -1.8;
-      px = W/2-PW/2; respawnT = 0;
-      bricks.forEach(b => b.alive = true);
-    }
-
-    function Tick() {
-      if (!cv.isConnected) return false;
-
-      px += (bx - px - PW/2) * 0.12;
-      px = Math.max(0, Math.min(W-PW, px));
-
-      bx += bvx; by += bvy;
-      if (bx <= 2 || bx >= W-2) bvx = -bvx;
-      if (by <= 2) bvy = Math.abs(bvy);
-      if (by >= H-12-PH && by <= H-10 && bx >= px && bx <= px+PW) {
-        bvy = -Math.abs(bvy);
-        bvx += (bx - px - PW/2) * 0.06;
-      }
-      for (const b of bricks) {
-        if (!b.alive) continue;
-        if (bx >= b.x && bx <= b.x+b.w && by >= b.y && by <= b.y+b.h) {
-          b.alive = false; bvy = -bvy;
-          for (let i = 0; i < 5; i++) particles.push({ x:bx, y:by, vx:(Math.random()-.5)*3, vy:-Math.random()*2, clr:b.clr, t:1 });
-          break;
-        }
-      }
-      if (by > H+5 || !bricks.some(b=>b.alive)) { respawnT++; if (respawnT > 40) Reset(); }
-
-      particles = particles.map(p => ({...p, x:p.x+p.vx, y:p.y+p.vy, vy:p.vy+.15, t:p.t-.04})).filter(p => p.t > 0);
-
-      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
-      ctx.fillStyle = dark ? '#0a0a0a' : '#f0f0f0';
-      ctx.fillRect(0,0,W,H);
-
-      for (const b of bricks) {
-        if (!b.alive) continue;
-        ctx.fillStyle = b.clr;
-        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(b.x+1,b.y,b.w,b.h,2); ctx.fill(); }
-        else ctx.fillRect(b.x+1,b.y,b.w,b.h);
-        ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(b.x+1,b.y,b.w,b.h*.4);
-      }
-
-      ctx.fillStyle = '#f43f5e'; ctx.beginPath(); ctx.arc(bx,by,3.5,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'rgba(244,63,94,.25)'; ctx.beginPath(); ctx.arc(bx-bvx*2,by-bvy*2,5,0,Math.PI*2); ctx.fill();
-
-      ctx.fillStyle = dark ? '#e5e7eb' : '#374151';
-      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(px,H-12,PW,PH,2); ctx.fill(); }
-      else ctx.fillRect(px,H-12,PW,PH);
-
-      for (const p of particles) { ctx.globalAlpha=p.t; ctx.fillStyle=p.clr; ctx.fillRect(p.x-1.5,p.y-1.5,3,3); } ctx.globalAlpha=1;
-
-      return true;
-    }
-    RegisterPreview(Tick);
-  }
-
-  function PreviewPong(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
-
-    const PW = 4, PH = 22;
-    let ly = H/2-PH/2, ry = H/2-PH/2;
-    let bx = W/2, by = H/2, bvx = 1.5, bvy = 1.0;
-    let lScore = 0, rScore = 0, flashSide = 0, flashT = 0;
-    let trail = [];
-
-    function ResetBall() {
-      bx = W/2; by = H/2;
-      bvx = 1.5 * (Math.random()>.5?1:-1);
-      bvy = (Math.random()-.5)*2;
-    }
-
-    function Tick() {
-      if (!cv.isConnected) return false;
-
-      ly += (by - ly - PH/2) * 0.08;
-      ry += (by - ry - PH/2) * 0.11;
-      ly = Math.max(0, Math.min(H-PH, ly));
-      ry = Math.max(0, Math.min(H-PH, ry));
-
-      trail.push({x:bx,y:by,t:1});
-      trail = trail.map(t=>({...t,t:t.t-.08})).filter(t=>t.t>0);
-
-      bx += bvx; by += bvy;
-      if (by <= 0 || by >= H) bvy = -bvy;
-
-      if (bx <= 10+PW && by >= ly && by <= ly+PH && bvx < 0) {
-        bvx = Math.abs(bvx) * 1.03;
-        bvy += (by - ly - PH/2) * 0.08;
-      }
-      if (bx >= W-10-PW && by >= ry && by <= ry+PH && bvx > 0) {
-        bvx = -Math.abs(bvx) * 1.03;
-        bvy += (by - ry - PH/2) * 0.08;
-      }
-
-      if (bx < -5) { rScore = (rScore+1)%10; flashSide=-1; flashT=1; ResetBall(); }
-      if (bx > W+5) { lScore = (lScore+1)%10; flashSide=1; flashT=1; ResetBall(); }
-      if (flashT > 0) flashT -= 0.03;
-      if (Math.abs(bvx) > 4) bvx = 4 * Math.sign(bvx);
-
-      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
-      ctx.fillStyle = dark ? '#0a0a0a' : '#f0f0f0';
-      ctx.fillRect(0,0,W,H);
-
-      ctx.strokeStyle = dark ? '#222' : '#ccc'; ctx.lineWidth = 1; ctx.setLineDash([3,4]);
-      ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke(); ctx.setLineDash([]);
-
-      ctx.fillStyle = dark ? '#333' : '#ddd';
-      ctx.font = 'bold 22px "IBM Plex Mono",monospace'; ctx.textAlign = 'center';
-      ctx.fillText(lScore, W/2-20, 24);
-      ctx.fillText(rScore, W/2+20, 24);
-
-      ctx.fillStyle = '#06b6d4';
-      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(8,ly,PW,PH,2); ctx.fill(); }
-      else ctx.fillRect(8,ly,PW,PH);
-      ctx.fillStyle = '#f43f5e';
-      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(W-8-PW,ry,PW,PH,2); ctx.fill(); }
-      else ctx.fillRect(W-8-PW,ry,PW,PH);
-
-      for (const t of trail) { ctx.globalAlpha=t.t*.2; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(t.x,t.y,2.5,0,Math.PI*2); ctx.fill(); }
-      ctx.globalAlpha=1;
-
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(bx,by,3.5,0,Math.PI*2); ctx.fill();
-
-      if (flashT > 0) {
-        ctx.globalAlpha = flashT*.15;
-        ctx.fillStyle = flashSide > 0 ? '#06b6d4' : '#f43f5e';
-        ctx.fillRect(0,0,W,H);
-        ctx.globalAlpha = 1;
-      }
-
-      return true;
-    }
-    RegisterPreview(Tick);
-  }
-
-  function PreviewFlappy(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
-
-    const GRAVITY = 0.12, FLAP = -2.2, GAP = 36, PW = 18, SPEED = 1.2;
-    let birdY = H/2, birdVy = 0, birdRot = 0;
-    let pipes = [{x: W+20, gapY: 30+Math.random()*30},{x: W+90, gapY: 25+Math.random()*40}];
-    let flapTimer = 0, groundX = 0;
-    const BCLR = ['#4ade80','#f97316','#60a5fa','#eab308'];
-    let birdClr = BCLR[0];
-
-    function Tick() {
-      if (!cv.isConnected) return false;
-
-      flapTimer++;
-      const nextPipe = pipes.find(p => p.x + PW > 30);
-      if (nextPipe) {
-        const targetY = nextPipe.gapY + GAP/2;
-        if (birdY > targetY + 5 || birdVy > 1.5) {
-          if (flapTimer > 8) { birdVy = FLAP; flapTimer = 0; birdClr = BCLR[Math.floor(Math.random()*BCLR.length)]; }
-        }
-      } else if (flapTimer > 18) { birdVy = FLAP; flapTimer = 0; }
-
-      birdVy += GRAVITY;
-      birdY += birdVy;
-      birdRot = Math.max(-0.4, Math.min(0.6, birdVy * 0.12));
-
-      if (birdY < 5) { birdY = 5; birdVy = 0; }
-      if (birdY > H-15) { birdY = H/2; birdVy = 0; pipes.forEach(p => p.x = W + Math.random()*60); }
-
-      for (const p of pipes) p.x -= SPEED;
-      if (pipes[0].x < -PW) { pipes.shift(); pipes.push({x: pipes[pipes.length-1].x + 65 + Math.random()*20, gapY: 15+Math.random()*(H-GAP-30)}); }
-
-      groundX = (groundX - SPEED) % 8;
-
-      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
-      ctx.fillStyle = dark ? '#0a0a0a' : '#e8f4f8';
-      ctx.fillRect(0,0,W,H);
-
-      for (const p of pipes) {
-        const pClr = p.gapY > H/2-10 ? '#4ade80' : '#f97316';
-        ctx.fillStyle = pClr;
-        ctx.fillRect(p.x, 0, PW, p.gapY);
-        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(p.x-2, p.gapY-5, PW+4, 5, 2); ctx.fill(); }
-        ctx.fillRect(p.x, p.gapY+GAP, PW, H-p.gapY-GAP-10);
-        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(p.x-2, p.gapY+GAP, PW+4, 5, 2); ctx.fill(); }
-      }
-
-      ctx.fillStyle = dark ? '#1a1a1a' : '#c8b07a';
-      ctx.fillRect(0, H-10, W, 10);
-      ctx.strokeStyle = dark ? '#333' : '#a09060'; ctx.lineWidth = 1;
-      for (let gx = groundX; gx < W; gx += 8) { ctx.beginPath(); ctx.moveTo(gx, H-10); ctx.lineTo(gx+4, H); ctx.stroke(); }
-
-      ctx.save();
-      ctx.translate(30, birdY);
-      ctx.rotate(birdRot);
-      ctx.fillStyle = birdClr;
-      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-6,-6,12,12,3); ctx.fill(); }
-      else ctx.fillRect(-6,-6,12,12);
-      ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(-6,-6,12,5);
-      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(3, -2, 1.8, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(3.5, -2.5, 0.7, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#f59e0b';
-      ctx.beginPath(); ctx.moveTo(6,0); ctx.lineTo(10,-1); ctx.lineTo(10,2); ctx.closePath(); ctx.fill();
-      ctx.restore();
-
-      return true;
-    }
-    RegisterPreview(Tick);
-  }
-
-  function PreviewRunner(el) {
-    const W = 160, H = 105;
-    const cv = CreateCanvas(el, W, H);
-    const ctx = cv.getContext('2d');
-    const groundY = H - 18;
-    let xScroll = 0, runnerY = groundY - 24, runnerVy = 0, slideT = 0, score = 0;
-    let obstacles = [{ x: 110, y: groundY - 22, w: 14, h: 22, color: '#f87171' }];
-    let pickups = [{ x: 70, y: groundY - 46, r: 7, color: '#4ade80', label: '82' }];
-
-    function Reset() {
-      runnerY = groundY - 24; runnerVy = 0; slideT = 0; score = 0;
-      obstacles = [{ x: W + 25, y: groundY - 22, w: 14, h: 22, color: '#f87171' }];
-      pickups = [{ x: W + 70, y: groundY - 48, r: 7, color: '#4ade80', label: '82' }];
-    }
-
-    function Tick() {
-      if (!cv.isConnected) return false;
-      const dark = document.getElementById('gf-arcade')?.dataset.theme === 'dark';
-      const speed = 1.8;
-      xScroll = (xScroll + speed) % 24;
-      score++;
-
-      const nextObstacle = obstacles.find(o => o.x > 24 && o.x < 82);
-      if (nextObstacle && runnerY >= groundY - 24 && slideT <= 0) runnerVy = -4.2;
-      if (score % 170 === 70) slideT = 34;
-      if (slideT > 0) slideT--;
-
-      runnerVy += 0.22;
-      runnerY += runnerVy;
-      if (runnerY > groundY - 24) { runnerY = groundY - 24; runnerVy = 0; }
-
-      for (const o of obstacles) o.x -= speed;
-      for (const p of pickups) p.x -= speed;
-      if (!obstacles.length || obstacles[obstacles.length - 1].x < W - 78) {
-        const tall = Math.random() > 0.55;
-        obstacles.push({ x: W + RandomInt(8, 28), y: groundY - (tall ? 32 : 22), w: tall ? 12 : 15, h: tall ? 32 : 22, color: tall ? '#f97316' : '#f87171' });
-      }
-      if (!pickups.length || pickups[pickups.length - 1].x < W - 120) {
-        pickups.push({ x: W + RandomInt(30, 70), y: groundY - RandomInt(42, 64), r: 7, color: Math.random() > 0.45 ? '#4ade80' : '#a3e635', label: Math.random() > 0.45 ? '86' : '64' });
-      }
-      obstacles = obstacles.filter(o => o.x + o.w > -8);
-      pickups = pickups.filter(p => p.x + p.r > -8);
-
-      ctx.fillStyle = dark ? '#0a0e1a' : '#bae6fd';
-      ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = dark ? 'rgba(180,200,230,0.10)' : 'rgba(255,255,255,0.82)';
-      for (let i = 0; i < 3; i++) {
-        const cx = ((i * 70 - score * 0.25) % 230 + 230) % 230 - 35;
-        const cy = 16 + i * 13;
-        ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.arc(cx + 9, cy + 3, 7, 0, Math.PI * 2); ctx.arc(cx - 8, cy + 4, 6, 0, Math.PI * 2); ctx.fill();
-      }
-
-      ctx.fillStyle = dark ? '#1f2937' : '#d4b886';
-      ctx.fillRect(0, groundY, W, H - groundY);
-      ctx.strokeStyle = dark ? '#374151' : '#a08960';
-      for (let gx = -xScroll; gx < W; gx += 24) { ctx.beginPath(); ctx.moveTo(gx, groundY + 8); ctx.lineTo(gx + 12, groundY + 8); ctx.stroke(); }
-
-      for (const p of pickups) {
-        ctx.fillStyle = p.color + '44'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.8, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#111'; ctx.font = '700 6px "IBM Plex Mono",monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.label, p.x, p.y);
-      }
-
-      for (const o of obstacles) {
-        ctx.fillStyle = o.color;
-        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 3); ctx.fill(); }
-        else ctx.fillRect(o.x, o.y, o.w, o.h);
-      }
-
-      const ph = slideT > 0 ? 14 : 24;
-      const py = slideT > 0 ? runnerY + 10 : runnerY;
-      ctx.fillStyle = '#4ade80';
-      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(30, py, 18, ph, 5); ctx.fill(); }
-      else ctx.fillRect(30, py, 18, ph);
-      ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(32, py + 2, 14, Math.max(3, ph * 0.35));
-      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(43, py + 7, 1.8, 0, Math.PI * 2); ctx.fill();
-
-      ctx.fillStyle = dark ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.45)';
-      ctx.font = '700 10px "IBM Plex Mono",monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText(String(Math.floor(score / 7)), W - 8, 7);
-      return true;
-    }
-    RegisterPreview(Tick);
-  }
 
   function PreviewShot(name) {
     return el => {
