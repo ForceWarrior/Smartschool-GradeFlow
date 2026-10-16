@@ -1,6 +1,6 @@
 # GradeFlow - Privacy Policy
 
-**Last updated: October 2026**
+**Last updated: October 2026 (version 2.0.0)**
 
 GradeFlow is a Chrome extension built for SmartSchool users. This policy explains what data the extension accesses, how it is used, and how it is stored.
 
@@ -13,6 +13,8 @@ When you open the GradeFlow panel on a SmartSchool page where you are already lo
 The planner tab reads your own planned assignments and to-dos from SmartSchool's planner API (`/planner/api/v1/planned-elements/user/...`). The attendance tab reads your absences and late arrivals from your own Studentcard page.
 
 The extension also reads SmartSchool page styles to extract subject icon classes and visual theme/layout variables, including Smartschool++ variables when that extension is installed, so GradeFlow can show matching icons and follow the active page theme. When you use a custom theme, GradeFlow reads SmartSchool's stylesheets (and, if you allow it, fetches the ones hosted on SmartSchool's own `smart-school.net` CDN) to recolour the page locally in your browser.
+
+The arcade games use the grades already loaded in the panel to theme their content (for example grade numbers on obstacles). This happens locally in your browser and the grades are not sent anywhere.
 
 No Smartschool++ account data, settings content, or external profile data is collected. No other data is accessed.
 
@@ -39,7 +41,8 @@ All data is stored locally on your device only:
 | Custom theme, saved themes | `chrome.storage.local` | Theme editor |
 | Recoloured theme stylesheet cache | `localStorage` | Show your theme without a flash on page load |
 | Keyboard shortcuts | `chrome.storage.local` | Remapped shortcuts |
-| Game best scores and progress | `localStorage` | Arcade high scores |
+| Game best scores and progress (story progress, stars, coins, shop items, missions, unlocked characters and skins, seen tutorials) | `localStorage` | Arcade high scores and saves |
+| Grade Hook levels you build in the editor | `localStorage` | Editing and replaying your own levels |
 
 `chrome.storage.local` and `chrome.storage.sync` are private to the extension and not accessible to websites. `localStorage` entries are scoped to the SmartSchool domain.
 
@@ -55,7 +58,12 @@ GradeFlow does **not**:
 - Share data with third parties
 - Collect personally identifiable information
 
-All network requests made by the extension go exclusively to the SmartSchool domain you are already visiting (same-origin API calls that require your existing login session). The exceptions are fetching SmartSchool's own CDN icons and stylesheets, which are public assets hosted by SmartSchool, and the optional chat and network features below.
+All network requests made by the extension go exclusively to the SmartSchool domain you are already visiting (same-origin API calls that require your existing login session). The exceptions are:
+- fetching SmartSchool's own CDN icons and stylesheets, which are public assets hosted by SmartSchool;
+- loading the IBM Plex fonts used by the GradeFlow panel and popup from Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`). Like any website that uses Google Fonts, this request reveals your IP address and browser to Google, but no grades or other data;
+- the optional chat and network features below.
+
+Grade Hook share codes contain only the level layout and are shared by you, out of band. The theme diagnostics shortcut (Ctrl+Alt+Shift+D) copies style information about the page element under your mouse to your clipboard so you can paste it in a bug report yourself; it is never sent automatically and contains no grades.
 
 The optional **peer-to-peer chat feature** (see section 3a) connects directly to other users you explicitly invite and makes one request to a public STUN server to assist with the connection. The optional **network features** (see section 3b) also use public relays to find other GradeFlow users on the same network. No chat content, game data, metadata, or user identifiers are ever sent to the extension authors.
 
