@@ -15,229 +15,32 @@
   }
 
   const GAMES = [
-    {
-      id: 'gradeio',
-      file: 'JS/games/gradeio.js',
-      title: 'Grade.io',
-      descKey: 'game_gradeio_desc',
-      accent: '#38bdf8',
-      ready: true,
-      isNew: true,
-      buildPreview: PreviewShot('gradeio'),
-      launch(gr) { CloseGameMenu(); W.OpenGradeIo?.(gr); },
-      stop()     { W.CloseGradeIo?.(); },
-    },
-    {
-      id: 'gradecross',
-      file: 'JS/games/gradecross.js',
-      title: 'Crossy Grade',
-      descKey: 'game_gradecross_desc',
-      accent: '#22c55e',
-      ready: true,
-      isNew: true,
-      buildPreview: PreviewShot('gradecross'),
-      launch(gr) { CloseGameMenu(); W.OpenGradeCross?.(gr); },
-      stop()     { W.CloseGradeCross?.(); },
-    },
-    {
-      id: 'gradesurfers',
-      file: 'JS/games/gradesurfers.js',
-      title: 'Grade Surfers',
-      descKey: 'game_gradesurfers_desc',
-      accent: '#f59e0b',
-      ready: true,
-      isNew: true,
-      buildPreview: PreviewShot('gradesurfers'),
-      launch(gr) { CloseGameMenu(); W.OpenGradeSurfers?.(gr); },
-      stop()     { W.CloseGradeSurfers?.(); },
-    },
-    {
-      id: 'gradehook',
-      file: 'JS/games/gradehook.js',
-      title: 'Grade Hook',
-      descKey: 'game_gradehook_desc',
-      accent: '#ec4899',
-      ready: true,
-      isNew: true,
-      buildPreview: PreviewShot('gradehook'),
-      launch(gr) { CloseGameMenu(); W.OpenGradeHook?.(gr); },
-      stop()     { W.CloseGradeHook?.(); },
-    },
-    {
-      id: 'gradestack',
-      file: 'JS/games/tetris.js',
-      title: 'GradeStack',
-      descKey: 'game_gradestack_desc',
-      desc: 'Classic block stacking powered by your grades',
-      accent: '#f97316',
-      ready: true,
-      buildPreview: PreviewShot('tetris'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeTetris === 'function') OpenGradeTetris(gr); },
-      stop()     { if (typeof CloseGradeTetris === 'function') CloseGradeTetris(); },
-    },
-    {
-      id: 'gradesnake',
-      file: 'JS/games/snake.js',
-      title: 'GradeSnake',
-      descKey: 'game_gradesnake_desc',
-      desc: 'Guide the snake through your report card',
-      accent: '#4ade80',
-      ready: true,
-      buildPreview: PreviewShot('snake'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeSnake === 'function') OpenGradeSnake(gr); },
-      stop()     { if (typeof CloseGradeSnake === 'function') CloseGradeSnake(); },
-    },
-    {
-      id: 'grade2048',
-      file: 'JS/games/grade2048.js',
-      title: 'Grade 2048',
-      descKey: 'game_grade2048_desc',
-      desc: 'Merge weak grades into stronger ones - reach 20/20!',
-      accent: '#f59e0b',
-      ready: true,
-      buildPreview: PreviewShot('grade2048'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGrade2048 === 'function') OpenGrade2048(gr); },
-      stop()     { if (typeof CloseGrade2048 === 'function') CloseGrade2048(); },
-    },
-    {
-      id: 'gradesweeper',
-      file: 'JS/games/gradesweeper.js',
-      title: 'GradeSweeper',
-      descKey: 'game_gradesweeper_desc',
-      desc: 'Reveal all safe grades without uncovering a fail',
-      accent: '#60a5fa',
-      ready: true,
-      buildPreview: PreviewShot('gradesweeper'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeSweeper === 'function') OpenGradeSweeper(gr); },
-      stop()     { if (typeof CloseGradeSweeper === 'function') CloseGradeSweeper(); },
-    },
-    {
-      id: 'gradememory',
-      file: 'JS/games/gradememory.js',
-      title: 'GradeMemory',
-      descKey: 'game_gradememory_desc',
-      desc: 'Flip grade cards and match every pair from memory',
-      accent: '#a78bfa',
-      ready: true,
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeMemory === 'function') OpenGradeMemory(gr); },
-      stop()     { if (typeof CloseGradeMemory === 'function') CloseGradeMemory(); },
-      buildPreview: PreviewShot('gradememory'),
-    },
-    {
-      id: 'gradeshooter',
-      file: 'JS/games/gradeshooter.js',
-      title: 'GradeShooter',
-      descKey: 'game_gradeshooter_desc',
-      desc: 'Fire grade bubbles and match 3+ of the same band to clear',
-      accent: '#22d3ee',
-      ready: true,
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeShooter === 'function') OpenGradeShooter(gr); },
-      stop()     { if (typeof CloseGradeShooter === 'function') CloseGradeShooter(); },
-      buildPreview: PreviewShot('gradeshooter'),
-    },
-    {
-      id: 'gradebreakout',
-      file: 'JS/games/gradebreakout.js',
-      title: 'GradeBreakout',
-      descKey: 'game_gradebreakout_desc',
-      desc: 'Smash grade bricks with the ball and rack up points',
-      accent: '#f43f5e',
-      ready: true,
-      buildPreview: PreviewShot('gradebreakout'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeBreakout === 'function') OpenGradeBreakout(gr); },
-      stop()     { if (typeof CloseGradeBreakout === 'function') CloseGradeBreakout(); },
-    },
-    {
-      id: 'gradepong',
-      file: 'JS/games/gradepong.js',
-      title: 'GradePong',
-      descKey: 'game_gradepong_desc',
-      desc: 'Beat the AI in a grade-powered game of pong',
-      accent: '#06b6d4',
-      ready: true,
-      buildPreview: PreviewShot('gradepong'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradePong === 'function') OpenGradePong(gr); },
-      stop()     { if (typeof CloseGradePong === 'function') CloseGradePong(); },
-    },
-    {
-      id: 'gradeflappy',
-      file: 'JS/games/gradeflappy.js',
-      title: 'GradeFlappy',
-      descKey: 'game_gradeflappy_desc',
-      desc: 'Fly through the pipes and dodge bad grades',
-      accent: '#eab308',
-      ready: true,
-      buildPreview: PreviewShot('gradeflappy'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeFlappy === 'function') OpenGradeFlappy(gr); },
-      stop()     { if (typeof CloseGradeFlappy === 'function') CloseGradeFlappy(); },
-    },
-    {
-      id: 'graderunner',
-      file: 'JS/games/graderunner.js',
-      title: 'GradeRunner',
-      descKey: 'game_graderunner_desc',
-      desc: 'Sprint, jump, and slide through a grade-powered endless run',
-      accent: '#4ade80',
-      ready: true,
-      buildPreview: PreviewShot('graderunner'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeRunner === 'function') OpenGradeRunner(gr); },
-      stop()     { if (typeof CloseGradeRunner === 'function') CloseGradeRunner(); },
-    },
-    {
-      id: 'gradetower',
-      file: 'JS/games/gradetower.js',
-      title: 'GradeTower',
-      descKey: 'game_gradetower_desc',
-      desc: 'Build tiny grade towers and defend your report path',
-      accent: '#22d3ee',
-      ready: true,
-      buildPreview: PreviewShot('gradetower'),
-      launch(gr) { CloseGameMenu(); if (typeof OpenGradeTower === 'function') OpenGradeTower(gr); },
-      stop()     { if (typeof CloseGradeTower === 'function') CloseGradeTower(); },
-    },
-  ];
+    ['gradeio',       'gradeio',       'Grade.io',      '#38bdf8', 'GradeIo', 'io-close', true],
+    ['gradecross',    'gradecross',    'Crossy Grade',  '#22c55e', 'GradeCross', 'cr-close', true],
+    ['gradesurfers',  'gradesurfers',  'Grade Surfers', '#f59e0b', 'GradeSurfers', 'ss-close', true],
+    ['gradehook',     'gradehook',     'Grade Hook',    '#ec4899', 'GradeHook', 'hk-close', true],
+    ['gradestack',    'tetris',        'GradeStack',    '#f97316', 'GradeTetris', 'tt-close'],
+    ['gradesnake',    'snake',         'GradeSnake',    '#4ade80', 'GradeSnake', 'sn-close-btn'],
+    ['grade2048',     'grade2048',     'Grade 2048',    '#f59e0b', 'Grade2048', '28-close'],
+    ['gradesweeper',  'gradesweeper',  'GradeSweeper',  '#60a5fa', 'GradeSweeper', 'sw-close'],
+    ['gradememory',   'gradememory',   'GradeMemory',   '#a78bfa', 'GradeMemory', 'mem-close'],
+    ['gradeshooter',  'gradeshooter',  'GradeShooter',  '#22d3ee', 'GradeShooter', 'sh-close'],
+    ['gradebreakout', 'gradebreakout', 'GradeBreakout', '#f43f5e', 'GradeBreakout', 'bo-close'],
+    ['gradepong',     'gradepong',     'GradePong',     '#06b6d4', 'GradePong', 'po-close'],
+    ['gradeflappy',   'gradeflappy',   'GradeFlappy',   '#eab308', 'GradeFlappy', 'fl-close'],
+    ['graderunner',   'graderunner',   'GradeRunner',   '#4ade80', 'GradeRunner', 'rn-close'],
+    ['gradetower',    'gradetower',    'GradeTower',    '#22d3ee', 'GradeTower', 'tw-close'],
+  ].map(([id, shot, title, accent, fn, close, isNew]) => ({
+    id, shot, title, accent, isNew,
+    file: `JS/games/${shot}.js`,
+    closeSel: `#gf-${close}`,
+    launch(gr) { W['Open' + fn]?.(gr); },
+    stop() { W['Close' + fn]?.(); },
+  }));
 
   W._gfGames = GAMES;
 
   let _el = null, _grades = [], _activeId = null, _kh = null;
-
-  const _previewTicks = [];
-  let _previewRaf = null;
-  let _previewLastTs = 0;
-  const PREVIEW_INTERVAL = 33;
-
-  function _PreviewLoop(ts) {
-    _previewRaf = null;
-    if (!_previewTicks.length) return;
-    const elapsed = ts - _previewLastTs;
-    if (elapsed >= PREVIEW_INTERVAL) {
-      _previewLastTs = ts - (elapsed % PREVIEW_INTERVAL);
-      for (let i = _previewTicks.length - 1; i >= 0; i--) {
-        if (!_previewTicks[i](ts)) _previewTicks.splice(i, 1);
-      }
-    }
-    if (_previewTicks.length) _previewRaf = requestAnimationFrame(_PreviewLoop);
-  }
-
-  function RegisterPreview(tickFn) {
-    _previewTicks.push(tickFn);
-    if (!_previewRaf) _previewRaf = requestAnimationFrame(_PreviewLoop);
-  }
-
-  function StopAllPreviews() {
-    _previewTicks.length = 0;
-    if (_previewRaf) { cancelAnimationFrame(_previewRaf); _previewRaf = null; }
-  }
-
-  function RandomInt(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
-
-  function CreateCanvas(el, w, h) {
-    const cv = document.createElement('canvas');
-    cv.width = w; cv.height = h;
-    cv.style.cssText = 'display:block;width:100%;height:100%';
-    el.appendChild(cv);
-    return cv;
-  }
 
   function SyncTheme() {
     if (!_el) return;
@@ -258,16 +61,15 @@
     _el = document.createElement('div');
     _el.id = 'gf-arcade';
 
-    const playable = GAMES.filter(g => g.ready).length;
     const cards = GAMES.map(g => `
-      <div class="gf-gc${g.ready ? '' : ' gf-gc-soon'}" data-gid="${g.id}">
+      <div class="gf-gc" data-gid="${g.id}">
         <div class="gf-gc-prev" id="gf-gp-${g.id}"></div>
         <div class="gf-gc-body">
           <div class="gf-gc-title" style="color:${g.accent}">${g.title}${g.isNew ? `<span class="gf-gc-new">${_GameText('game_new')}</span>` : ''}</div>
-          <div class="gf-gc-desc">${g.descKey ? _GameText(g.descKey) : g.desc}</div>
+          <div class="gf-gc-desc">${_GameText(`game_${g.id}_desc`)}</div>
         </div>
-        <button class="gf-gc-play" data-play="${g.id}"${g.ready ? '' : ' disabled'}>
-          ${g.ready ? '▶ ' + _GameText('game_play') : _GameText('game_coming_soon')}
+        <button class="gf-gc-play" data-play="${g.id}">
+          ▶ ${_GameText('game_play')}
         </button>
       </div>`).join('');
 
@@ -277,7 +79,7 @@
         <div class="gf-arc-hl">
           <div id="gf-arc-icon">GF</div>
           <span id="gf-arc-t">${_GameText('game_arcade')}</span>
-          <span id="gf-arc-badge">${playable} ${_GameText('game_games')}</span>
+          <span id="gf-arc-badge">${GAMES.length} ${_GameText('game_games')}</span>
         </div>
         <div class="gf-arc-hr">
           <kbd class="gf-arc-key">${W.GfKeys ? W.GfKeys.label('arcade') : 'F8'}</kbd>
@@ -293,65 +95,24 @@
     _el.addEventListener('click', e => {
       if (e.target === _el) CloseGameMenu();
       const btn = e.target.closest('[data-play]');
-      if (btn && !btn.disabled) {
+      if (btn) {
         const g = GAMES.find(x => x.id === btn.dataset.play);
         if (g) LaunchGame(g);
       }
     });
-
   }
 
   function RenderPreviews() {
-    StopAllPreviews();
+    const theme = _el.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
     for (const g of GAMES) {
-      const c = document.getElementById(`gf-gp-${g.id}`);
-      if (!c || !g.buildPreview) continue;
-      c.textContent = '';
-      g.buildPreview(c, g.accent);
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-  function PreviewShot(name) {
-    return el => {
       const img = document.createElement('img');
       img.className = 'gf-gc-shot';
       img.alt = '';
       img.decoding = 'async';
-      img.src = chrome.runtime.getURL(`Assets/previews/${name}-${_el?.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'}.png`);
-      el.appendChild(img);
-    };
+      img.src = chrome.runtime.getURL(`Assets/previews/${g.shot}-${theme}.webp`);
+      document.getElementById(`gf-gp-${g.id}`).replaceChildren(img);
+    }
   }
-
-
-
-
-  const _GAME_CLOSE_SEL = {
-    gradestack:   '#gf-tt-close',
-    gradesnake:   '#gf-sn-close-btn',
-    grade2048:    '#gf-28-close',
-    gradesweeper: '#gf-sw-close',
-    gradememory:  '#gf-mem-close',
-    gradeshooter: '#gf-sh-close',
-    gradebreakout: '#gf-bo-close',
-    gradepong:     '#gf-po-close',
-    gradeflappy:   '#gf-fl-close',
-    graderunner:   '#gf-rn-close',
-    gradetower:    '#gf-tw-close',
-    gradeio:       '#gf-io-close',
-    gradecross:    '#gf-cr-close',
-    gradesurfers:  '#gf-ss-close',
-    gradehook:     '#gf-hk-close',
-  };
 
   function LaunchGame(game) {
     _activeId = game.id;
@@ -366,13 +127,11 @@
   }
 
   function WatchClose(game) {
-    const sel = _GAME_CLOSE_SEL[game.id];
-    if (!sel) return;
     function OnGameClose(e) {
-      if (!e.target.closest(sel)) return;
+      if (!e.target.closest(game.closeSel)) return;
       e.stopImmediatePropagation();
       document.removeEventListener('click', OnGameClose, true);
-      if (game.stop) game.stop();
+      game.stop();
       _activeId = null;
       OpenGameMenu(_grades);
     }
@@ -380,7 +139,6 @@
   }
 
   function _Hide() {
-    StopAllPreviews();
     if (_el) _el.style.display = 'none';
     _DetachKeys();
     _tobs.disconnect();
@@ -403,7 +161,7 @@
     if (grades) _grades = grades;
     if (_activeId) {
       const g = GAMES.find(x => x.id === _activeId);
-      if (g && g.stop) g.stop();
+      if (g) g.stop();
       _activeId = null;
     }
     if (!_el) Build();
@@ -417,14 +175,7 @@
   function CloseGameMenu() { _Hide(); }
 
   function ToggleGameMenu(grades) {
-    if (_activeId) {
-      const g = GAMES.find(x => x.id === _activeId);
-      if (g && g.stop) g.stop();
-      _activeId = null;
-      OpenGameMenu(grades);
-      return;
-    }
-    if (_el && _el.style.display !== 'none') CloseGameMenu();
+    if (!_activeId && _el && _el.style.display !== 'none') CloseGameMenu();
     else OpenGameMenu(grades);
   }
 
@@ -501,14 +252,12 @@
   background:var(--surf); overflow:hidden;
   transition:transform .15s,box-shadow .15s;
 }
-.gf-gc:not(.gf-gc-soon):hover { transform:translateY(-2px); box-shadow:0 6px 24px var(--sh2); }
-.gf-gc-soon { opacity:0.42; }
+.gf-gc:hover { transform:translateY(-2px); box-shadow:0 6px 24px var(--sh2); }
 .gf-gc-prev {
   height:96px; background:var(--surf2);
   display:flex; align-items:center; justify-content:center;
   overflow:hidden; border-bottom:1px solid var(--brd);
 }
-.gf-gc-prev canvas { display:block; width:100%; height:100%; }
 .gf-gc-shot { display:block; width:100%; height:100%; object-fit:cover; }
 .gf-gc-body { padding:9px 12px; flex:1; min-height:0; overflow:hidden; }
 .gf-gc-title { font-size:13px; font-weight:700; margin-bottom:2px; }
@@ -521,8 +270,7 @@
   font-family:inherit; font-size:11px; font-weight:700;
   cursor:pointer; transition:background .12s;
 }
-.gf-gc-play:hover:not(:disabled) { background:color-mix(in srgb, var(--gf-game-accent,#f97316) 12%, transparent); }
-.gf-gc-play:disabled { color:var(--txt3); cursor:default; font-weight:400; }
+.gf-gc-play:hover { background:color-mix(in srgb, var(--gf-game-accent,#f97316) 12%, transparent); }
 @media (max-width: 680px) {
   #gf-arc-modal { width:94vw; height:min(620px, calc(100vh - 28px)); }
   #gf-arc-grid { grid-template-columns:repeat(2,1fr); }

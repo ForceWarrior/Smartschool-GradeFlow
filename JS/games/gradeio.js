@@ -3,7 +3,7 @@
   if (W.OpenGradeIo) return;
 
   const _GameText = typeof _GfTranslate === 'function' ? _GfTranslate : k => k;
-  const T = (k, vars) => { let s = _GameText(k); for (const v in vars || {}) s = s.replace(`{${v}}`, vars[v]); return s; };
+  const T = (k, vars) => { let s = _GameText(k); if (vars) for (const v in vars) s = s.replace(`{${v}}`, vars[v]); return s; };
 
   const SIZE = 6000;
   const PELLETS = 900;
@@ -62,7 +62,7 @@
   let net = null, lastFx = 0;
   const snaps = [];
   let pelletState = null, roster = new Map();
-  let SPR = null, vig = null, vigKey = '';
+  let SPR = null, vig = null, vigW = 0, vigH = 0, vigD = false, vigR = 0, parked = false, BK = 1, BX = 0, BY = 0;
   const VIEW = { l: 0, t: 0, r: 0, b: 0 };
   const HITS = [];
   const seen = new Map(), seenNow = new Set();
@@ -1237,9 +1237,8 @@
   }
 
   function Vignette(dark) {
-    const key = cw + 'x' + ch + dark + dpr;
-    if (vigKey === key) return vig;
-    vigKey = key;
+    if (vig && vigW === cw && vigH === ch && vigD === dark && vigR === dpr) return vig;
+    vigW = cw; vigH = ch; vigD = dark; vigR = dpr;
     vig = document.createElement('canvas');
     vig.width = Math.max(1, Math.round(cw * dpr / 2)); vig.height = Math.max(1, Math.round(ch * dpr / 2));
     const g = vig.getContext('2d');
@@ -1249,8 +1248,11 @@
     return vig;
   }
 
+  const UF = 'Ubuntu, "Segoe UI", Arial, sans-serif', FONTS = {};
+  function Font(w, px) { const k = w * 100 + px; return FONTS[k] || (FONTS[k] = `${w} ${px}px ${UF}`); }
+
   function Text(str, x, y, size, stroke = true) {
-    ctx.font = `700 ${size}px Ubuntu, "Segoe UI", Arial, sans-serif`;
+    ctx.font = `700 ${size}px ${UF}`;
     if (stroke) { ctx.lineWidth = Math.max(2, size * 0.14); ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(str, x, y); }
     ctx.fillText(str, x, y);
   }
@@ -1333,19 +1335,17 @@
   }
 
   function DrawVirus(v, t) {
-    const r = Radius(v.m);
-    ctx.save();
-    ctx.translate(v.x, v.y);
+    const r = Radius(v.m), a = v.k === 2 ? t * 0.12 + v.id : (v.k ? t * 0.6 : t * 0.1) + v.id;
+    const co = Math.cos(a) * BK, si = Math.sin(a) * BK;
+    ctx.setTransform(co, si, -si, co, BK * v.x + BX, BK * v.y + BY);
     if (v.k === 2) {
       const k = r * (1 + Math.sin(t * 3 + v.id) * 0.03) * 300 / 248;
-      ctx.rotate(t * 0.12 + v.id);
       ctx.drawImage(SPR.mother, -k, -k, k * 2, k * 2);
     } else {
       const k = r * 300 / 256;
-      ctx.rotate((v.k ? t * 0.6 : t * 0.1) + v.id);
       ctx.drawImage(SPR.viruses[v.k], -k, -k, k * 2, k * 2);
     }
-    ctx.restore();
+    ctx.setTransform(BK, 0, 0, BK, BX, BY);
   }
 
   function ByMass(a, b) { return a.m - b.m; }
@@ -1365,7 +1365,8 @@
     const s = cam.s;
     const left = cam.x - cw / 2 / s, top = cam.y - ch / 2 / s, right = cam.x + cw / 2 / s, bottom = cam.y + ch / 2 / s;
     VIEW.l = left; VIEW.t = top; VIEW.r = right; VIEW.b = bottom;
-    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (cw / 2 - cam.x * s + ox), dpr * (ch / 2 - cam.y * s + oy));
+    BK = dpr * s; BX = dpr * (cw / 2 - cam.x * s + ox); BY = dpr * (ch / 2 - cam.y * s + oy);
+    ctx.setTransform(BK, 0, 0, BK, BX, BY);
     DrawGround(dark, left, top, right, bottom, s);
     if (FR.hasZone) {
       const z = FR.zone;
@@ -1488,7 +1489,6 @@
   }
 
   function DrawHud(me, dt) {
-    const F = 'Ubuntu, "Segoe UI", Arial, sans-serif';
     LB.length = 0;
     for (let i = 0; i < FR.np; i++) LB.push(FR.players[i]);
     LB.sort(ByScore);
@@ -1505,7 +1505,7 @@
     ctx.fillStyle = '#38bdf8';
     RoundRect(x0 + 12, y0 + 14, 4, 16, 2); ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = `800 15px ${F}`;
+    ctx.font = Font(800, 15);
     ctx.fillText(T('io_leaderboard'), x0 + 22, y0 + 22);
     ctx.fillStyle = 'rgba(255,255,255,.12)';
     ctx.fillRect(x0 + 10, y0 + 36, lbW - 20, 1);
@@ -1514,7 +1514,7 @@
       TEAMSUM[0] = TEAMSUM[1] = TEAMSUM[2] = 0;
       for (let i = 0; i < LB.length; i++) if (LB[i].team >= 0) TEAMSUM[LB[i].team] += LB[i].score;
       const tot = TEAMSUM[0] + TEAMSUM[1] + TEAMSUM[2] || 1;
-      ctx.font = `700 11px ${F}`;
+      ctx.font = Font(700, 11);
       for (let k = 0; k < 3; k++) {
         const by = y + 4 + k * 19, frac = TEAMSUM[k] / tot;
         ctx.fillStyle = 'rgba(255,255,255,.08)'; RoundRect(x0 + 12, by, lbW - 24, 15, 5); ctx.fill();
@@ -1530,13 +1530,13 @@
       ctx.fillStyle = rank === 1 ? '#f5c542' : rank === 2 ? '#cbd5e1' : rank === 3 ? '#d6955b' : 'rgba(255,255,255,.12)';
       ctx.beginPath(); ctx.arc(x0 + 21, ry, 8.5, 0, TAU); ctx.fill();
       ctx.fillStyle = rank <= 3 ? '#1f2937' : '#e5e7eb';
-      ctx.textAlign = 'center'; ctx.font = `800 ${rank > 9 ? 9 : 11}px ${F}`;
+      ctx.textAlign = 'center'; ctx.font = Font(800, rank > 9 ? 9 : 11);
       ctx.fillText(String(rank), x0 + 21, ry + 0.5);
       ctx.fillStyle = Hc(p.hue, 0); ctx.beginPath(); ctx.arc(x0 + 39, ry, 5, 0, TAU); ctx.fill();
-      ctx.textAlign = 'left'; ctx.font = `${mine ? 800 : 600} 13px ${F}`;
+      ctx.textAlign = 'left'; ctx.font = Font(mine ? 800 : 600, 13);
       ctx.fillStyle = mine ? '#bae6fd' : '#f8fafc';
       ctx.fillText((p.name || T('io_unnamed')).slice(0, 15), x0 + 50, ry);
-      ctx.textAlign = 'right'; ctx.font = `600 11px ${F}`; ctx.fillStyle = 'rgba(255,255,255,.55)';
+      ctx.textAlign = 'right'; ctx.font = Font(600, 11); ctx.fillStyle = 'rgba(255,255,255,.55)';
       ctx.fillText(FmtMass(p.score), x0 + lbW - 14, ry);
     };
     for (let i = 0; i < rows; i++) row(i + 1, LB[i], y + 10 + i * rowH);
@@ -1548,15 +1548,15 @@
     if (mine && alive) {
       const label = T('io_mass').toUpperCase(), val = FmtMass(mine.score), sub = T('io_cells', { n: mine.n });
       ctx.textAlign = 'left';
-      ctx.font = `800 24px ${F}`;
+      ctx.font = Font(800, 24);
       const vw = ctx.measureText(val).width;
-      ctx.font = `700 10px ${F}`;
+      ctx.font = Font(700, 10);
       const lw = Math.max(ctx.measureText(label).width, ctx.measureText(sub).width);
       const bw = vw + lw + 40, by = ch - 58;
       Glass(12, by, bw, 46, 10);
       ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText(label, 24, by + 16);
       ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.fillText(sub, 24, by + 31);
-      ctx.font = `800 24px ${F}`; ctx.fillStyle = '#fff';
+      ctx.font = Font(800, 24); ctx.fillStyle = '#fff';
       ctx.fillText(val, 32 + lw, by + 24);
       let px = 12;
       for (let k = 0; k < 3; k++) {
@@ -1571,7 +1571,7 @@
     }
     if (FR.variant === 'rush' && FR.rt > 0) {
       const sec = Math.ceil(FR.rt), label = FmtTime(sec);
-      ctx.font = `800 22px ${F}`;
+      ctx.font = Font(800, 22);
       const w = ctx.measureText(label).width + 64;
       const low = sec <= 30;
       Glass(cw / 2 - w / 2, 12, w, 38, 19);
@@ -1585,17 +1585,17 @@
     let topY = FR.variant === 'rush' && FR.rt > 0 ? 58 : 12;
     if (FR.hasZone) {
       const z = FR.zone, label = T('io_alive_left', { n: z[3] }), sub = z[4] > 0 ? `${T('io_zone')} ${FmtTime(z[4])}` : T('io_zone_final');
-      ctx.font = `800 17px ${F}`;
+      ctx.font = Font(800, 17);
       const w1 = ctx.measureText(label).width;
-      ctx.font = `700 11px ${F}`;
+      ctx.font = Font(700, 11);
       const w = Math.max(w1, ctx.measureText(sub).width) + 60;
       Glass(cw / 2 - w / 2, 12, w, 42, 21);
       ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(cw / 2 - w / 2 + 22, 33, 9, 0, TAU); ctx.stroke();
       ctx.beginPath(); ctx.arc(cw / 2 - w / 2 + 22, 33, 4 + (Math.sin(performance.now() / 200) + 1) * 1.5, 0, TAU); ctx.stroke();
       ctx.textAlign = 'center';
-      ctx.font = `800 17px ${F}`; ctx.fillStyle = '#fff'; ctx.fillText(label, cw / 2 + 12, 26);
-      ctx.font = `700 11px ${F}`; ctx.fillStyle = '#fca5a5'; ctx.fillText(sub, cw / 2 + 12, 43);
+      ctx.font = Font(800, 17); ctx.fillStyle = '#fff'; ctx.fillText(label, cw / 2 + 12, 26);
+      ctx.font = Font(700, 11); ctx.fillStyle = '#fca5a5'; ctx.fillText(sub, cw / 2 + 12, 43);
       topY = 62;
       let out = false;
       for (let i = 0; i < FR.nc; i++) { const c = FR.cells[i]; if (c.owner === me && Math.hypot(c.x - z[0], c.y - z[1]) > z[2]) { out = true; break; } }
@@ -1603,7 +1603,7 @@
         const pulse = 0.5 + Math.sin(performance.now() / 160) * 0.5;
         ctx.strokeStyle = `rgba(239,68,68,${0.35 + pulse * 0.45})`; ctx.lineWidth = 10;
         ctx.strokeRect(5, 5, cw - 10, ch - 10);
-        ctx.font = `800 15px ${F}`;
+        ctx.font = Font(800, 15);
         const ww = ctx.measureText(T('io_zone_warn')).width + 30;
         ctx.fillStyle = 'rgba(185,28,28,.85)'; RoundRect(cw / 2 - ww / 2, ch - 64, ww, 32, 16); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.fillText(T('io_zone_warn'), cw / 2, ch - 47);
@@ -1611,7 +1611,7 @@
     }
     if (FR.hasEv && FR.ev[1] > 0) {
       const k = FR.ev[0] | 0, label = `${T('io_ev_' + EV_KEYS[k])} · ${FmtTime(Math.ceil(FR.ev[1]))}`;
-      ctx.font = `700 12px ${F}`;
+      ctx.font = Font(700, 12);
       const w = ctx.measureText(label).width + 34, ey = mode === 'lan' && net ? 44 : 12;
       Glass(12, ey, w, 26, 13);
       ctx.fillStyle = EV_COLORS[k]; ctx.beginPath(); ctx.arc(25, ey + 13, 5, 0, TAU); ctx.fill();
@@ -1622,20 +1622,20 @@
       const a = Clamp(toast.t / 0.4, 0, 1) * Clamp((2.4 - toast.t) / 0.15, 0, 1);
       ctx.globalAlpha = a;
       ctx.textAlign = 'center';
-      ctx.font = `800 20px ${F}`;
+      ctx.font = Font(800, 20);
       const w1 = ctx.measureText(toast.str).width;
-      ctx.font = `600 12px ${F}`;
+      ctx.font = Font(600, 12);
       const w = Math.max(w1, ctx.measureText(toast.sub).width) + 44, ty = topY + 4;
       Glass(cw / 2 - w / 2, ty, w, 52, 12);
       ctx.fillStyle = toast.c; RoundRect(cw / 2 - w / 2, ty, w, 4, 2); ctx.fill();
-      ctx.font = `800 20px ${F}`; ctx.fillStyle = '#fff'; ctx.fillText(toast.str, cw / 2, ty + 22);
-      ctx.font = `600 12px ${F}`; ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText(toast.sub, cw / 2, ty + 40);
+      ctx.font = Font(800, 20); ctx.fillStyle = '#fff'; ctx.fillText(toast.str, cw / 2, ty + 22);
+      ctx.font = Font(600, 12); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText(toast.sub, cw / 2, ty + 40);
       ctx.globalAlpha = 1;
     }
     DrawMinimap(me);
     if (mode === 'lan' && net) {
       ctx.textAlign = 'left';
-      ctx.font = `600 12px ${F}`;
+      ctx.font = Font(600, 12);
       const text = `${T('io_network')} · ${T('io_players_online', { n: net.peers.size + 1 })}${IsHost() ? ' · host' : ''}`;
       Glass(12, 12, ctx.measureText(text).width + 34, 26, 8);
       ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.arc(24, 25, 4, 0, TAU); ctx.fill();
@@ -1674,8 +1674,8 @@
   }
 
   function Loop(ts) {
+    if (root.style.display === 'none') { raf = 0; parked = true; return; }
     raf = requestAnimationFrame(Loop);
-    if (!root || root.style.display === 'none') return;
     const dt = Math.min(0.1, (ts - (lastTs || ts)) / 1000);
     lastTs = ts;
     if (ejecting && alive) {
@@ -2042,6 +2042,7 @@
     paused = false;
     ShowScreen(alive ? 'play' : 'start');
     lastTs = 0;
+    parked = false;
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(Loop);
   }
@@ -2051,6 +2052,7 @@
     root.style.display = 'none';
     cancelAnimationFrame(raf);
     raf = 0;
+    parked = false;
     removeEventListener('resize', Resize);
     document.removeEventListener('keydown', OnKey, true);
     document.removeEventListener('keyup', OnKey, true);
@@ -2070,6 +2072,7 @@
     if (root.dataset.bossHidden === '1') {
       root.style.display = 'flex';
       delete root.dataset.bossHidden;
+      if (parked) { parked = false; raf = requestAnimationFrame(Loop); }
       return true;
     }
     if (root.style.display !== 'none') {

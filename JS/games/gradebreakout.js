@@ -84,7 +84,7 @@
 
   let GS = null, _grades = [], _lvlId = 1, _raf = null, _last = 0;
   let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _S = null, _icons = null;
-  let _bricks = new Map();
+  let _bricks = new Map(), _ox = 0, _oy = 0;
   const _hud = { score: -1, lvl: '', lives: -1 };
 
   function Hex(c) { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
@@ -131,7 +131,13 @@
   }
   function Night(s, a = 0.16) { return _dark ? Shade(s, `rgba(16,24,64,${a})`) : s; }
   function Blit(s, x, y) { _ctx.drawImage(s.c, Math.round((x - s.ax) * _k) / _k, Math.round((y - s.ay) * _k) / _k, s.w, s.h); }
-  function BlitT(s, x, y, a, sx, sy) { const c = _ctx; c.save(); c.translate(x, y); if (a) c.rotate(a); c.scale(sx, sy); c.drawImage(s.c, -s.ax, -s.ay, s.w, s.h); c.restore(); }
+  function BlitT(s, x, y, a, sx, sy) {
+    const c = _ctx, co = a ? Math.cos(a) * _k : _k, si = a ? Math.sin(a) * _k : 0;
+    c.setTransform(co * sx, si * sx, -si * sy, co * sy, (x + _ox) * _k, (y + _oy) * _k);
+    c.drawImage(s.c, -s.ax, -s.ay, s.w, s.h);
+    Base();
+  }
+  function Base() { _ctx.setTransform(_k, 0, 0, _k, _ox * _k, _oy * _k); }
 
   function Circ(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, TAU); }
   function Ell(g, x, y, rx, ry) { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); }
@@ -615,9 +621,10 @@
   function Draw() {
     if (!_ctx || !GS || !_S) return;
     const c = _ctx, S = _S, t = GS.t, p = GS.paddle;
-    c.setTransform(_k, 0, 0, _k, 0, 0);
     const sh = GS.shake;
-    c.translate(sh ? (Math.random() - 0.5) * sh * 2 : 0, sh ? (Math.random() - 0.5) * sh * 2 : 0);
+    _ox = sh ? (Math.random() - 0.5) * sh * 2 : 0;
+    _oy = sh ? (Math.random() - 0.5) * sh * 2 : 0;
+    Base();
 
     const par = (p.x + p.w / 2 - CV_W / 2) / CV_W;
     c.drawImage(S.bg.c, -8, -8, CV_W + 16, CV_H + 16);
@@ -685,10 +692,10 @@
       else {
         c.globalAlpha = Math.min(1, a * 2.5);
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        const z = 1 + (1 - Math.min(1, q.t / 110)) * 0.4;
-        c.save(); c.translate(q.x, q.y); c.scale(z, z);
+        const z = (1 + (1 - Math.min(1, q.t / 110)) * 0.4) * _k;
+        c.setTransform(z, 0, 0, z, (q.x + _ox) * _k, (q.y + _oy) * _k);
         Outlined(q.c, 0, 0, F_POP, q.c2, 3.5);
-        c.restore();
+        Base();
       }
     }
     c.globalAlpha = 1;
@@ -738,13 +745,13 @@
     const c = _ctx, S = _S, p = GS.paddle;
     const w = p.vw, cx = x + p.w / 2, l = cx - w / 2;
     const sy = 1 - p.bump * 0.25, y = p.y + 4 + p.bump * 1.2;
-    c.save(); c.translate(0, y); c.scale(1, sy);
+    c.setTransform(_k, 0, 0, sy * _k, _ox * _k, (y + _oy) * _k);
     const caps = S.cap[key];
     c.drawImage(S.mid.c, l + 6, -6, Math.max(0, w - 12), 12);
     c.drawImage(caps[0].c, l - 1, -6, 12, 12);
     c.drawImage(caps[1].c, l + w - 11, -6, 12, 12);
     c.fillStyle = 'rgba(255,255,255,0.8)'; c.fillRect(l + 10, -3.6, Math.max(0, w - 20), 1.2);
-    c.restore();
+    Base();
   }
 
   let _hint = '', _progEl = null;
@@ -754,13 +761,16 @@
   function UpdateHUD() {
     if (!GS) return;
     const isFP = GS.lvl.freePlay;
-    if (_hud.score !== GS.score || _hud.lv0 !== GS.lvl) {
+    const lvChanged = _hud.lv0 !== GS.lvl;
+    if (_hud.score !== GS.score || lvChanged) {
       _hud.score = GS.score; _hud.lv0 = GS.lvl;
       SetText('gf-bo-score', GS.score.toLocaleString());
       if (_progEl) _progEl.style.width = isFP ? '100%' : `${Math.min(100, GS.score / GS.lvl.target * 100)}%`;
     }
-    const lv = isFP ? '∞' : `L${GS.lvl.id}`;
-    if (_hud.lvl !== lv) { _hud.lvl = lv; SetText('gf-bo-level', lv); }
+    if (lvChanged) {
+      const lv = isFP ? '∞' : `L${GS.lvl.id}`;
+      if (_hud.lvl !== lv) { _hud.lvl = lv; SetText('gf-bo-level', lv); }
+    }
     if (_hud.lives !== GS.lives) { _hud.lives = GS.lives; SetText('gf-bo-lives', '♥'.repeat(Math.max(0, GS.lives))); }
   }
 

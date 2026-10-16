@@ -607,7 +607,6 @@
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     if (_timerStart)    { _timerElapsed += Date.now() - _timerStart; _timerStart = null; }
   }
-  function PauseTimer() { StopTimer(); }
   function ResumeTimer() {
     if (G?.status === 'playing' && G.startedTimer && !_timerInterval && _screen === 'none') StartTimer();
   }
@@ -616,7 +615,7 @@
   function TogglePause() {
     if (!G || G.status !== 'playing') return;
     if (_screen === 'paused') { HideScreen(); ResumeTimer(); _dirty = true; }
-    else if (_screen === 'none') { PauseTimer(); ShowScreen('paused'); }
+    else if (_screen === 'none') { StopTimer(); ShowScreen('paused'); }
   }
 
   function BuildFaces() {
@@ -731,7 +730,7 @@
       ImgC(sp.sh, x + lift * 0.3, y + lift * 0.6, shw * (1 + lift / 120), 1 + lift / 160);
       ctx.globalAlpha = 1;
       y -= lift;
-      if (rot) { ctx.setTransform(Math.cos(rot) * k, Math.sin(rot) * k, -Math.sin(rot) * k, Math.cos(rot) * k, x * k, y * k); x = 0; y = 0; }
+      if (rot) { const rc = Math.cos(rot) * k, rs = Math.sin(rot) * k; ctx.setTransform(rc, rs, -rs, rc, x * k, y * k); x = 0; y = 0; }
       const showFront = theta > Math.PI / 2;
       if (c.state === 'matched' && !flipping) {
         const ga = c.pop && now - c.pop < 420 ? 1 : 0.55 + 0.15 * Math.sin(now / 400 + i);
@@ -1023,7 +1022,7 @@
     root.id = 'gf-memory';
 
     const diffBtns = DIFFICULTIES.map(d =>
-      `<button class="gf-mem-diff-btn${d.id === _diffId ? ' gf-mem-diff-active' : ''}" data-diff="${d.id}">${typeof d.label === 'function' ? d.label() : d.label}</button>`
+      `<button class="gf-mem-diff-btn${d.id === _diffId ? ' gf-mem-diff-active' : ''}" data-diff="${d.id}">${d.label()}</button>`
     ).join('');
     const setBtns = SETS.map(s =>
       `<button class="gf-mem-diff-btn gf-mem-set-btn${s.id === _setId ? ' gf-mem-diff-active' : ''}" data-set="${s.id}">${s.label()}</button>`
@@ -1132,7 +1131,7 @@
       return true;
     }
     if (el.style.display !== 'none') {
-      PauseTimer();
+      StopTimer();
       StopLoop();
       el.style.display = 'none';
       el.dataset.bossHidden = '1';
@@ -1152,15 +1151,13 @@
     s.textContent = `
 #gf-memory {
   --gm-modal:#ffffff;--gm-hdr:#f8f6fd;--gm-brd:rgba(167,139,250,.28);--gm-brd2:#e6e1f2;
-  --gm-back:#7c3aed;--gm-back-shine:rgba(255,255,255,.08);--gm-back-dot:rgba(255,255,255,.06);
   --gm-txt:#1e1b2e;--gm-txt2:#5b5670;--gm-txt3:#9d97b0;--gm-sbox:rgba(109,40,217,.06);
   --gm-sh:0 10px 44px rgba(46,16,101,.16),0 1px 4px rgba(46,16,101,.08);
   --gm-ovr:rgba(246,243,253,.82);--gm-btn-brd:#d9d3e8;--gm-body:#f6f3fd;--gm-card:#ffffff;
 }
 #gf-memory[data-theme="dark"] {
   --gm-modal:rgba(14,12,24,.97);--gm-hdr:rgba(9,8,16,.96);--gm-brd:rgba(167,139,250,.2);
-  --gm-brd2:#262138;--gm-back:#4c1d95;--gm-back-shine:rgba(255,255,255,.05);
-  --gm-back-dot:rgba(255,255,255,.04);--gm-txt:#f3f0fb;--gm-txt2:#bdb6d2;--gm-txt3:#756d8f;
+  --gm-brd2:#262138;--gm-txt:#f3f0fb;--gm-txt2:#bdb6d2;--gm-txt3:#756d8f;
   --gm-sbox:rgba(167,139,250,.08);--gm-sh:0 8px 32px rgba(0,0,0,.6),0 40px 90px rgba(0,0,0,.8);
   --gm-ovr:rgba(10,8,20,.82);--gm-btn-brd:#332c48;--gm-body:#0c0a16;--gm-card:#171427;
 }

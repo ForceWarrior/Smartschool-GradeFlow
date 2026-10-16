@@ -73,7 +73,7 @@
   }
 
   let GS = null, _grades = [], _raf = null, _kh = null, _tobs = null, _last = 0, _best = 0;
-  let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _S = null;
+  let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _S = null, _ox = 0, _oy = 0;
   const _hud = { best: -1, sc: -1, scStr: '00000', hiStr: 'HI 00000', grade: null, gradeStr: '' };
 
   function Hex(c) { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
@@ -122,7 +122,13 @@
   }
   function Night(s, a = 0.2) { return _dark ? Shade(s, `rgba(16,24,64,${a})`) : s; }
   function Blit(s, x, y) { _ctx.drawImage(s.c, Math.round((x - s.ax) * _k) / _k, Math.round((y - s.ay) * _k) / _k, s.w, s.h); }
-  function BlitT(s, x, y, a, sx, sy) { const c = _ctx; c.save(); c.translate(x, y); if (a) c.rotate(a); c.scale(sx, sy); c.drawImage(s.c, -s.ax, -s.ay, s.w, s.h); c.restore(); }
+  function BlitT(s, x, y, a, sx, sy) {
+    const c = _ctx, co = a ? Math.cos(a) * _k : _k, si = a ? Math.sin(a) * _k : 0;
+    c.setTransform(co * sx, si * sx, -si * sy, co * sy, (x + _ox) * _k, (y + _oy) * _k);
+    c.drawImage(s.c, -s.ax, -s.ay, s.w, s.h);
+    Base();
+  }
+  function Base() { _ctx.setTransform(_k, 0, 0, _k, _ox * _k, _oy * _k); }
 
   function Circ(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, TAU); }
   function Ell(g, x, y, rx, ry, a = 0) { g.beginPath(); g.ellipse(x, y, rx, ry, a, 0, TAU); }
@@ -663,9 +669,10 @@
   function Draw() {
     if (!_ctx || !GS || !_S) return;
     const c = _ctx, S = _S;
-    c.setTransform(_k, 0, 0, _k, 0, 0);
     const sh = GS.shakeT > 0 ? 5 * (GS.shakeT / 350) : 0;
-    c.translate(sh ? (Math.random() - 0.5) * sh * 2 : 0, sh ? (Math.random() - 0.5) * sh * 2 : 0);
+    _ox = sh ? (Math.random() - 0.5) * sh * 2 : 0;
+    _oy = sh ? (Math.random() - 0.5) * sh * 2 : 0;
+    Base();
 
     c.fillStyle = S.dirt; c.fillRect(-8, GROUND_Y, CV_W + 16, GROUND_H + 8);
     c.drawImage(S.sky.c, -6, -6, CV_W + 12, GROUND_Y + 6);
@@ -684,7 +691,7 @@
       BlitT(sp, p.x, p.y + bob, 0, spin, 1);
       c.font = F_COIN; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillStyle = 'rgba(43,34,54,0.85)';
-      c.save(); c.translate(p.x, p.y + bob + 0.5); c.scale(spin, 1); c.fillText(p.lbl, 0, 0); c.restore();
+      c.setTransform(spin * _k, 0, 0, _k, (p.x + _ox) * _k, (p.y + bob + 0.5 + _oy) * _k); c.fillText(p.lbl, 0, 0); Base();
     }
 
     for (const o of GS.obstacles) {
@@ -719,8 +726,8 @@
     if (GS.status === 'start') { const b = Math.sin(GS.t * 0.004); sy = 1 + b * 0.025; sx = 1 - b * 0.015; }
     if (rot) BlitT(spr, PLAYER_X + PLAYER_W / 2, footY - 15, rot, 1, 1);
     else {
-      c.save(); c.translate(PLAYER_X + PLAYER_W / 2, footY); c.scale(sx, sy);
-      c.drawImage(spr.c, -spr.ax, -spr.ay, spr.w, spr.h); c.restore();
+      c.setTransform(sx * _k, 0, 0, sy * _k, (PLAYER_X + PLAYER_W / 2 + _ox) * _k, (footY + _oy) * _k);
+      c.drawImage(spr.c, -spr.ax, -spr.ay, spr.w, spr.h); Base();
     }
     if (GS.hitT > 0) { c.globalAlpha = GS.hitT / 220 * 0.6; c.globalCompositeOperation = 'lighter'; Blit(spr, PLAYER_X + PLAYER_W / 2, footY); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; }
 
@@ -734,10 +741,10 @@
       else {
         c.globalAlpha = Math.min(1, a * 2.5);
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        const z = 1 + (1 - Math.min(1, p.t / 120)) * 0.35;
-        c.save(); c.translate(p.x, p.y); c.scale(z, z);
+        const z = (1 + (1 - Math.min(1, p.t / 120)) * 0.35) * _k;
+        c.setTransform(z, 0, 0, z, (p.x + _ox) * _k, (p.y + _oy) * _k);
         Outlined(p.c, 0, 0, F_POP, p.c2 || '#fff', 4);
-        c.restore();
+        Base();
       }
     }
     c.globalAlpha = 1;

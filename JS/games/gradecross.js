@@ -308,7 +308,7 @@
   }
 
   let GS = null, P = null, _grades = [], _fallback = null, _raf = null, _kh = null, _tobs = null;
-  let _cv = null, _ctx = null, _icon = null, _ptr = null, _vig = null, _topN = -1, _topS = '';
+  let _root = null, _cv = null, _ctx = null, _icon = null, _ptr = null, _vig = null, _topN = -1, _topS = '', _scN = -1, _scS = '', _bkN = -1, _bkS = '';
   let B = PAL[0][0], _K = 0, _ink = '#000000', _dark = null, _tv = 0, RES = 1, _pi = 0;
   let X = null, OX = 0, OY = 0, _mb = null;
   let _ac = null, _noise = null, _sound = StorageGet(LS_SOUND, false);
@@ -1449,7 +1449,7 @@
   }
 
   function SyncTheme() {
-    const dark = document.getElementById('gf-cr')?.dataset.theme === 'dark';
+    const dark = _root.dataset.theme === 'dark';
     if (dark === _dark) return;
     _dark = dark; _K = dark ? 1 : 0; _ink = dark ? NINK : '#000000';
     _spr.clear(); _shade.clear(); _tv++;
@@ -1933,9 +1933,9 @@
   function DrawHud() {
     X.textBaseline = 'top'; X.textAlign = 'left';
     X.font = FONT_HUD;
-    const s = String(GS.score);
-    X.fillStyle = 'rgba(0,0,0,0.38)'; X.fillText(s, 21, 13);
-    X.fillStyle = '#ffffff'; X.fillText(s, 18, 10);
+    if (GS.score !== _scN) { _scN = GS.score; _scS = String(_scN); }
+    X.fillStyle = 'rgba(0,0,0,0.38)'; X.fillText(_scS, 21, 13);
+    X.fillStyle = '#ffffff'; X.fillText(_scS, 18, 10);
     X.font = FONT_SM;
     const b = Math.max(GS.best, GS.score);
     if (b !== _topN) { _topN = b; _topS = `${_GameText('game_best').toUpperCase()} ${b}`; }
@@ -1950,9 +1950,9 @@
     X.beginPath(); X.arc(cx, cy, 7.5, 0, Math.PI * 2); X.stroke();
     X.lineWidth = 0.6;
     X.font = FONT_NUM; X.textAlign = 'right'; X.textBaseline = 'middle';
-    const n = String(GS.bank);
-    X.fillStyle = 'rgba(0,0,0,0.38)'; X.fillText(n, cx - 18, cy + 3);
-    X.fillStyle = '#ffffff'; X.fillText(n, cx - 20, cy + 1);
+    if (GS.bank !== _bkN) { _bkN = GS.bank; _bkS = String(_bkN); }
+    X.fillStyle = 'rgba(0,0,0,0.38)'; X.fillText(_bkS, cx - 18, cy + 3);
+    X.fillStyle = '#ffffff'; X.fillText(_bkS, cx - 20, cy + 1);
   }
 
   function DrawPortraits() {
@@ -2228,6 +2228,7 @@
   </div>
 </div>`;
     document.body.appendChild(root);
+    _root = root;
     _cv = document.createElement('canvas');
     _cv.style.cssText = `display:block;width:${CV_W}px;height:${CV_H}px;touch-action:none;cursor:pointer`;
     document.getElementById('gf-cr-view').attachShadow({ mode: 'open' }).appendChild(_cv);
@@ -2273,6 +2274,7 @@
     if (grades?.length) _grades = NormalizeGrades(grades);
     if (!document.getElementById('gf-cr')) BuildOverlay();
     document.getElementById('gf-cr').style.display = 'flex';
+    if (_sound && _ac) _ac.resume();
     ApplyTheme();
     if (!_tobs) _tobs = new MutationObserver(ApplyTheme);
     _tobs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'style'] });
@@ -2289,6 +2291,7 @@
     if (el) el.style.display = 'none';
     if (GS?.status === 'playing') GS.status = 'paused';
     StopLoop();
+    _ac?.suspend();
     DetachKeys();
     _tobs?.disconnect();
     document.removeEventListener('visibilitychange', OnVisibilityChange);
@@ -2306,12 +2309,14 @@
     if (el.dataset.bossHidden === '1') {
       el.style.display = 'flex';
       delete el.dataset.bossHidden;
+      if (_sound && _ac) _ac.resume();
       if (GS && GS.status !== 'paused') StartLoop();
       return true;
     }
     if (el.style.display !== 'none') {
       if (GS?.status === 'playing') DoPause();
       StopLoop();
+      _ac?.suspend();
       el.style.display = 'none';
       el.dataset.bossHidden = '1';
       return true;

@@ -79,7 +79,7 @@
   let _raf = null;
   let _grades = [];
   let _host = null, _cv = null, _ctx = null, _view = null;
-  let _dark = false, _k = 1, _S = null, _I = null;
+  let _dark = false, _k = 1, _S = null, _I = null, _dangerG = null;
   let _last = 0, _acc = 0;
   let _screen = 'start';
   let _mode = 'clear';
@@ -286,9 +286,12 @@
     if (p.y > GameState.canH + R * 4) { GameState.proj = null; return; }
 
     for (let r = 0; r < ROWS; r++) {
+      const row = GameState.grid[r];
+      if (!row) continue;
+      const y = OY + R + r * ROW_H, x0 = R + (r % 2 === 1 ? R : 0);
       for (let c = 0; c < GetColsForRow(r); c++) {
-        if (!GameState.grid[r]?.[c]) continue;
-        const { x, y } = GetBubblePos(r, c);
+        if (!row[c]) continue;
+        const x = x0 + c * DIAM;
         if ((p.x-x)**2 + (p.y-y)**2 < (DIAM - 3)**2) {
           Land(p.x, p.y, p.band); return;
         }
@@ -462,6 +465,7 @@
   function RR(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
   function Circ(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, TAU); }
   const FONT = '"Segoe UI", system-ui, -apple-system, Arial, sans-serif';
+  const F_NEXT = `800 9px ${FONT}`, F_NUM = `800 13px ${FONT}`;
 
   function BubbleArt(bg, fg, label, r, k) {
     const e = 5, s = Cv(r * 2 + e * 2, r * 2 + e * 2, k), g = s.g, c = r + e;
@@ -610,16 +614,18 @@
     Img(_S.bg, 0, 0);
 
     let lowest = 0;
-    for (let r = 0; r < ROWS; r++) if (G.grid[r]?.some(b => b)) lowest = r;
+    for (let r = 0; r < ROWS; r++) { const row = G.grid[r]; if (row) for (const b of row) if (b) { lowest = r; break; } }
     const danger = lowest >= ROWS - 3 && G.status === 'playing';
     ctx.globalAlpha = danger ? 0.55 + 0.35 * Math.sin(t * 8) : 0.35;
     ctx.strokeStyle = '#ef4444'; ctx.lineWidth = danger ? 2 : 1.5; ctx.setLineDash([6, 5]); ctx.lineDashOffset = -t * 12;
     ctx.beginPath(); ctx.moveTo(4, DANGER_Y); ctx.lineTo(CW - 4, DANGER_Y); ctx.stroke();
     ctx.setLineDash([]);
     if (danger) {
-      const dg = ctx.createLinearGradient(0, DANGER_Y - 50, 0, DANGER_Y);
-      dg.addColorStop(0, 'rgba(239,68,68,0)'); dg.addColorStop(1, 'rgba(239,68,68,0.16)');
-      ctx.fillStyle = dg; ctx.fillRect(0, DANGER_Y - 50, CW, 50);
+      if (!_dangerG) {
+        _dangerG = ctx.createLinearGradient(0, DANGER_Y - 50, 0, DANGER_Y);
+        _dangerG.addColorStop(0, 'rgba(239,68,68,0)'); _dangerG.addColorStop(1, 'rgba(239,68,68,0.16)');
+      }
+      ctx.fillStyle = _dangerG; ctx.fillRect(0, DANGER_Y - 50, CW, 50);
     }
     ctx.globalAlpha = 1;
 
@@ -629,10 +635,10 @@
     if (G.descT >= 0 && t - G.descT < 0.4) { const u = (t - G.descT) / 0.4; off = -2 * ROW_H * (1 - u) * (1 - u); }
     for (let r = 0; r < ROWS + 2; r++) {
       const row = G.grid[r]; if (!row) continue;
+      const ry = OY + R + r * ROW_H + off, x0 = R + (r % 2 === 1 ? R : 0);
       for (let c = 0; c < GetColsForRow(r); c++) {
         const b = row[c]; if (!b) continue;
-        let { x, y } = GetBubblePos(r, c);
-        y += off;
+        let x = x0 + c * DIAM, y = ry;
         let sc = 1;
         if (b.born && t - b.born < 0.25) { const u = (t - b.born) / 0.25; sc = 1 + Math.sin(u * Math.PI) * 0.12; }
         if (b.wob && t - b.wob < 0.3) { const u = (t - b.wob) / 0.3, a = Math.sin(u * Math.PI) * 3.2 * (1 - u); x += b.wx * a; y += b.wy * a; }
@@ -651,7 +657,8 @@
 
     for (const f of G.falling) {
       if (t < f.at) { const { x, y } = f; ImgC(_S.bub[f.band], x + Math.sin(t * 60 + x) * 1.2, y, 1); continue; }
-      ctx.setTransform(Math.cos(f.rot) * k, Math.sin(f.rot) * k, -Math.sin(f.rot) * k, Math.cos(f.rot) * k, f.x * k, f.y * k);
+      const fc = Math.cos(f.rot) * k, fs = Math.sin(f.rot) * k;
+      ctx.setTransform(fc, fs, -fs, fc, f.x * k, f.y * k);
       ctx.globalAlpha = Math.max(0, Math.min(1, (CH + R - f.y) / 60));
       ImgC(_S.bub[f.band], 0, 0, 1);
       ctx.setTransform(k, 0, 0, k, 0, 0);
@@ -698,7 +705,7 @@
         ImgC(_S.small[G.queue[0].band], CANNON_X + (NEXT_X - CANNON_X) * e, CANNON_Y + (NEXT_Y - 8 - CANNON_Y) * e + Math.sin(st * Math.PI) * 16, 1 - 0.22 * e);
       } else ImgC(_S.small[G.queue[0].band], NEXT_X, NEXT_Y - 8 + Math.sin(t * 3) * 1.2, 1);
     }
-    ctx.font = `800 9px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = F_NEXT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = _dark ? 'rgba(254,243,199,0.75)' : 'rgba(69,26,3,0.6)';
     ctx.fillText(_GameText('game_next').toUpperCase(), NEXT_X, NEXT_Y - 34);
     ctx.strokeStyle = _dark ? 'rgba(254,243,199,0.6)' : 'rgba(69,26,3,0.45)'; ctx.lineWidth = 1.6;
@@ -713,7 +720,7 @@
     if (G.mode === 'endless') {
       const left = DESCEND_EVERY - (G.shots % DESCEND_EVERY);
       ctx.fillStyle = left <= 3 ? '#ef4444' : (_dark ? '#e2e8f0' : '#1e293b');
-      ctx.font = `800 13px ${FONT}`; ctx.fillText(String(left), px + 7, py + 1);
+      ctx.font = F_NUM; ctx.fillText(String(left), px + 7, py + 1);
       ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(px - 14, py - 6); ctx.lineTo(px - 14, py + 5); ctx.moveTo(px - 18, py + 1); ctx.lineTo(px - 14, py + 6); ctx.lineTo(px - 10, py + 1); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(px - 21, py - 8); ctx.lineTo(px - 7, py - 8); ctx.stroke();
@@ -722,7 +729,7 @@
       for (const row of G.grid) for (const b of row) if (b) n++;
       ImgC(_S.small[2], px - 13, py, 0.42);
       ctx.fillStyle = _dark ? '#e2e8f0' : '#1e293b';
-      ctx.font = `800 13px ${FONT}`; ctx.fillText(String(n), px + 8, py + 1);
+      ctx.font = F_NUM; ctx.fillText(String(n), px + 8, py + 1);
     }
   }
 
@@ -741,10 +748,11 @@
       if (y - R <= OY) { y = OY + R; hit = true; break; }
       for (let r = 0; r < ROWS && !hit; r++) {
         const row = G.grid[r]; if (!row) continue;
+        const py = OY + R + r * ROW_H, x0 = R + (r % 2 === 1 ? R : 0);
         for (let c = 0; c < GetColsForRow(r); c++) {
           if (!row[c]) continue;
-          const p = GetBubblePos(r, c);
-          if ((x - p.x) ** 2 + (y - p.y) ** 2 < (DIAM - 3) ** 2) { hit = true; break; }
+          const px = x0 + c * DIAM;
+          if ((x - px) ** 2 + (y - py) ** 2 < (DIAM - 3) ** 2) { hit = true; break; }
         }
       }
     }
@@ -1087,6 +1095,7 @@
     _cv.width = Math.round(w * dpr); _cv.height = Math.round(h * dpr);
     _k = _cv.width / CW;
     _ctx = _cv.getContext('2d');
+    _dangerG = null;
     BuildSprites();
   }
 
@@ -1262,7 +1271,7 @@
     document.removeEventListener('visibilitychange', OnVisibility);
     const host = id('gf-shooter');
     if (host) { host._tobs?.disconnect(); host.remove(); }
-    _host = null; _cv = null; _ctx = null; _view = null; _S = null;
+    _host = null; _cv = null; _ctx = null; _view = null; _S = null; _dangerG = null;
   }
 
   W.OpenGradeShooter  = OpenGradeShooter;

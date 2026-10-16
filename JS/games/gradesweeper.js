@@ -23,13 +23,13 @@
       dark: false, hid: ['#79aef4', '#6ca3ee'], lip: '#3b6fc4', out: '#1e3a6e', rev: ['#f6f1e7', '#ede6d8'],
       revLine: 'rgba(120,96,60,0.13)', frame: '#dce6f6', frameOut: '#a9bddc', well: '#b9c9e2',
       num: ['', '#2563eb', '#15803d', '#dc2626', '#6d28d9', '#b45309', '#0e7490', '#be185d', '#475569'],
-      numOut: 'rgba(255,255,255,0.9)', shadow: 'rgba(28,48,92,0.34)', mineBg: 'rgba(239,68,68,0.16)', chip: '#79aef4',
+      numOut: 'rgba(255,255,255,0.9)', shadow: 'rgba(28,48,92,0.34)', mineBg: 'rgba(239,68,68,0.16)',
     },
     dark: {
       dark: true, hid: ['#3f63a8', '#395b9c'], lip: '#1c3264', out: '#060b18', rev: ['#1a2030', '#1d2435'],
       revLine: 'rgba(255,255,255,0.045)', frame: '#151b29', frameOut: '#2c3852', well: '#0b0f19',
       num: ['', '#6ba6ff', '#4ade80', '#f87171', '#c084fc', '#fb923c', '#22d3ee', '#f472b6', '#cbd5e1'],
-      numOut: 'rgba(6,9,18,0.85)', shadow: 'rgba(0,0,0,0.55)', mineBg: 'rgba(239,68,68,0.2)', chip: '#3f63a8',
+      numOut: 'rgba(6,9,18,0.85)', shadow: 'rgba(0,0,0,0.55)', mineBg: 'rgba(239,68,68,0.2)',
     },
   };
 
@@ -411,10 +411,8 @@
     Bump(t + FLAG_MS + 400);
     _scrT = setTimeout(() => {
       const bw = BoardW();
-      for (let i = 0; i < 70; i++) {
-        const cols = ['#60a5fa', '#f472b6', '#facc15', '#4ade80', '#a78bfa', '#fb923c'];
-        Emit(3, Math.random() * bw, -6 - Math.random() * 30, (Math.random() - 0.5) * 60, 40 + Math.random() * 90, 1.8 + Math.random() * 1.2, 4 + Math.random() * 3, cols[i % cols.length], 120);
-      }
+      const cols = ['#60a5fa', '#f472b6', '#facc15', '#4ade80', '#a78bfa', '#fb923c'];
+      for (let i = 0; i < 70; i++) Emit(3, Math.random() * bw, -6 - Math.random() * 30, (Math.random() - 0.5) * 60, 40 + Math.random() * 90, 1.8 + Math.random() * 1.2, 4 + Math.random() * 3, cols[i % 6], 120);
       Bump(performance.now() + 400);
       _scrT = setTimeout(() => ShowScreen('win'), 650);
     }, Math.max(0, t - performance.now()));
@@ -496,7 +494,6 @@
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     if (_timerStart)    { _timerElapsed += Date.now() - _timerStart; _timerStart = null; }
   }
-  function PauseTimer() { StopTimer(); }
   function ResumeTimer() {
     if (G?.status === 'playing' && !_timerInterval && _screen === 'none') StartTimer();
   }
@@ -504,7 +501,7 @@
   function TogglePause() {
     if (!G || G.status !== 'playing') return;
     if (_screen === 'paused') { HideScreen(); ResumeTimer(); _dirty = true; }
-    else if (_screen === 'none') { PauseTimer(); ShowScreen('paused'); }
+    else if (_screen === 'none') { StopTimer(); ShowScreen('paused'); }
   }
 
   function Ic(src, cls) { return `<i class="gf-sw-i ${cls}" style="background-image:url(${src})"></i>`; }
@@ -948,7 +945,7 @@
     root.id = 'gf-sweep';
 
     const diffBtns = DIFFICULTIES.map(d =>
-      `<button class="gf-sw-diff-btn${d.id === _diffId ? ' gf-sw-diff-active' : ''}" data-diff="${d.id}">${typeof d.label === 'function' ? d.label() : d.label}</button>`
+      `<button class="gf-sw-diff-btn${d.id === _diffId ? ' gf-sw-diff-active' : ''}" data-diff="${d.id}">${d.label()}</button>`
     ).join('');
 
     root.innerHTML = `
@@ -1043,7 +1040,7 @@
       return true;
     }
     if (el.style.display !== 'none') {
-      PauseTimer();
+      StopTimer();
       StopLoop();
       el.style.display = 'none';
       el.dataset.bossHidden = '1';
@@ -1063,15 +1060,13 @@
     s.textContent = `
 #gf-sweep {
   --sw-modal:#ffffff;--sw-hdr:#f5f8fd;--sw-body:#edf2fa;--sw-brd:rgba(96,165,250,.28);--sw-brd2:#dfe5ef;
-  --sw-cell-hidden:#79aef4;--sw-cell-revealed:#f6f1e7;--sw-cell-hover:#a3c7f8;
   --sw-txt:#0f172a;--sw-txt2:#475569;--sw-txt3:#94a3b8;--sw-lcd-bg:#0f172a;
   --sw-sh:0 10px 44px rgba(15,23,42,.16),0 1px 4px rgba(15,23,42,.08);
   --sw-ovr:rgba(244,247,252,.86);--sw-btn-brd:#cfd7e3;--sw-card:#ffffff;--sw-kbd:#eef2f8;
 }
 #gf-sweep[data-theme="dark"] {
   --sw-modal:rgba(13,15,22,.97);--sw-hdr:rgba(9,11,17,.96);--sw-body:#0b0e16;--sw-brd:rgba(96,165,250,.2);
-  --sw-brd2:#222a3a;--sw-cell-hidden:#3f63a8;--sw-cell-revealed:#1a2030;--sw-cell-hover:#5878b8;
-  --sw-txt:#f1f5f9;--sw-txt2:#b6c2d4;--sw-txt3:#6b7a92;--sw-lcd-bg:#05070c;
+  --sw-brd2:#222a3a;--sw-txt:#f1f5f9;--sw-txt2:#b6c2d4;--sw-txt3:#6b7a92;--sw-lcd-bg:#05070c;
   --sw-sh:0 8px 32px rgba(0,0,0,.6),0 40px 90px rgba(0,0,0,.8);
   --sw-ovr:rgba(8,10,16,.84);--sw-btn-brd:#2e374a;--sw-card:#121725;--sw-kbd:#1b2232;
 }

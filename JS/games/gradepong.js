@@ -81,7 +81,7 @@
   function IsPositive(g) { return g.Pct == null || g.Pct >= 50; }
 
   let GS = null, _grades = [], _lvlId = 1, _raf = null, _last = 0;
-  let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _S = null;
+  let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _S = null, _ox = 0, _oy = 0;
   const _hud = { p: -1, a: -1, lvl: '' };
 
   function PickGrade() {
@@ -133,7 +133,13 @@
   }
   function Night(s, a = 0.14) { return _dark ? Shade(s, `rgba(16,24,64,${a})`) : s; }
   function Blit(s, x, y) { _ctx.drawImage(s.c, Math.round((x - s.ax) * _k) / _k, Math.round((y - s.ay) * _k) / _k, s.w, s.h); }
-  function BlitT(s, x, y, a, sx, sy) { const c = _ctx; c.save(); c.translate(x, y); if (a) c.rotate(a); c.scale(sx, sy); c.drawImage(s.c, -s.ax, -s.ay, s.w, s.h); c.restore(); }
+  function BlitT(s, x, y, a, sx, sy) {
+    const c = _ctx, co = a ? Math.cos(a) * _k : _k, si = a ? Math.sin(a) * _k : 0;
+    c.setTransform(co * sx, si * sx, -si * sy, co * sy, (x + _ox) * _k, (y + _oy) * _k);
+    c.drawImage(s.c, -s.ax, -s.ay, s.w, s.h);
+    Base();
+  }
+  function Base() { _ctx.setTransform(_k, 0, 0, _k, _ox * _k, _oy * _k); }
 
   function Circ(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, TAU); }
   function Ell(g, x, y, rx, ry) { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); }
@@ -522,8 +528,8 @@
 
     const aiReact = gs.lvl.aiReact;
     const aiSpd   = gs.lvl.aiSpeed * (gs._aiSpeedMult || 1);
-    const aiMiss  = gs.lvl.aiMiss  ?? 10;
-    const aiTrack = gs.lvl.aiTrack ?? 0.85;
+    const aiMiss  = gs.lvl.aiMiss;
+    const aiTrack = gs.lvl.aiTrack;
 
     gs._aiThinkT = (gs._aiThinkT || 0) - dt;
     if (gs._aiThinkT <= 0) {
@@ -643,6 +649,7 @@
 
   function PadIdx(h) { return h < PADDLE_H * 0.8 ? 0 : h > PADDLE_H * 1.25 ? 2 : 1; }
 
+  const EYES = [-2.3, 2.3];
   function DrawPaddle(side, cy, vh, bump, prev) {
     const c = _ctx, S = _S, ai = side === 'ai';
     const x = ai ? CV_W - WALL_PAD - PADDLE_W / 2 : WALL_PAD + PADDLE_W / 2;
@@ -658,7 +665,7 @@
     BlitT(spr, x + (ai ? 1 : -1) * bump * 1.5, cy, 0, sx, sy);
     const ey = cy - vh / 2 + 9, dx = GS.ballX - x, dy = GS.ballY - ey, d = Math.hypot(dx, dy) || 1;
     const blink = (GS.t + (ai ? 1700 : 0)) % 3400 < 110;
-    for (const ex of [-2.3, 2.3]) {
+    for (const ex of EYES) {
       if (blink) { c.fillStyle = OUT; c.fillRect(x + ex - 2.2, ey - 0.6, 4.4, 1.3); continue; }
       Blit(S.eye, x + ex, ey);
       c.fillStyle = OUT;
@@ -670,9 +677,10 @@
   function Draw() {
     if (!_ctx || !GS || !_S) return;
     const c = _ctx, S = _S, gs = GS, now = performance.now();
-    c.setTransform(_k, 0, 0, _k, 0, 0);
     const sh = gs.shake;
-    c.translate(sh ? (Math.random() - 0.5) * sh * 2 : 0, sh ? (Math.random() - 0.5) * sh * 2 : 0);
+    _ox = sh ? (Math.random() - 0.5) * sh * 2 : 0;
+    _oy = sh ? (Math.random() - 0.5) * sh * 2 : 0;
+    Base();
 
     c.drawImage(S.board.c, -8, -8, CV_W + 16, CV_H + 16);
     const px = (gs.ballX - CV_W / 2) / CV_W, py = (gs.ballY - CV_H / 2) / CV_H;
@@ -731,10 +739,10 @@
       else {
         c.globalAlpha = Math.min(1, a * 2.5);
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        const z = 1 + (1 - Math.min(1, p.t / 110)) * 0.4;
-        c.save(); c.translate(p.x, p.y); c.scale(z, z);
+        const z = (1 + (1 - Math.min(1, p.t / 110)) * 0.4) * _k;
+        c.setTransform(z, 0, 0, z, (p.x + _ox) * _k, (p.y + _oy) * _k);
         Outlined(p.c, 0, 0, F_POP, p.c2 || '#fff', 3.5);
-        c.restore();
+        Base();
       }
     }
     c.globalAlpha = 1;
@@ -882,7 +890,7 @@
       const nm = l.freePlay ? '∞' : `L${l.id}`;
       const desc = l.freePlay
         ? _GameText('po_freeplay_label')
-        : (_GameText('po_first_to') || 'First to {n}').replace('{n}', l.winScore);
+        : _GameText('po_first_to').replace('{n}', l.winScore);
       const bestTxt = bestPts ? `${_GameText('game_best')}: ${bestPts}` : '–';
       const pips = l.freePlay ? '' : Array.from({ length: 5 }, (_, i) => `<i class="${i < l.id ? 'on' : ''}"></i>`).join('');
       return `<button class="gf-pol${avail ? '' : ' gf-pol-locked'}${l.id === _lvlId ? ' gf-pol-sel' : ''}"
@@ -890,7 +898,7 @@
         <div class="gf-pol-left">
           <div class="gf-pol-badge${l.freePlay ? ' gf-pol-badge-fp' : ''}">${nm}</div>
           <div class="gf-pol-info">
-            <span class="gf-pol-name">${l.labelKey ? _GameText(l.labelKey) : (l.label || '')}</span>
+            <span class="gf-pol-name">${_GameText(l.labelKey)}</span>
             <span class="gf-pol-tgt">${desc}</span>
           </div>
         </div>

@@ -69,7 +69,7 @@
   const BUSH_TW      = 360;
 
   let GS = null, _raf = null, _grades = [], _kh = null, _last = 0, _best = 0;
-  let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _S = null, _medals = null;
+  let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _S = null, _medals = null, _ox = 0, _oy = 0;
   const _hud = { score: -1, best: -1, grade: null };
 
   function Hex(c) { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
@@ -117,8 +117,13 @@
     return s;
   }
   function Night(s, a = 0.22) { return _dark ? Shade(s, `rgba(16,24,64,${a})`) : s; }
-  function Blit(s, x, y) { _ctx.drawImage(s.c, Math.round((x - s.ax) * _k) / _k, Math.round((y - s.ay) * _k) / _k, s.w, s.h); }
-  function BlitC(s, x, y, a, sc) { _ctx.save(); _ctx.translate(x, y); if (a) _ctx.rotate(a); if (sc !== 1) _ctx.scale(sc, sc); _ctx.drawImage(s.c, -s.ax, -s.ay, s.w, s.h); _ctx.restore(); }
+  function BlitC(s, x, y, a, sc) {
+    const c = _ctx, z = sc * _k, co = a ? Math.cos(a) * z : z, si = a ? Math.sin(a) * z : 0;
+    c.setTransform(co, si, -si, co, (x + _ox) * _k, (y + _oy) * _k);
+    c.drawImage(s.c, -s.ax, -s.ay, s.w, s.h);
+    Base();
+  }
+  function Base() { _ctx.setTransform(_k, 0, 0, _k, _ox * _k, _oy * _k); }
 
   function Circ(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, TAU); }
   function Ell(g, x, y, rx, ry, a = 0) { g.beginPath(); g.ellipse(x, y, rx, ry, a, 0, TAU); }
@@ -602,10 +607,9 @@
   function Draw() {
     if (!_ctx || !GS || !_S) return;
     const c = _ctx, S = _S;
-    c.setTransform(_k, 0, 0, _k, 0, 0);
-    let sx = 0, sy = 0;
-    if (GS.shake > 0) { sx = (Math.random() - 0.5) * GS.shake * 2; sy = (Math.random() - 0.5) * GS.shake * 2; }
-    c.translate(sx, sy);
+    _ox = 0; _oy = 0;
+    if (GS.shake > 0) { _ox = (Math.random() - 0.5) * GS.shake * 2; _oy = (Math.random() - 0.5) * GS.shake * 2; }
+    Base();
 
     c.fillStyle = S.dirt;
     c.fillRect(-8, SKY_H, CV_W + 16, GROUND_H + 8);
@@ -683,10 +687,10 @@
     else {
       c.globalAlpha = Math.min(1, a * 2.5);
       c.textAlign = 'center'; c.textBaseline = 'middle';
-      const z = 1 + (1 - Math.min(1, p.t / 120)) * 0.35;
-      c.save(); c.translate(p.x, p.y); c.scale(z, z);
+      const z = (1 + (1 - Math.min(1, p.t / 120)) * 0.35) * _k;
+      c.setTransform(z, 0, 0, z, (p.x + _ox) * _k, (p.y + _oy) * _k);
       Outlined(p.c, 0, 0, F_POP, p.c2 || '#fff', 4);
-      c.restore();
+      Base();
     }
     c.globalAlpha = 1;
   }
@@ -1033,14 +1037,13 @@
 #gf-fl {
   --fl-modal:#fff;--fl-hdr:#f5f7f8;--fl-hud:#fafbfc;--fl-scr:rgba(250,251,252,0.94);
   --fl-brd:rgba(74,222,128,0.26);--fl-brd2:#e2e6ea;--fl-btn-brd:#d0d5da;
-  --fl-txt:#111;--fl-txt2:#4b5563;--fl-txt3:#8b939c;--fl-kbd:#eee;--fl-kbd-brd:#ccc;
+  --fl-txt:#111;--fl-txt2:#4b5563;--fl-txt3:#8b939c;
   --fl-sh:0 8px 40px rgba(0,0,0,0.13),0 1px 4px rgba(0,0,0,0.06);
 }
 #gf-fl[data-theme="dark"] {
   --fl-modal:rgba(13,14,18,0.97);--fl-hdr:rgba(8,9,12,0.95);--fl-hud:rgba(10,11,15,0.98);
   --fl-scr:rgba(10,12,26,0.92);--fl-brd:rgba(74,222,128,0.2);--fl-brd2:#1e2128;
   --fl-btn-brd:#343842;--fl-txt:#f5f5f5;--fl-txt2:#cbd5e1;--fl-txt3:#8a94a6;
-  --fl-kbd:#1e1e1e;--fl-kbd-brd:#333;
   --fl-sh:0 8px 32px rgba(0,0,0,0.6),0 40px 90px rgba(0,0,0,0.85);
 }
 #gf-fl{position:fixed;inset:0;z-index:2147483640;display:flex;align-items:center;justify-content:center;background:none;font-family:"IBM Plex Mono",monospace;}

@@ -141,7 +141,7 @@
   }
 
   let GT = null;
-  let _root = null, _cv = null, _ctx = null, _k = 1, _dark = false, _raf = null, _last = 0, _fitT = 0;
+  let _root = null, _cv = null, _ctx = null, _k = 1, _dark = false, _raf = null, _last = 0, _fitT = 0, _still = false;
   let _bg = null, _dangerG = null, _blk = {}, _gst = {}, _lab = {}, _mini = new Map();
   const _parts = Array.from({ length: 260 }, () => ({ x: 0, y: 0, vx: 0, vy: 0, t: 0, T: 1, s: 1, r: 0, vr: 0, c: '' }));
   let _np = 0;
@@ -204,6 +204,7 @@
   }
 
   function Rebuild() {
+    _still = false;
     _blk = {}; _gst = {}; _lab = {}; _mini.clear();
     _bg = BuildBg();
     _dangerG = _ctx.createLinearGradient(0, 0, 0, CELL * 5);
@@ -448,8 +449,17 @@
     if (!GT || !_root) return;
     if (_root.style.display === 'none') { if (GT.status === 'playing' && !GT.over) DoPause(); return; }
     if (GT.status !== 'paused') Update(dt);
+    if (Still()) { if (_still) return; _still = true; } else _still = false;
     DrawBoard();
     UpdateHUD();
+  }
+
+  function Still() {
+    const g = GT;
+    if (_np || g.shake > 0.15 || g.trail || g.lockFx || g.fall || g.clearing) return false;
+    if (g.status === 'gameover' ? !g.over || g.over.t < OVER_MS : g.status !== 'paused' && g.status !== 'start') return false;
+    for (const p of _pops) if (p.t < p.T) return false;
+    return true;
   }
 
   function DrawBoard() {
@@ -458,7 +468,8 @@
     x.setTransform(_k, 0, 0, _k, 0, 0);
     x.fillStyle = _dark ? '#0d1022' : '#e3e8f8';
     x.fillRect(0, 0, BW, BH);
-    if (g.shake > 0.15) x.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
+    let sx = 0, sy = 0;
+    if (g.shake > 0.15) { sx = (Math.random() - 0.5) * g.shake; sy = (Math.random() - 0.5) * g.shake; x.setTransform(_k, 0, 0, _k, sx * _k, sy * _k); }
     x.drawImage(_bg.c, 0, 0, BW, BH);
 
     if (g.danger && g.status === 'playing') {
@@ -543,19 +554,20 @@
 
     for (let i = 0; i < _np; i++) {
       const q = _parts[i], u = q.t / q.T, sz = CELL * q.s * (1 - u * 0.5);
+      const c = Math.cos(q.r) * _k, n = Math.sin(q.r) * _k;
       x.globalAlpha = 1 - u * u;
-      x.save(); x.translate(q.x, q.y); x.rotate(q.r);
+      x.setTransform(c, n, -n, c, (q.x + sx) * _k, (q.y + sy) * _k);
       x.drawImage(Block(q.c).c, -sz / 2, -sz / 2, sz, sz);
-      x.restore();
     }
     x.globalAlpha = 1;
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
 
     for (const q of _pops) {
       if (q.t >= q.T) continue;
       const u = q.t / q.T, sc = u < 0.15 ? 0.6 + u / 0.15 * 0.5 : u < 0.25 ? 1.1 - (u - 0.15) * 1 : 1;
+      const z = sc * _k;
       x.globalAlpha = u > 0.7 ? 1 - (u - 0.7) / 0.3 : 1;
-      x.save(); x.translate(BW / 2, q.y - u * 26); x.scale(sc, sc);
-      x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+      x.setTransform(z, 0, 0, z, (BW / 2 + sx) * _k, (q.y - u * 26 + sy) * _k);
       x.font = F_POP;
       x.lineWidth = 5; x.strokeStyle = OUT; x.strokeText(q.txt, 0, 0);
       x.fillStyle = q.c; x.fillText(q.txt, 0, 0);
@@ -564,7 +576,6 @@
         x.lineWidth = 4; x.strokeText(q.sub, 0, 22);
         x.fillStyle = '#ffffff'; x.fillText(q.sub, 0, 22);
       }
-      x.restore();
     }
     x.globalAlpha = 1;
     x.setTransform(1, 0, 0, 1, 0, 0);
@@ -627,9 +638,8 @@
       SetText('gf-th-level', String(GT.level));
       SetText('gf-th-best',  GT.hiScore.toLocaleString());
     }
-    const bar = document.getElementById('gf-th-lvlbar');
-    const w = `${(GT.lines % 10) * 10}%`;
-    if (bar && _hud.bar !== w) { _hud.bar = w; bar.style.width = w; }
+    const lv = GT.lines % 10;
+    if (_hud.bar !== lv) { const bar = document.getElementById('gf-th-lvlbar'); if (bar) { _hud.bar = lv; bar.style.width = `${lv * 10}%`; } }
 
     const g = GT.cur?.grade;
     if (g && _hud.g !== g) {
@@ -959,6 +969,7 @@
     Fit();
     AttachKeys();
     _themeWatcher.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'style'] });
+    _still = false;
     if (!_raf) { _last = 0; _raf = requestAnimationFrame(Frame); }
   }
 

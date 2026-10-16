@@ -74,7 +74,7 @@
         } while (byte & 128 && i < 5);
         if (buf.length < i + len) return;
         Handle(buf[0] >> 4, buf[0] & 15, buf.subarray(i, i + len));
-        buf = buf.slice(i + len);
+        buf = buf.subarray(i + len);
       }
     }
 
@@ -90,7 +90,7 @@
         clearInterval(ping);
         ping = setInterval(() => Send(new Uint8Array([0xc0, 0])), 25000);
       };
-      ws.onmessage = e => { buf = Concat(buf, new Uint8Array(e.data)); Parse(); };
+      ws.onmessage = e => { const d = new Uint8Array(e.data); buf = buf.length ? Concat(buf, d) : d; Parse(); };
       ws.onclose = () => { ready = false; clearInterval(ping); Schedule(); };
       ws.onerror = () => {};
     }

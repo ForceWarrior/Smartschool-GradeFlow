@@ -123,7 +123,6 @@
       lastEaten: null,
       flash: null,
       moveT: 0,
-      lastFrameTs: 0,
       toxicity: 0,
       dead: null, winT: -1, shake: 0, clock: 0,
     };
@@ -503,7 +502,7 @@
     }
   }
 
-  function DrawSnake(x, t, now) {
+  function DrawSnake(x, t) {
     const L = GS.snake.length, C = _S.C, ds = C / 4.5;
     if (L * 6 + 8 > SX.length) { SX = new Float32Array(L * 8); SY = new Float32Array(L * 8); SD = new Float32Array(L * 8); SR = new Float32Array(L * 8); }
     let n = 0, s = 0, need = 0;
@@ -557,10 +556,11 @@
       Node(j, L, t);
       x.drawImage(_S.spot.c, _nx - D / 2, _ny - D / 2, D, D);
     }
-    DrawHead(x, SX[0], SY[0], C, now);
+    DrawHead(x, SX[0], SY[0], C);
   }
 
-  function DrawHead(x, hx, hy, C, now) {
+  const SIGNS = [-1, 1];
+  function DrawHead(x, hx, hy, C) {
     const d = GS.dir, px = -d.y, py = d.x, R = _S.R * 1.12;
     const er = Math.max(1.6, C * 0.13), fw = R * 0.28, side = R * 0.48;
     const dead = !!GS.dead || GS.status === 'gameover';
@@ -581,7 +581,7 @@
       x.lineTo(tx + d.x * tl * 1.35 - px * tl * 0.3, ty + d.y * tl * 1.35 - py * tl * 0.3);
       x.stroke();
     }
-    for (const sg of [-1, 1]) {
+    for (const sg of SIGNS) {
       const ex = hx + d.x * fw + px * side * sg, ey = hy + d.y * fw + py * side * sg;
       if (dead) {
         x.strokeStyle = OUT; x.lineWidth = Math.max(1.3, C * 0.06);
@@ -600,7 +600,7 @@
       Circ(x, ex + d.x * er * 0.15 - er * 0.2, ey + d.y * er * 0.15 - er * 0.25, er * 0.2); x.fillStyle = '#ffffff'; x.fill();
     }
     x.fillStyle = 'rgba(20,40,20,0.45)';
-    for (const sg of [-1, 1]) { Circ(x, hx + d.x * R * 0.72 + px * R * 0.16 * sg, hy + d.y * R * 0.72 + py * R * 0.16 * sg, Math.max(0.8, C * 0.025)); x.fill(); }
+    for (const sg of SIGNS) { Circ(x, hx + d.x * R * 0.72 + px * R * 0.16 * sg, hy + d.y * R * 0.72 + py * R * 0.16 * sg, Math.max(0.8, C * 0.025)); x.fill(); }
   }
 
   function Draw() {
@@ -609,8 +609,9 @@
     if (_sN !== N || _sK !== _k || _sD !== _dark || !_S) BuildSprites(N);
     const x = _ctx, C = _S.C, now = performance.now();
     const t = GS.status === 'playing' ? Math.min(1, GS.moveT) : GS.status === 'start' ? 0 : GS.moveT;
-    x.setTransform(_k, 0, 0, _k, 0, 0);
-    if (GS.shake > 0.2) x.translate((Math.random() - 0.5) * GS.shake, (Math.random() - 0.5) * GS.shake);
+    let sx = 0, sy = 0;
+    if (GS.shake > 0.2) { sx = (Math.random() - 0.5) * GS.shake; sy = (Math.random() - 0.5) * GS.shake; }
+    x.setTransform(_k, 0, 0, _k, sx * _k, sy * _k);
     x.drawImage(_bg.c, 0, 0, CV, CV);
 
     if (_dark) {
@@ -649,22 +650,25 @@
       const cx = (p.x + 0.5) * C, cy = (p.y + 0.5) * C;
       x.drawImage(_S.glow[D.col].c, cx - C, cy - C, C * 2, C * 2);
       if (!blink) {
-        const w = C * 1.2 * sc, rot = Math.sin(now / 300) * 0.18;
-        x.save(); x.translate(cx, cy + Math.sin(now / 260) * C * 0.05); x.rotate(rot);
+        const w = C * 1.2 * sc, rot = Math.sin(now / 300) * 0.18, rc = Math.cos(rot) * _k, rs = Math.sin(rot) * _k;
+        x.setTransform(rc, rs, -rs, rc, (cx + sx) * _k, (cy + Math.sin(now / 260) * C * 0.05 + sy) * _k);
         x.drawImage((p.kind === 'dbl' ? _S.star : _S.clock).c, -w / 2, -w / 2, w, w);
-        x.restore();
+        x.setTransform(_k, 0, 0, _k, sx * _k, sy * _k);
       }
       x.strokeStyle = Rgba(D.col, 0.85); x.lineWidth = Math.max(1.5, C * 0.07);
       x.beginPath(); x.arc(cx, cy, C * 0.52, -Math.PI / 2, -Math.PI / 2 + TAU * (p.life / PU_LIFE)); x.stroke();
     }
 
-    DrawSnake(x, t, now);
+    DrawSnake(x, t);
 
     for (let i = 0; i < _np; i++) {
       const p = _parts[i], u = p.t / p.T;
       x.globalAlpha = p.k === 1 ? (1 - u) * 0.6 : 1 - u * u;
       x.fillStyle = p.c;
-      if (p.k === 3) { x.save(); x.translate(p.x, p.y); x.rotate(p.t * 6 + i); x.fillRect(-p.r, -p.r * 0.5, p.r * 2, p.r); x.restore(); }
+      if (p.k === 3) {
+        const a = p.t * 6 + i, c = Math.cos(a) * _k, n = Math.sin(a) * _k;
+        x.setTransform(c, n, -n, c, (p.x + sx) * _k, (p.y + sy) * _k); x.fillRect(-p.r, -p.r * 0.5, p.r * 2, p.r); x.setTransform(_k, 0, 0, _k, sx * _k, sy * _k);
+      }
       else { Circ(x, p.x, p.y, p.k === 1 ? p.r * (0.6 + u * 0.8) : p.r * (1 - u * 0.4)); x.fill(); }
     }
     x.globalAlpha = 1;
@@ -673,13 +677,14 @@
     for (const p of _pops) {
       if (p.t >= p.T) continue;
       const u = p.t / p.T, sc = u < 0.18 ? 0.7 + u / 0.18 * 0.4 : u < 0.3 ? 1.1 - (u - 0.18) * 0.8 : 1;
+      const z = sc * _k;
       x.globalAlpha = u > 0.65 ? 1 - (u - 0.65) / 0.35 : 1;
-      x.save(); x.translate(p.x, p.y - C * 0.5 - u * 28); x.scale(sc, sc);
+      x.setTransform(z, 0, 0, z, (p.x + sx) * _k, (p.y - C * 0.5 - u * 28 + sy) * _k);
       x.font = F_POP; x.lineWidth = 4; x.strokeStyle = OUT; x.strokeText(p.txt, 0, 0);
       x.fillStyle = p.c; x.fillText(p.txt, 0, 0);
-      x.restore();
     }
     x.globalAlpha = 1;
+    x.setTransform(_k, 0, 0, _k, sx * _k, sy * _k);
 
     if (!GS.lvl.freePlay) {
       const prog = Math.min(1, GS.score / GS.lvl.target);
@@ -714,15 +719,18 @@
       SetText('gf-sn-target',  isFP ? '∞' : GS.lvl.target.toLocaleString());
       SetText('gf-sn-progpct', isFP ? _GameText('game_snake_free').toUpperCase() : `${Math.round(prog * 100)}%`);
       SetText('gf-sn-lvl',     `${isFP ? '∞' : `L${GS.lvl.id}`} · ${GS.N}×${GS.N}`);
+      SetStyle('gf-sn-progbar', 'transform', `scaleX(${isFP ? 1 : prog.toFixed(3)})`);
+      SetStyle('gf-sn-progbar', 'background', isFP ? 'linear-gradient(90deg,#c4b5fd,#a78bfa)' : 'linear-gradient(90deg,#86efac,#22c55e)');
     }
-    SetText('gf-sn-len',     `${GS.snake.length}`);
-    SetText('gf-sn-eaten',   String(GS.applesEaten));
-    SetStyle('gf-sn-progbar', 'transform', `scaleX(${isFP ? 1 : prog.toFixed(3)})`);
-    SetStyle('gf-sn-progbar', 'background', isFP ? 'linear-gradient(90deg,#c4b5fd,#a78bfa)' : 'linear-gradient(90deg,#86efac,#22c55e)');
+    if (_hud.len !== GS.snake.length) { _hud.len = GS.snake.length; SetText('gf-sn-len', `${GS.snake.length}`); }
+    if (_hud.eaten !== GS.applesEaten) { _hud.eaten = GS.applesEaten; SetText('gf-sn-eaten', String(GS.applesEaten)); }
 
     const buf = Math.max(-3, Math.min(3, GS.growthBuffer));
-    SetStyle('gf-sn-gbuf', 'transform', `scaleX(${((buf + 3) / 6).toFixed(3)})`);
-    SetStyle('gf-sn-gbuf', 'background', buf >= 0 ? 'linear-gradient(90deg,#86efac,#22c55e)' : 'linear-gradient(90deg,#fca5a5,#ef4444)');
+    if (_hud.buf !== buf) {
+      _hud.buf = buf;
+      SetStyle('gf-sn-gbuf', 'transform', `scaleX(${((buf + 3) / 6).toFixed(3)})`);
+      SetStyle('gf-sn-gbuf', 'background', buf >= 0 ? 'linear-gradient(90deg,#86efac,#22c55e)' : 'linear-gradient(90deg,#fca5a5,#ef4444)');
+    }
 
     const fx = GS.fx, kind = fx.dbl > 0 ? 'dbl' : fx.slow > 0 ? 'slow' : '';
     SetStyle('gf-sn-pu', 'display', kind ? 'flex' : 'none');
@@ -897,7 +905,7 @@
 
   function DoStart() {
     GS = NewGameState(_lvlId); SyncApples(GS);
-    GS.status = 'playing'; GS.lastFrameTs = performance.now();
+    GS.status = 'playing';
     ResetFx();
     ShowScreen(null); StartLoop();
   }
@@ -908,7 +916,7 @@
       GS.status = 'paused'; ShowScreen('gf-sns-pause');
       SetText('gf-sns-pause-score', `${_GameText('game_score')}: ${GS.score.toLocaleString()}`);
     } else if (GS.status === 'paused') {
-      GS.status = 'playing'; GS.lastFrameTs = performance.now();
+      GS.status = 'playing';
       ShowScreen(null); StartLoop();
     }
   }
@@ -1086,7 +1094,6 @@
           <button id="gf-sns-pu" class="gf-sns-pu"></button>
         </div>
         <div class="gf-sns-footer">${_GameText('game_snake_footer')}</div>
-        <button id="gf-sns-play" style="display:none"></button>
       </div>
     </div>
 
@@ -1134,7 +1141,6 @@
   function BindButtons() {
     document.getElementById('gf-sn-close-btn') ?.addEventListener('click', CloseGradeSnake);
     document.getElementById('gf-sn-pause-btn') ?.addEventListener('click', DoPause);
-    document.getElementById('gf-sns-play')     ?.addEventListener('click', DoStart);
     document.getElementById('gf-sns-resume')   ?.addEventListener('click', DoPause);
     document.getElementById('gf-sns-retry')    ?.addEventListener('click', DoStart);
     document.getElementById('gf-sns-back-go')  ?.addEventListener('click', ShowStartScreen);
@@ -1185,7 +1191,6 @@
       if (GS?._bossHidden) {
         GS._bossHidden = false;
         GS.status = 'playing';
-        GS.lastFrameTs = performance.now();
         ShowScreen(null);
       }
       StartLoop();
@@ -1213,7 +1218,6 @@
   W.CloseGradeSnake      = CloseGradeSnake;
   W.ToggleGradeSnake     = ToggleGradeSnake;
   W.BossKeySnake         = BossKeySnake;
-  W.normalizeGradesSnake = NormalizeGrades;
 
   function InjectCSS() {
     if (document.getElementById('gf-snake-css')) return;
