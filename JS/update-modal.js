@@ -4,16 +4,16 @@
   if (window.self !== window.top) return;
 
   const GF_UPDATE = {
-    id: 'v1.3.0',
-    version: '1.3.0',
+    id: 'v2.0.0',
+    version: '2.0.0',
     image: '',
     features: [
-      { icon: '🎨', titleKey: 'update_feat_v13_theme', descKey: 'update_feat_v13_theme_desc' },
-      { icon: '🕹️', titleKey: 'update_feat_v13_games', descKey: 'update_feat_v13_games_desc' },
-      { icon: '📡', titleKey: 'update_feat_v13_lan', descKey: 'update_feat_v13_lan_desc' },
-      { icon: '🏷️', titleKey: 'update_feat_v13_ratings', descKey: 'update_feat_v13_ratings_desc' },
-      { icon: '⌨️', titleKey: 'update_feat_v13_keys', descKey: 'update_feat_v13_keys_desc' },
-      { icon: '🩹', titleKey: 'update_feat_v13_fixes', descKey: 'update_feat_v13_fixes_desc' },
+      { icon: '🎨', titleKey: 'update_feat_v20_theme', descKey: 'update_feat_v20_theme_desc' },
+      { icon: '🕹️', titleKey: 'update_feat_v20_games', descKey: 'update_feat_v20_games_desc' },
+      { icon: '📡', titleKey: 'update_feat_v20_lan', descKey: 'update_feat_v20_lan_desc' },
+      { icon: '🏷️', titleKey: 'update_feat_v20_ratings', descKey: 'update_feat_v20_ratings_desc' },
+      { icon: '⌨️', titleKey: 'update_feat_v20_keys', descKey: 'update_feat_v20_keys_desc' },
+      { icon: '🩹', titleKey: 'update_feat_v20_fixes', descKey: 'update_feat_v20_fixes_desc' },
     ],
   };
 

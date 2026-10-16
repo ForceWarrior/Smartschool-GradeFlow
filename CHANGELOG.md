@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.3.0] - 2026-10-14
+## [2.0.0] - 2026-10-16
 
 ### Added
 - Theme editor with 12 presets and fully custom colours. Custom themes recolour SmartSchool itself instead of inverting it, so images stay normal, and also style the panel, popup, chat, games, and grade colours. Parts that SmartSchool loads from its own CDN are recoloured too, and text on bright colours is kept readable. Themes can be saved and shared with a GFTHEME code.
