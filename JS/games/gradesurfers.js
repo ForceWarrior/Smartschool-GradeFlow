@@ -1367,7 +1367,7 @@
   }
 
   function Pickups(dt) {
-    const p = GS, h = p.rollT > 0 ? 0.8 : 1.7, k = 1 - Math.exp(-dt * 10);
+    const p = GS, h = p.rollT > 0 ? 0.8 : 1.7, k = 1 - Math.exp(-dt * 10), lo = p.sneak > 0 && !p.ground ? -Infinity : p.y - 0.3;
     for (let i = 0; i < p.C.length; i++) {
       const c = p.C[i];
       if (c.dead) continue;
@@ -1375,7 +1375,7 @@
       if (p.magnet > 0 && !c.mag && !c.air && dz < 28 && dz > -1) { c.mag = true; c.car = null; }
       if (c.mag) { c.x += (p.x - c.x) * k; c.y += (p.y + 1 - c.y) * k; c.z += (p.dist + 0.3 - c.z) * k; dz = c.z - p.dist; }
       const r = c.mag ? 1.4 : 1;
-      if (Math.abs(dz) < r && Math.abs(c.x - p.x) < r - 0.1 && c.y > p.y - 0.3 && c.y < p.y + h + 0.6) { c.dead = true; p.coins++; Sparkle(c); Mis('coins', 1); }
+      if (Math.abs(dz) < r && Math.abs(c.x - p.x) < r - 0.1 && c.y > lo && c.y < p.y + h + 0.6) { c.dead = true; p.coins++; Sparkle(c); Mis('coins', 1); }
     }
     for (let i = 0; i < p.I.length; i++) {
       const it = p.I[i];
