@@ -1733,16 +1733,19 @@ function OpenPanel(forceOpen = false) {
 
 const _gfLoadedScripts = new Map();
 
+function _GfLoadScript(file) {
+  if (!_gfLoadedScripts.has(file)) {
+    _gfLoadedScripts.set(file, chrome.runtime.sendMessage({ type: 'gf-load-scripts', files: [file] }).then(r => {
+      if (!r?.ok) _gfLoadedScripts.delete(file);
+      return !!r?.ok;
+    }, () => { _gfLoadedScripts.delete(file); return false; }));
+  }
+  return _gfLoadedScripts.get(file);
+}
+
 function _GfLoadScripts(files) {
-  return Promise.all(files.map(file => {
-    if (!_gfLoadedScripts.has(file)) {
-      _gfLoadedScripts.set(file, chrome.runtime.sendMessage({ type: 'gf-load-scripts', files: [file] }).then(r => {
-        if (!r?.ok) _gfLoadedScripts.delete(file);
-        return !!r?.ok;
-      }, () => { _gfLoadedScripts.delete(file); return false; }));
-    }
-    return _gfLoadedScripts.get(file);
-  })).then(results => results.every(Boolean));
+  const strings = files.some(f => f.startsWith('JS/games/')) ? _GfLoadScript('JS/games/game-strings.js') : Promise.resolve(true);
+  return strings.then(ok => ok && Promise.all(files.map(_GfLoadScript)).then(results => results.every(Boolean)));
 }
 window._GfLoadScripts = _GfLoadScripts;
 
