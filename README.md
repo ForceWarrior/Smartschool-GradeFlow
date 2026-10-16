@@ -68,10 +68,10 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 
 | Game | What it is |
 |------|-----------|
-| Grade.io | Agar.io with bots, solo or with everyone on your network |
-| Crossy Grade | Crossy Road, hop over roads, rivers, and railways |
-| Grade Surfers | Subway Surfers style endless runner with trains, power-ups, the inspector, and a shop for characters, boards, and upgrades |
-| Grade Hook | Stickman Hook, swing through 24 levels or build your own in the level editor and share it with a code |
+| Grade.io | Agar.io with bots, solo or with everyone on your network. Free-for-all, Rush, Teams, and Royale modes, power-ups, map events, and skins |
+| Crossy Grade | Crossy Road through six zones that change as you go (school, forest, snow, desert, city, lava), with weather events and unlockable characters |
+| Grade Surfers | Subway Surfers style endless runner with trains, power-ups, the inspector, missions that raise your multiplier up to x30, and a shop for characters, boards, upgrades, and boosters |
+| Grade Hook | Stickman Hook, swing through 32 levels or build your own in the level editor with cannons, spike bars, wind, checkpoints, 10 map themes, and skins, then share it with a code |
 | GradeStack | Tetris with grade-themed pieces |
 | GradeSnake | Snake with levels, good grades grow you, bad ones shrink you |
 | Grade 2048 | Merge weak grades until you hit 20/20 |
@@ -82,9 +82,9 @@ A browser extension that adds a full grade dashboard directly inside SmartSchool
 | GradePong | Play pong against an AI with grade-powered effects |
 | GradeFlappy | Fly through pipe gaps and dodge bad grades |
 | GradeRunner | Endless runner with jumps, slides, pickups, and grade obstacles |
-| GradeTower | Tower defense with 3 maps, 30 waves each, bosses, and 6 towers with branching upgrades |
+| GradeTower | Tower defense with a 10-map story, an endless mode, challenges, bosses, and 11 towers with branching upgrades |
 
-All games track your personal best and have animated previews in the menu. Games only load when you open them, so SmartSchool pages stay fast.
+All games track your personal best and have previews in the menu. Games only load when you open them, so SmartSchool pages stay fast.
 
 ### Peer-to-peer chat (press F7)
 Optional opt-in overlay for chatting with friends who also use GradeFlow.

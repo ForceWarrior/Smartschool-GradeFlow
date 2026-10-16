@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   'use strict';
 
   const C  = window.GfChatCrypto;
@@ -6,10 +6,7 @@
   const HS = window.GfChatHandshake;
   const CG = window.GfChatChannelGuard;
   const PI = window.GfChatPeerIdentity;
-  if (!C || !SG || !HS || !CG || !PI) {
-    console.warn('[GfChat offscreen] missing modules');
-    return;
-  }
+  if (!C || !SG || !HS || !CG || !PI) return;
 
   const MAX_MESSAGES = 60;
   const MAX_NICKNAME = 24;

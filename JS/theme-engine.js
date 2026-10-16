@@ -31,13 +31,14 @@
   let ctx2d = null;
   const parseCache = new Map();
   const docs = new Set();
-  let P = null, sig = '', mapCache = new Map(), active = false, pollTimer = 0, outKeys = new Set();
+  let P = null, sig = '', mapCache = new Map(), active = false, pollTimer = 0, shieldTimer = 0, outKeys = new Set();
   const DYN_ATTR = 'data-gf-d';
   const DYN_HOLD = 'data-gf-dr';
   const DYN_SKIP = new Set(['head', 'script', 'style', 'link', 'meta', 'title', 'template', 'noscript', 'svg', 'img', 'video', 'canvas', 'iframe', 'picture', 'object', 'embed', 'br', 'wbr', 'source', 'track', 'math']);
   const GF_ID = /^(gf-|gradeflow-panel-host$)/;
   const GF_HOSTS = '[id^="gf-"],#gradeflow-panel-host,svg,math';
-  const SIDES = ['top', 'right', 'bottom', 'left'];
+  const SIDES = ['top', 'right', 'bottom', 'left'].map(side => [side, `border-${side}-style`, `border-${side}-width`, `border-${side}-color`]);
+  const HOVER_EVENTS = ['mouseover', 'mouseout', 'focusin', 'focusout'];
 
   function Clamp(v, a = 0, b = 1) { return v < a ? a : v > b ? b : v; }
 
@@ -496,8 +497,9 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
       keys.push(key);
       if (e.css.length < 500000) used.push([HashKey(key), e.css.length]);
     }
-    st.base.textContent = BaseCss();
-    st.style.textContent = css;
+    const base = BaseCss();
+    if (st.base.textContent !== base) st.base.textContent = base;
+    if (st.style.textContent !== css) st.style.textContent = css;
     if (st.base.parentNode !== head) head.prepend(st.base);
     if (st.style.parentNode !== head || head.lastElementChild !== st.style) head.appendChild(st.style);
     if (doc === document) {
@@ -540,7 +542,7 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
       for (let i = 0; el && el.nodeType === 1 && i < 3; i++, el = el.parentElement) d.solo.add(el);
       if (!d.raf) d.raf = doc.defaultView.requestAnimationFrame(() => DynFlush(doc));
     };
-    for (const t of ['mouseover', 'mouseout', 'focusin', 'focusout']) doc.addEventListener(t, d.hover, true);
+    for (const t of HOVER_EVENTS) doc.addEventListener(t, d.hover, true);
     DynQueue(doc, null, true);
   }
 
@@ -617,9 +619,9 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
       const bg = Remap(cs.backgroundColor, 'bg');
       if (bg) body += `background-color:${bg}!important;`;
       const sides = [];
-      for (const side of SIDES) {
-        if (cs[`border-${side}-style`] === 'none' || !parseFloat(cs[`border-${side}-width`]) || cs[`border-${side}-color`] === cs.color) continue;
-        const m = Remap(cs[`border-${side}-color`], 'border');
+      for (const [side, style, width, color] of SIDES) {
+        if (cs[style] === 'none' || !parseFloat(cs[width]) || cs[color] === cs.color) continue;
+        const m = Remap(cs[color], 'border');
         if (m) sides.push([side, m]);
       }
       if (sides.length === 4 && sides.every(x => x[1] === sides[0][1])) body += `border-color:${sides[0][1]}!important;`;
@@ -686,7 +688,7 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
     const d = st.dyn;
     if (!d) return;
     if (d.raf) doc.defaultView?.cancelAnimationFrame(d.raf);
-    if (d.hover) for (const t of ['mouseover', 'mouseout', 'focusin', 'focusout']) doc.removeEventListener(t, d.hover, true);
+    if (d.hover) for (const t of HOVER_EVENTS) doc.removeEventListener(t, d.hover, true);
     d.style.remove();
     doc.querySelectorAll(`[${DYN_ATTR}],[${DYN_HOLD}]`).forEach(el => { el.removeAttribute(DYN_ATTR); el.removeAttribute(DYN_HOLD); });
     st.dyn = null;
@@ -827,14 +829,15 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
         if (active && Scan(document)) Render(document);
         document.getElementById('gf-theme-early')?.remove();
         document.getElementById('gf-theme-early-base')?.remove();
+        Unshield();
         DynQueue(document, null, true);
       };
+      if (Scan(document)) Render(document);
+      Unshield();
       if (document.readyState === 'complete') loaded();
       else addEventListener('load', loaded, { once: true });
       clearInterval(pollTimer);
-      pollTimer = setInterval(() => {
-        for (const doc of docs) { if (doc.defaultView && Scan(doc)) Render(doc); }
-      }, 3000);
+      pollTimer = setInterval(Poll, 3000);
     };
     if (document.head && document.body) go();
     else {
@@ -843,14 +846,34 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
     }
   }
 
+  function Poll() {
+    if (!active || document.hidden) return;
+    for (const doc of docs) { if (doc.defaultView && Scan(doc)) Render(doc); }
+  }
+
+  document.addEventListener('visibilitychange', Poll);
+
+  function Unshield() {
+    clearTimeout(shieldTimer);
+    document.getElementById('gf-theme-shield')?.remove();
+  }
+
   function Early(palette) {
     try {
       const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
       const want = Signature(palette);
-      if (!cache || cache.sig !== want) return false;
-      const css = (cache.keys || []).map(k => { const c = CacheGet(k); return c && c.sig === want ? c.css : ''; }).join('');
+      const hit = cache && cache.sig === want;
+      if (!P) P = Prepare(palette);
+      const css = hit ? (cache.keys || []).map(k => { const c = CacheGet(k); return c && c.sig === want ? c.css : ''; }).join('') : '';
       const head = document.head || document.documentElement;
-      for (const [id, text] of [['gf-theme-early-base', cache.base], ['gf-theme-early', css]]) {
+      if (!document.body && !document.getElementById('gf-theme-shield')) {
+        const s = document.createElement('style');
+        s.id = 'gf-theme-shield';
+        s.textContent = `html{background-color:${Fmt(P.bg)}!important}body{opacity:0!important}`;
+        head.appendChild(s);
+        shieldTimer = setTimeout(Unshield, 1200);
+      }
+      for (const [id, text] of [['gf-theme-early-base', hit ? cache.base : BaseCss()], ['gf-theme-early', css]]) {
         if (!text || document.getElementById(id)) continue;
         const s = document.createElement('style');
         s.id = id;
@@ -868,6 +891,7 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
     docs.clear();
     document.getElementById('gf-theme-early')?.remove();
     document.getElementById('gf-theme-early-base')?.remove();
+    Unshield();
     try {
       localStorage.removeItem(CACHE_KEY);
       localStorage.removeItem(INDEX_KEY);

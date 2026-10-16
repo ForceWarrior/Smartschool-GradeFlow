@@ -23,7 +23,6 @@ let _gfPopupLang = 'auto';
 let popupThemePoll = 0;
 
 const toggleBtn  = document.getElementById('theme-toggle');
-const presetBtns = document.querySelectorAll('.preset-btn');
 const homeSummaryToggle = document.getElementById('home-summary-toggle');
 
 function ApplyPopupAppearance(base) {
@@ -54,16 +53,9 @@ function ApplyPopupAppearance(base) {
   toggleBtn.disabled = false;
 }
 
-function UpdatePresetHighlight() {
-  presetBtns.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.preset === pageTheme);
-  });
-}
-
 function ActivatePreset(preset) {
   pageTheme = preset;
   ApplyPopupAppearance(preset);
-  UpdatePresetHighlight();
   chrome.storage.local.set({ [KEY_THEME]: preset });
 }
 
@@ -117,7 +109,6 @@ themePresets.addEventListener('click', e => {
   const t = [...GF_THEME_PRESETS, ...popupLibrary][+btn.dataset.index];
   if (t) UsePalette(t);
 });
-presetBtns.forEach(btn => btn.addEventListener('click', () => ActivatePreset(btn.dataset.preset)));
 
 chrome.storage.local.get([KEY_THEME, GF_THEME_PALETTE_KEY, GF_THEME_LIBRARY_KEY], res => {
   pageTheme = res[KEY_THEME] ?? 'light';
@@ -128,7 +119,6 @@ chrome.storage.local.get([KEY_THEME, GF_THEME_PALETTE_KEY, GF_THEME_LIBRARY_KEY]
     popupExternalThemeVars = GfThemeVars(popupPalette || GF_THEME_PRESETS[0]);
   }
   ApplyPopupAppearance(pageTheme);
-  UpdatePresetHighlight();
   RenderThemePicker();
 });
 
@@ -248,16 +238,20 @@ const confirmMessage  = document.getElementById('confirm-message');
 const confirmConfirm  = document.getElementById('confirm-confirm');
 const confirmCancel   = document.getElementById('confirm-cancel');
 
+function DefaultPersonalization() {
+  return {
+    nameChanger: false, customName: '',
+    pfpChanger: false,
+    fakeMsgCounter: false, msgCounterValue: 0,
+    fakeNotifCounter: false, notifCounterValue: 0,
+    fakeNewsCounter: false, newsCounterValue: 0,
+  };
+}
+
 function GetPersonalization() {
   return new Promise(resolve => {
     chrome.storage.sync.get(GF_SETTINGS_KEY, res => {
-      resolve(res[GF_SETTINGS_KEY] || {
-        nameChanger: false, customName: '',
-        pfpChanger: false,
-        fakeMsgCounter: false, msgCounterValue: 0,
-        fakeNotifCounter: false, notifCounterValue: 0,
-        fakeNewsCounter: false, newsCounterValue: 0,
-      });
+      resolve(res[GF_SETTINGS_KEY] || DefaultPersonalization());
     });
   });
 }
@@ -304,33 +298,38 @@ function Debounce(fn, ms) {
 
 let _pendingSave = false;
 
+function CounterValue(input) {
+  const count = Math.max(0, parseInt(input.value, 10) || 0);
+  input.value = count;
+  return count;
+}
+
+function CollectPersonalization() {
+  const msgCounterValue = CounterValue(msgValue);
+  const notifCounterValue = CounterValue(notifValue);
+  const newsCounterValue = CounterValue(newsValue);
+  return {
+    nameChanger:      nameToggle.checked,
+    customName:       customNameInput.value.trim(),
+    pfpChanger:       pfpToggle.checked,
+    fakeMsgCounter:   msgToggle.checked,
+    msgCounterValue,
+    fakeNotifCounter: notifToggle.checked,
+    notifCounterValue,
+    fakeNewsCounter:  newsToggle.checked,
+    newsCounterValue,
+  };
+}
+
 async function _flushSave() {
   _pendingSave = false;
   try {
-    const count = Math.max(0, parseInt(msgValue.value, 10) || 0);
-    msgValue.value = count;
-    const notifCount = Math.max(0, parseInt(notifValue.value, 10) || 0);
-    notifValue.value = notifCount;
-    const newsCount = Math.max(0, parseInt(newsValue.value, 10) || 0);
-    newsValue.value = newsCount;
-    const data = {
-      nameChanger:      nameToggle.checked,
-      customName:       customNameInput.value.trim(),
-      pfpChanger:       pfpToggle.checked,
-      fakeMsgCounter:   msgToggle.checked,
-      msgCounterValue:  count,
-      fakeNotifCounter: notifToggle.checked,
-      notifCounterValue: notifCount,
-      fakeNewsCounter:  newsToggle.checked,
-      newsCounterValue: newsCount,
-    };
+    const data = CollectPersonalization();
     await PutPersonalization(data);
     const pfp = data.pfpChanger ? await GetStoredProfilePic() : '';
     NotifySmartschoolTabs(data, pfp);
     ShowStatusMessage(_PopupText('popup_auto_saved'), 'success');
-  } catch (err) {
-    console.error('auto-save failed:', err);
-  }
+  } catch (_) {}
 }
 
 const autoSave = Debounce(() => { _flushSave(); }, 3000);
@@ -383,31 +382,14 @@ function ReloadSmartschoolTabs() {
 }
 
 async function SaveAndApply() {
-  const count = Math.max(0, parseInt(msgValue.value, 10) || 0);
-  msgValue.value = count;
-  const notifCount = Math.max(0, parseInt(notifValue.value, 10) || 0);
-  notifValue.value = notifCount;
-  const newsCount = Math.max(0, parseInt(newsValue.value, 10) || 0);
-  newsValue.value = newsCount;
-  const data = {
-    nameChanger:      nameToggle.checked,
-    customName:       customNameInput.value.trim(),
-    pfpChanger:       pfpToggle.checked,
-    fakeMsgCounter:   msgToggle.checked,
-    msgCounterValue:  count,
-    fakeNotifCounter: notifToggle.checked,
-    notifCounterValue: notifCount,
-    fakeNewsCounter:  newsToggle.checked,
-    newsCounterValue: newsCount,
-  };
+  const data = CollectPersonalization();
   try {
     await PutPersonalization(data);
     const pfp = data.pfpChanger ? await GetStoredProfilePic() : '';
     NotifySmartschoolTabs(data, pfp);
     ShowStatusMessage(_PopupText('popup_saved'), 'success');
     setTimeout(() => ReloadSmartschoolTabs(), 400);
-  } catch (err) {
-    console.error('save failed:', err);
+  } catch (_) {
     ShowStatusMessage(_PopupText('popup_save_failed'), 'error');
   }
 }
@@ -438,13 +420,7 @@ async function ResetAllSettings() {
   const ok = await ConfirmDialog(_PopupText('popup_reset_confirm'));
   if (!ok) return;
   try {
-    await PutPersonalization({
-      nameChanger: false, customName: '',
-      pfpChanger: false,
-      fakeMsgCounter: false, msgCounterValue: 0,
-      fakeNotifCounter: false, notifCounterValue: 0,
-      fakeNewsCounter: false, newsCounterValue: 0,
-    });
+    await PutPersonalization(DefaultPersonalization());
     await new Promise(r => chrome.storage.local.set({ [KEY_HOME_SUMMARY]: true }, r));
     await new Promise(r => chrome.storage.local.remove(GF_PFP_KEY, r));
 
@@ -469,8 +445,7 @@ async function ResetAllSettings() {
 
     ShowStatusMessage(_PopupText('popup_reset_done'), 'success');
     setTimeout(() => ReloadSmartschoolTabs(), 400);
-  } catch (err) {
-    console.error('Reset failed:', err);
+  } catch (_) {
     ShowStatusMessage(_PopupText('popup_reset_failed'), 'error');
   }
 }
@@ -520,46 +495,22 @@ dropZone.addEventListener('drop', e => {
   if (file) ApplyImageFile(file);
 });
 
-nameToggle.addEventListener('change', () => {
-  nameSection.classList.toggle('hidden', !nameToggle.checked);
-  if (!_initializing) immediateAutoSave();
-});
-pfpToggle.addEventListener('change', () => {
-  pfpSection.classList.toggle('hidden', !pfpToggle.checked);
-  if (!_initializing) immediateAutoSave();
-});
-msgToggle.addEventListener('change', () => {
-  msgSection.classList.toggle('hidden', !msgToggle.checked);
-  if (!_initializing) immediateAutoSave();
-});
-notifToggle.addEventListener('change', () => {
-  notifSection.classList.toggle('hidden', !notifToggle.checked);
-  if (!_initializing) immediateAutoSave();
-});
-newsToggle.addEventListener('change', () => {
-  newsSection.classList.toggle('hidden', !newsToggle.checked);
-  if (!_initializing) immediateAutoSave();
+[[nameToggle, nameSection], [pfpToggle, pfpSection], [msgToggle, msgSection], [notifToggle, notifSection], [newsToggle, newsSection]].forEach(([toggle, section]) => {
+  toggle.addEventListener('change', () => {
+    section.classList.toggle('hidden', !toggle.checked);
+    if (!_initializing) immediateAutoSave();
+  });
 });
 
-customNameInput.addEventListener('blur',    () => { if (!_initializing) { _pendingSave = true; autoSave(); } });
-customNameInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !_initializing) immediateAutoSave(); });
-customNameInput.addEventListener('input',   () => { if (!_initializing) { _pendingSave = true; autoSave(); } });
-msgValue.addEventListener('blur',    () => { if (!_initializing) { _pendingSave = true; autoSave(); } });
-msgValue.addEventListener('keydown', e => { if (e.key === 'Enter' && !_initializing) immediateAutoSave(); });
-notifValue.addEventListener('blur',    () => { if (!_initializing) { _pendingSave = true; autoSave(); } });
-notifValue.addEventListener('keydown', e => { if (e.key === 'Enter' && !_initializing) immediateAutoSave(); });
-newsValue.addEventListener('blur',    () => { if (!_initializing) { _pendingSave = true; autoSave(); } });
-newsValue.addEventListener('keydown', e => { if (e.key === 'Enter' && !_initializing) immediateAutoSave(); });
-
-msgValue.addEventListener('input', () => {
-  msgValue.value = msgValue.value.replace(/[^0-9]/g, '') || '0';
+const queueAutoSave = () => { if (!_initializing) { _pendingSave = true; autoSave(); } };
+[customNameInput, msgValue, notifValue, newsValue].forEach(input => {
+  input.addEventListener('blur', queueAutoSave);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && !_initializing) immediateAutoSave(); });
 });
-notifValue.addEventListener('input', () => {
-  notifValue.value = notifValue.value.replace(/[^0-9]/g, '') || '0';
-});
-newsValue.addEventListener('input', () => {
-  newsValue.value = newsValue.value.replace(/[^0-9]/g, '') || '0';
-});
+customNameInput.addEventListener('input', queueAutoSave);
+[msgValue, notifValue, newsValue].forEach(input => input.addEventListener('input', () => {
+  input.value = input.value.replace(/[^0-9]/g, '') || '0';
+}));
 
 saveBtn.addEventListener('click', SaveAndApply);
 resetBtn.addEventListener('click', ResetAllSettings);

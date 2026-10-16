@@ -311,7 +311,7 @@ window.addEventListener('message', e => {
   }
 
   if (e.data?.type === 'gf-grades-ready') {
-    const prevStore = S.store ? JSON.parse(JSON.stringify(S.store)) : null;
+    const prevStore = S.store;
     chrome.storage.local.get(['gradeflow-grades', GF_PLANNER_KEY, 'gradeflow-study-sessions', GF_ATTENDANCE_KEY, 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
       S.profilePicture = result?.['gf-profile-picture'] || S.profilePicture || '';
       S.detectedProfilePicture = result?.['gf-detected-profile-picture'] || S.detectedProfilePicture || '';
@@ -414,11 +414,12 @@ function InvalidatePeriodCache() { _allPeriodCache = null; _allPeriodCacheStore 
 function BuildAllPeriodData(store) {
   if (store && store === _allPeriodCacheStore && _allPeriodCache) return _allPeriodCache;
   const merged = {};
+  const seenBySubject = {};
   for (const [key, subjects] of Object.entries(store || {})) {
     if (key.startsWith('_')) continue;
     for (const [subject, payload] of Object.entries(subjects || {})) {
-      if (!merged[subject]) merged[subject] = { scores: [] };
-      const seen = new Set(merged[subject].scores.map(x => x.title + '\0' + x.date + '\0' + x.scored + '\0' + x.max + '\0' + (x._extra ? ExtraLabelKey(x._extra) : '')));
+      if (!merged[subject]) { merged[subject] = { scores: [] }; seenBySubject[subject] = new Set(); }
+      const seen = seenBySubject[subject];
       for (const score of (payload?.scores || [])) {
         const k = score.title + '\0' + score.date + '\0' + score.scored + '\0' + score.max + '\0' + (score._extra ? ExtraLabelKey(score._extra) : '');
         if (!seen.has(k)) { seen.add(k); merged[subject].scores.push({ ...score, _period: key }); }
@@ -831,28 +832,19 @@ function NormalizeAttendanceItems(raw) {
   } catch (_) { return []; }
 }
 
-function LoadPlannerItems(done) {
+function LoadStoredList(key, prop, normalize, done) {
   try {
-    chrome.storage.local.get(GF_PLANNER_KEY, result => {
-      S.plannerItems = NormalizePlannerItems(result?.[GF_PLANNER_KEY]);
-      if (done) done(S.plannerItems);
+    chrome.storage.local.get(key, result => {
+      S[prop] = normalize(result?.[key]);
+      if (done) done(S[prop]);
     });
   } catch (_) {
-    S.plannerItems = [];
-    if (done) done(S.plannerItems);
+    S[prop] = [];
+    if (done) done(S[prop]);
   }
 }
-function LoadAttendanceItems(done) {
-  try {
-    chrome.storage.local.get(GF_ATTENDANCE_KEY, result => {
-      S.attendanceItems = NormalizeAttendanceItems(result?.[GF_ATTENDANCE_KEY]);
-      if (done) done(S.attendanceItems);
-    });
-  } catch (_) {
-    S.attendanceItems = [];
-    if (done) done(S.attendanceItems);
-  }
-}
+function LoadPlannerItems(done) { LoadStoredList(GF_PLANNER_KEY, 'plannerItems', NormalizePlannerItems, done); }
+function LoadAttendanceItems(done) { LoadStoredList(GF_ATTENDANCE_KEY, 'attendanceItems', NormalizeAttendanceItems, done); }
 function CurrentMonthValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -869,17 +861,6 @@ function NormalizeStudySessions(raw) {
       notifiedAt: String(item?.notifiedAt || '').trim(),
     })).filter(item => item.id && item.startAt && (item.subject || item.topic) && new Date(item.startAt).getTime() > Date.now());
   } catch (_) { return []; }
-}
-function LoadStudySessions(done) {
-  try {
-    chrome.storage.local.get('gradeflow-study-sessions', result => {
-      S.studySessions = NormalizeStudySessions(result?.['gradeflow-study-sessions']);
-      if (done) done(S.studySessions);
-    });
-  } catch (_) {
-    S.studySessions = [];
-    if (done) done(S.studySessions);
-  }
 }
 function SaveStudySessions(sessions) {
   S.studySessions = NormalizeStudySessions(sessions);
@@ -1322,16 +1303,7 @@ function RenderBestSubjectWidget(best) {
 }
 
 function ExportCustomLang() {
-  const data = { ...S.customLang };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'gradeflow-lang-custom.json';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  DownloadBlob('gradeflow-lang-custom.json', new Blob([JSON.stringify({ ...S.customLang }, null, 2)], { type: 'application/json' }));
 }
 
 function BuildIconRulesEditor() {
@@ -1952,7 +1924,7 @@ function RenderTabs() {
       UpdateTopbar();
       UpdateBottomBar();
       if (S.activeView === 'attendance') RequestAttendanceRefresh();
-      if (typeof _GfApplyPressToAll === 'function') _GfApplyPressToAll(bar);
+      _GfApplyPressToAll(bar);
     });
   });
 }
@@ -2482,7 +2454,6 @@ function BuildExportRows() {
     if (period.startsWith('_')) continue;
     for (const [subject, payload] of Object.entries(subjects || {})) {
       for (const score of (payload?.scores || [])) {
-        const key = GradeKey(period, subject, score);
         rows.push({
           period, subject, title: score.title || '', date: score.date || '',
           scored: score.scored, max: score.max, label: score._extra ? ExtraLabel(score._extra) : '',
@@ -2968,8 +2939,10 @@ function BindTableListeners() {
   if (!wrap || !tt || wrap._gfTipBound) return;
   wrap._gfTipBound = true;
   wrap.addEventListener('mouseover', e => {
-    const cell = e.target.closest('[data-gf-grade]');
-    if (cell) {
+    const cell = e.target.closest('[data-gf-grade]') || e.target.closest('[data-gf-pct-tip]');
+    if (cell && cell === tt._gfCell && tt.style.display === 'block') { PositionTooltip(tt, e.clientX, e.clientY); return; }
+    tt._gfCell = cell;
+    if (cell?.dataset.gfGrade) {
       tt.innerHTML = BuildTooltipHTML(JSON.parse(decodeURIComponent(cell.dataset.gfGrade)));
       tt.style.display = 'block'; PositionTooltip(tt, e.clientX, e.clientY); return;
     }
@@ -3018,70 +2991,130 @@ function BindTableListeners() {
 }
 
 function BindDraggableFormulaGroups() {
-  if (typeof interact === 'undefined') return;
   const section = document.getElementById('gf-formula-section');
   if (!section) return;
-  const groups = [...section.querySelectorAll('.gf-formula-group')];
+  const groups = section.querySelectorAll('.gf-formula-group');
   if (groups.length < 2) return;
+  groups.forEach(group => { group._gfDragSection = section; });
+}
 
-  groups.forEach(group => {
-    const gi = parseInt(group.dataset.gi, 10);
-    try { interact(group).unset(); } catch (_) {}
-    let dy = 0;
-    interact(group).draggable({
-      allowFrom: '.gf-drag-handle', inertia: false,
-      modifiers: [interact.modifiers.restrictRect({ restriction: section, endOnly: false })],
-      listeners: {
-        start() { dy = 0; group.classList.add('gf-dragging'); group.style.zIndex = '50'; group.style.position = 'relative'; },
-        move(e) { dy += e.dy; group.style.transform = `translateY(${dy}px)`; },
-        end() {
-          group.classList.remove('gf-dragging');
-          group.style.transform = group.style.zIndex = group.style.position = '';
-          const shift = Math.round(dy / (group.offsetHeight + 6));
-          const tgi = Math.max(0, Math.min(S.formula.length - 1, gi + shift));
-          if (tgi !== gi) {
-            const f = [...S.formula]; const [item] = f.splice(gi, 1); f.splice(tgi, 0, item);
-            SaveFormula(f); Render();
-          }
-          dy = 0;
-        },
-      },
-    });
+const _gfDrag = { group: null, id: null, x0: 0, y0: 0, y: 0, dy: 0, top: 0, bottom: 0, active: false, mouseDown: false, cursorEl: null };
+
+function _GfDragGroupAt(target) {
+  const group = target?.closest?.('.gf-drag-handle')?.closest('.gf-formula-group');
+  return group?._gfDragSection ? group : null;
+}
+
+function _GfDragCursor(el, cursor) {
+  if (_gfDrag.cursorEl && _gfDrag.cursorEl !== el) _gfDrag.cursorEl.style.cursor = '';
+  document.documentElement.style.cursor = cursor;
+  el.style.cursor = cursor;
+  _gfDrag.cursorEl = cursor ? el : null;
+}
+
+function _GfDragSetCursor(group) {
+  if (group) _GfDragCursor(group, 'move');
+  else if (_gfDrag.cursorEl) _GfDragCursor(_gfDrag.cursorEl, '');
+}
+
+function _GfDragClampY(pageY) {
+  const r = _gfDrag.group._gfDragSection.getBoundingClientRect();
+  return Math.max(Math.min(r.bottom + window.scrollY - _gfDrag.bottom, pageY), r.top + window.scrollY + _gfDrag.top);
+}
+
+function _GfDragMove(e) {
+  const y = _GfDragClampY(e.pageY);
+  _gfDrag.dy += y - _gfDrag.y;
+  _gfDrag.y = y;
+  _gfDrag.group.style.transform = `translateY(${_gfDrag.dy}px)`;
+}
+
+function _GfDragEnd() {
+  const group = _gfDrag.group;
+  const dy = _gfDrag.dy;
+  _gfDrag.active = false;
+  _gfDrag.group = null;
+  group.classList.remove('gf-dragging');
+  group.style.transform = group.style.zIndex = group.style.position = '';
+  const gi = parseInt(group.dataset.gi, 10);
+  const shift = Math.round(dy / (group.offsetHeight + 6));
+  const tgi = Math.max(0, Math.min(S.formula.length - 1, gi + shift));
+  if (tgi !== gi) {
+    const f = [...S.formula]; const [item] = f.splice(gi, 1); f.splice(tgi, 0, item);
+    SaveFormula(f); Render();
+  }
+  _GfDragCursor(group, '');
+}
+
+function InitFormulaDrag() {
+  document.addEventListener('pointerdown', e => {
+    if (_gfDrag.active) return;
+    const mouse = e.pointerType === 'mouse';
+    if (mouse) _gfDrag.mouseDown = true;
+    const buttons = e.buttons || { 0: 1, 1: 4, 3: 8, 4: 16 }[e.button];
+    const group = !mouse || buttons & 1 ? _GfDragGroupAt(e.target) : null;
+    _GfDragSetCursor(mouse ? group : null);
+    Object.assign(_gfDrag, { group, id: e.pointerId, x0: e.clientX, y0: e.clientY, y: e.pageY });
   });
+  document.addEventListener('pointermove', e => {
+    if (_gfDrag.active) { if (e.pointerId === _gfDrag.id) _GfDragMove(e); return; }
+    if (e.pointerType === 'mouse' && !_gfDrag.mouseDown) { _GfDragSetCursor(_GfDragGroupAt(e.target)); return; }
+    const group = _gfDrag.group;
+    if (!group || e.pointerId !== _gfDrag.id || Math.hypot(e.clientX - _gfDrag.x0, e.clientY - _gfDrag.y0) <= 1) return;
+    const rect = group.getBoundingClientRect();
+    _gfDrag.top = _gfDrag.y - (rect.top + window.scrollY);
+    _gfDrag.bottom = rect.bottom + window.scrollY - _gfDrag.y;
+    _gfDrag.y = _GfDragClampY(_gfDrag.y);
+    _gfDrag.dy = 0;
+    _gfDrag.active = true;
+    group.classList.add('gf-dragging'); group.style.zIndex = '50'; group.style.position = 'relative';
+    _GfDragSetCursor(e.pointerType === 'mouse' ? group : null);
+    _GfDragMove(e);
+  });
+  const release = e => {
+    if (e.pointerType === 'mouse') _gfDrag.mouseDown = false;
+    if (e.pointerId !== _gfDrag.id) return;
+    if (_gfDrag.active) _GfDragEnd();
+    _gfDrag.group = null;
+  };
+  document.addEventListener('pointerup', release);
+  document.addEventListener('pointercancel', release);
 }
 
 const _GF_PRESS_SEL = '.gf-period-btn, .gf-action-btn, .gf-sett-opt, #gf-refresh-btn, ' +
   '#gf-settings-btn, #gf-help-btn, #gf-github-btn, #gf-cws-btn, ' +
-  '#gf-close-btn, .gf-formula-remove, #gf-scroll-recent-btn, ' +
-  '#gf-collapse-btn, .gf-formula-add-part, .gf-view-tab, .gf-tool-btn';
+  '.gf-formula-remove, #gf-scroll-recent-btn, ' +
+  '.gf-formula-add-part, .gf-view-tab, .gf-tool-btn';
 
 function _GfApplyPressTo(el) {
-  if (typeof interact === 'undefined') return;
-  if (!el || el._gfPress) return; el._gfPress = true;
-  interact(el)
-    .on('down', () => { el.style.transition = 'transform 0.08s ease'; el.style.transform = 'scale(0.93)'; })
-    .on('up',   () => {
-      el.style.transition = 'transform 0.35s cubic-bezier(0.34,1.56,0.64,1)';
-      el.style.transform = 'scale(1)';
-      setTimeout(() => { if (el.style.transform === 'scale(1)') { el.style.transform = el.style.transition = ''; } }, 400);
-    })
-    .on('cancel', () => { el.style.transition = 'transform 0.2s ease'; el.style.transform = 'scale(1)'; });
+  el._gfPress = true;
 }
 
 function _GfApplyPressToAll(root) {
   (root || document).querySelectorAll(_GF_PRESS_SEL).forEach(_GfApplyPressTo);
 }
 
-function InitInteractAnimations() {
-  if (typeof interact === 'undefined') return;
+function _GfPressEach(e, fn) {
+  for (const el of e.composedPath()) if (el._gfPress) fn(el);
+}
 
+function InitPressAnimations() {
   _GfApplyPressToAll();
-
-  function lazyAttach(e) {
-    const t = e.target.closest && e.target.closest(_GF_PRESS_SEL);
-    if (t && !t._gfPress) _GfApplyPressTo(t);
-  }
-  document.addEventListener('pointerdown', lazyAttach, { capture: true, passive: true });
+  document.addEventListener('pointerdown', e => {
+    const t = e.target.closest?.(_GF_PRESS_SEL);
+    if (t) _GfApplyPressTo(t);
+  }, { capture: true, passive: true });
+  document.addEventListener('pointerdown', e => _GfPressEach(e, el => {
+    el.style.transition = 'transform 0.08s ease'; el.style.transform = 'scale(0.93)';
+  }));
+  document.addEventListener('pointerup', e => _GfPressEach(e, el => {
+    el.style.transition = 'transform 0.35s cubic-bezier(0.34,1.56,0.64,1)';
+    el.style.transform = 'scale(1)';
+    setTimeout(() => { if (el.style.transform === 'scale(1)') { el.style.transform = el.style.transition = ''; } }, 400);
+  }));
+  document.addEventListener('pointercancel', e => _GfPressEach(e, el => {
+    el.style.transition = 'transform 0.2s ease'; el.style.transform = 'scale(1)';
+  }));
 }
 
 function Render(animated = true) {
@@ -3091,7 +3124,7 @@ function Render(animated = true) {
   UpdateTopbar();
   UpdateBottomBar();
   BindScrollButton();
-  if (typeof _GfApplyPressToAll === 'function') _GfApplyPressToAll();
+  _GfApplyPressToAll();
   requestAnimationFrame(() => requestAnimationFrame(() => {
     UpdateDynamicGridSize();
     UpdateDynamicCellSize();
@@ -3117,9 +3150,9 @@ function BindRefreshButton() {
 
 window.addEventListener('DOMContentLoaded', () => {
   BindRefreshButton();
-  InitCollapseBtn();
   InitResizeObserver();
-  InitInteractAnimations();
+  InitPressAnimations();
+  InitFormulaDrag();
 
   document.getElementById('gf-settings-btn')?.addEventListener('click', () => {
     const ov = document.getElementById('gf-settings-overlay');
@@ -3142,16 +3175,6 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('gf-cws-btn')?.addEventListener('click', () => {
     window.open(GF_CWS_URL, '_blank', 'noopener,noreferrer');
   });
-
-  try {
-    if (typeof chrome !== 'undefined' && chrome?.runtime?.getURL) {
-      const img = document.getElementById('gf-icon');
-      if (img) img.src = chrome.runtime.getURL('Assets/icon.png');
-    }
-  } catch (_) {}
-
-  document.getElementById('gf-close-btn')?.addEventListener('click', () =>
-    window.parent.postMessage({ type: 'gf-close' }, '*'));
 
   try {
     chrome.storage.local.get(['gradeflow-grades', GF_PLANNER_KEY, 'gradeflow-study-sessions', GF_ATTENDANCE_KEY, 'gf-profile-picture', 'gf-detected-profile-picture'], result => {
@@ -3191,20 +3214,6 @@ function InitResizeObserver() {
   }).observe(outer);
 }
 
-function InitCollapseBtn() {
-  const btn = document.getElementById('gf-collapse-btn');
-  if (!btn) return;
-  const saved = localStorage.getItem('gradeflow-sidebar-collapsed');
-  if (saved === '1') { document.body.classList.add('gf-sidebar-collapsed'); btn.textContent = '»'; }
-  else btn.textContent = '«';
-  btn.addEventListener('click', () => {
-    const collapsed = document.body.classList.toggle('gf-sidebar-collapsed');
-    btn.textContent = collapsed ? '»' : '«';
-    localStorage.setItem('gradeflow-sidebar-collapsed', collapsed ? '1' : '0');
-    setTimeout(() => { UpdateDynamicCellSize(); UpdateScrollButton(); }, 220);
-  });
-}
-
 function UpdateDynamicGridSize() {
   const outer = document.getElementById('gf-table-outer');
   const wrap  = document.getElementById('gf-table-wrap');
@@ -3230,6 +3239,7 @@ function UpdateDynamicCellSize() {
   const wrapW = wrap.clientWidth;
   if (!wrapW) return;
 
+  wrap.style.removeProperty('--gf-subj-w');
   let maxSubjW = 120;
   for (const cell of wrap.querySelectorAll('.gf-subject-cell')) {
     if (cell.scrollWidth > maxSubjW) maxSubjW = cell.scrollWidth;

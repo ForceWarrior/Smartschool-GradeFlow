@@ -3,35 +3,29 @@
 
   if (window.self !== window.top) return;
 
-  const SHOW_UPDATE = true;
-  const GF_UPDATE_ALWAYS_SHOW_FOR_TESTING = false;
-
   const GF_UPDATE = {
-    id: 'v1.3.0',
-    version: '1.3.0',
+    id: 'v2.0.0',
+    version: '2.0.0',
     image: '',
     features: [
-      { icon: '🎨', titleKey: 'update_feat_v13_theme', descKey: 'update_feat_v13_theme_desc' },
-      { icon: '🕹️', titleKey: 'update_feat_v13_games', descKey: 'update_feat_v13_games_desc' },
-      { icon: '📡', titleKey: 'update_feat_v13_lan', descKey: 'update_feat_v13_lan_desc' },
-      { icon: '🏷️', titleKey: 'update_feat_v13_ratings', descKey: 'update_feat_v13_ratings_desc' },
-      { icon: '⌨️', titleKey: 'update_feat_v13_keys', descKey: 'update_feat_v13_keys_desc' },
-      { icon: '🩹', titleKey: 'update_feat_v13_fixes', descKey: 'update_feat_v13_fixes_desc' },
+      { icon: '🎨', titleKey: 'update_feat_v20_theme', descKey: 'update_feat_v20_theme_desc' },
+      { icon: '🕹️', titleKey: 'update_feat_v20_games', descKey: 'update_feat_v20_games_desc' },
+      { icon: '📡', titleKey: 'update_feat_v20_lan', descKey: 'update_feat_v20_lan_desc' },
+      { icon: '🏷️', titleKey: 'update_feat_v20_ratings', descKey: 'update_feat_v20_ratings_desc' },
+      { icon: '⌨️', titleKey: 'update_feat_v20_keys', descKey: 'update_feat_v20_keys_desc' },
+      { icon: '🩹', titleKey: 'update_feat_v20_fixes', descKey: 'update_feat_v20_fixes_desc' },
     ],
   };
 
   const STORAGE_KEY = 'gf-update-dismissed';
   let _gfUpdateThemeTimer = 0;
+  let _gfUpdateThemeObserver = null;
 
   const GF_UPDATE_INLINE_THEME_PROPS = [
     '--upd-bg', '--upd-surf', '--upd-surf-2', '--upd-brd', '--upd-txt', '--upd-txt2', '--upd-txt3',
     '--upd-acc', '--upd-acc-2', '--upd-acc-soft', '--upd-on-acc', '--upd-hero-bg', '--upd-hero-txt',
     '--upd-close-bg', '--upd-close-txt', '--upd-shadow',
   ];
-
-  function CssVar(name) {
-    try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (_) { return ''; }
-  }
 
   function ParseColor(value) {
     const raw = String(value || '').trim();
@@ -54,6 +48,8 @@
   function ReadRootBridgeTheme() {
     const root = document.documentElement;
     if (!/^(smpp|custom)$/.test(root.getAttribute('data-gf-theme-source') || '')) return null;
+    const style = getComputedStyle(root);
+    const CssVar = name => style.getPropertyValue(name).trim();
     const accent = CssVar('--gf-ext-accent');
     const text = CssVar('--gf-ext-text');
     const bg = CssVar('--gf-ext-bg');
@@ -74,29 +70,7 @@
   }
 
   function ReadSmartschoolPlusPlusTheme() {
-    const shared = typeof window._GfReadSmartschoolPlusPlusTheme === 'function' ? window._GfReadSmartschoolPlusPlusTheme() : null;
-    if (shared) return shared;
-
-    const bridged = ReadRootBridgeTheme();
-    if (bridged) return bridged;
-
-    const accent = CssVar('--color-accent');
-    const text = CssVar('--color-text');
-    const bg = CssVar('--color-base00');
-    if (!accent || !text || !bg) return null;
-    const surface = CssVar('--color-base01') || bg;
-    const surface2 = CssVar('--color-base02') || surface;
-    const surface3 = CssVar('--color-base03') || surface2;
-    return {
-      source: 'smpp', accent, text,
-      muted: surface3 || text,
-      bg, surface, surface2, surface3,
-      border: surface3,
-      overlay: CssVar('--darken-background') || 'rgba(0,0,0,.44)',
-      shadow: '',
-      isDark: IsDarkColor(bg),
-      glass: document.documentElement.classList.contains('glass') || document.body?.classList.contains('glass'),
-    };
+    return (typeof window._GfReadSmartschoolPlusPlusTheme === 'function' && window._GfReadSmartschoolPlusPlusTheme()) || ReadRootBridgeTheme();
   }
 
   function ClearInlineSppTheme(overlay, modal) {
@@ -196,19 +170,16 @@
   }
 
   async function ShouldShow() {
-    if (!SHOW_UPDATE) return false;
-
-    const path = location.pathname;
-    if (path !== '/' && path !== '' && !/^\/index/i.test(path) && !/^\/?$/.test(path)) return false;
-
+    if (!/^\/?$|^\/index/i.test(location.pathname)) return false;
     const dismissed = await GetStoredDismissedUpdate();
-    if (!GF_UPDATE_ALWAYS_SHOW_FOR_TESTING && dismissed === GF_UPDATE.id) return false;
-    return true;
+    return dismissed !== GF_UPDATE.id;
   }
 
   function Dismiss() {
     StoreDismissedUpdate();
     clearInterval(_gfUpdateThemeTimer);
+    _gfUpdateThemeObserver?.disconnect();
+    _gfUpdateThemeObserver = null;
     const el = document.getElementById('gf-update-overlay');
     if (el) {
       el.style.opacity = '0';
@@ -271,8 +242,9 @@
       }
     }, true);
 
-    const tobs = new MutationObserver(SyncModalTheme);
-    tobs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'data-gf-external-glass', 'style'] });
+    _gfUpdateThemeObserver?.disconnect();
+    _gfUpdateThemeObserver = new MutationObserver(SyncModalTheme);
+    _gfUpdateThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gf-theme', 'data-gf-theme-source', 'data-gf-external-dark', 'data-gf-external-glass', 'style'] });
     clearInterval(_gfUpdateThemeTimer);
     _gfUpdateThemeTimer = setInterval(() => {
       if (!document.getElementById('gf-update-overlay')) { clearInterval(_gfUpdateThemeTimer); return; }
