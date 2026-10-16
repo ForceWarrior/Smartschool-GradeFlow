@@ -2873,7 +2873,7 @@ document.addEventListener('keydown', e => {
   if (_gfRecordingKey) return;
   if (GfKeys.match(e, 'panel')) { e.preventDefault(); window.parent.postMessage({ type: 'gf-open-gradeflow' }, '*'); }
   if (GfKeys.match(e, 'arcade')) { e.preventDefault(); window.parent.postMessage({ type: 'gf-f8' }, '*'); }
-  if (GfKeys.match(e, 'chat')) { e.preventDefault(); window.parent.postMessage({ type: 'gf-chat-f7' }, '*'); }
+  if (GfKeys.match(e, 'chat')) { e.preventDefault(); if (!e.repeat) window.parent.postMessage({ type: 'gf-chat-f7' }, '*'); }
 });
 
 function PositionTooltip(tt, cx, cy) {

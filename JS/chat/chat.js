@@ -6,7 +6,7 @@
       if (!GfKeys.match(e, 'chat')) return;
       e.preventDefault();
       e.stopPropagation();
-      try { window.parent.postMessage({ type: 'gf-chat-f7' }, '*'); } catch (_) {}
+      if (e.repeat) return;
       try {
         chrome.runtime.sendMessage({ ns: 'gf-chat-cmd', cmd: 'toggleOverlay' }).catch(() => {});
       } catch (_) {}
@@ -24,6 +24,8 @@
   let bodyObserver = null;
   let themeObserver = null;
   let overlayMounted = false;
+  let pendingVisible = null;
+  let pendingTimer = 0;
   let localScreen = null;
   let localScreenData = null;
   const formCache = new Map();
@@ -273,6 +275,11 @@
 
   function applyState(s) {
     snap = s;
+    if (pendingVisible !== null) {
+      if (!!s.overlayVisible !== pendingVisible) return;
+      pendingVisible = null;
+      clearTimeout(pendingTimer);
+    }
     const wantOverlay = !!s.overlayVisible;
     if (wantOverlay !== overlayMounted) {
       overlayMounted = wantOverlay;
@@ -721,17 +728,31 @@
   }
 
   async function hideOverlay() { await sendCmd('setOverlayVisible', { visible: false }); }
-  async function toggleOverlay() { await sendCmd('toggleOverlay'); }
+  function toggleOverlay() {
+    const visible = !overlayMounted;
+    overlayMounted = visible;
+    if (visible) {
+      _showOverlayDom();
+      if (snap) {
+        if (!localScreen || !screenValid(localScreen, snap)) localScreen = pickAutoScreen(snap);
+        render();
+      }
+    } else _hideOverlayDom();
+    pendingVisible = visible;
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => { pendingVisible = null; }, 2000);
+    return sendCmd('setOverlayVisible', { visible });
+  }
 
   document.addEventListener('keydown', (e) => {
     if (!GfKeys.match(e, 'chat')) return;
     e.preventDefault();
     e.stopPropagation();
-    toggleOverlay();
+    if (!e.repeat) toggleOverlay();
   }, true);
 
   window.addEventListener('message', (e) => {
-    if (e.data && e.data.type === 'gf-chat-f7') toggleOverlay();
+    if (e.data && e.data.type === 'gf-chat-f7' && e.origin === 'chrome-extension://' + chrome.runtime.id) toggleOverlay();
   });
 
   function _bootstrap() {
