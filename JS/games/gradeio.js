@@ -1674,7 +1674,7 @@
   }
 
   function Loop(ts) {
-    if (root.style.display === 'none') { raf = 0; parked = true; return; }
+    if (root.style.display === 'none' && mode === 'solo') { raf = 0; parked = true; return; }
     raf = requestAnimationFrame(Loop);
     const dt = Math.min(0.1, (ts - (lastTs || ts)) / 1000);
     lastTs = ts;
@@ -2072,7 +2072,7 @@
     if (root.dataset.bossHidden === '1') {
       root.style.display = 'flex';
       delete root.dataset.bossHidden;
-      if (parked) { parked = false; raf = requestAnimationFrame(Loop); }
+      if (parked) { parked = false; lastTs = 0; raf = requestAnimationFrame(Loop); }
       return true;
     }
     if (root.style.display !== 'none') {
