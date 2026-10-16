@@ -1486,12 +1486,13 @@
   }
 
   function Vis(x0, x1, vl, vr) { return x1 > vl && x0 < vr; }
+  const NO_DASH = [], D_WIND = [7, 6], D_PAD = [2, 6], D_WALL = [4, 5], D_RAIL = [2, 7], D_AIM = [6, 5], R_BOT = [2, 2, 6, 6], R_TOP = [7, 7, 3, 3];
 
   function DrawWinds(ctx, C, lv, vl, vr, t) {
     for (const w of lv.winds) {
       if (!Vis(w.x, w.x + w.w, vl, vr)) continue;
       ctx.fillStyle = C.wind; RR(ctx, w.x, w.y, w.w, w.h, 10); ctx.fill();
-      ctx.strokeStyle = C.windEdge; ctx.lineWidth = 1.6; ctx.setLineDash([7, 6]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = C.windEdge; ctx.lineWidth = 1.6; ctx.setLineDash(D_WIND); ctx.stroke(); ctx.setLineDash(NO_DASH);
       ctx.save(); RR(ctx, w.x, w.y, w.w, w.h, 10); ctx.clip();
       const n = Math.min(26, 4 + (w.w * w.h / 5000 | 0)), L = Math.abs(w.dx) * w.w + Math.abs(w.dy) * w.h;
       ctx.strokeStyle = C.windLine; ctx.lineWidth = 2;
@@ -1551,7 +1552,7 @@
     ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(x, y - h - 2, 3, 0, TAU); ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = OUT; ctx.stroke();
   }
 
-  function DrawGoal(ctx, C, lv, vl, vr, t) {
+  function DrawGoal(ctx, lv, vl, vr, t) {
     const G = lv.goal;
     if (!G.t || !Vis(G.x - 90, G.x + 90, vl, vr)) return;
     const pulse = 1 + Math.sin(t * 4) * 0.03;
@@ -1580,10 +1581,10 @@
     ctx.fillStyle = _pat[GS.dark ? 1 : 0]; ctx.fill();
     ctx.lineWidth = 2.5; ctx.strokeStyle = C.blockOut; ctx.stroke();
     ctx.beginPath();
-    for (const b of lv.blocks) if (Vis(b.x, b.x + b.w, vl, vr) && b.y + b.h < vb + 20 && b.y + b.h > vt && b.h > 24) ctx.roundRect(b.x + 3, b.y + b.h - 9, b.w - 6, 6, [2, 2, 6, 6]);
+    for (const b of lv.blocks) if (Vis(b.x, b.x + b.w, vl, vr) && b.y + b.h < vb + 20 && b.y + b.h > vt && b.h > 24) ctx.roundRect(b.x + 3, b.y + b.h - 9, b.w - 6, 6, R_BOT);
     ctx.fillStyle = C.blockBot; ctx.fill();
     ctx.beginPath();
-    for (const b of lv.blocks) if (Vis(b.x, b.x + b.w, vl, vr) && b.y > vt - 20 && b.y < vb) ctx.roundRect(b.x + 2.5, b.y + 2.5, b.w - 5, Math.min(10, b.h - 5), [7, 7, 3, 3]);
+    for (const b of lv.blocks) if (Vis(b.x, b.x + b.w, vl, vr) && b.y > vt - 20 && b.y < vb) ctx.roundRect(b.x + 2.5, b.y + 2.5, b.w - 5, Math.min(10, b.h - 5), R_TOP);
     ctx.fillStyle = C.blockTop; ctx.fill();
     ctx.beginPath();
     for (const b of lv.blocks) if (Vis(b.x, b.x + b.w, vl, vr) && b.y > vt - 20 && b.y < vb && b.w > 20) { ctx.moveTo(b.x + 9, b.y + 5); ctx.lineTo(b.x + b.w - 9, b.y + 5); }
@@ -1657,9 +1658,9 @@
       ctx.strokeStyle = C.pad; ctx.lineWidth = PAD_R * 2; ctx.stroke();
       ctx.strokeStyle = C.padTop; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(pd.x1 + nx * 3.5, pd.y1 + ny * 3.5); ctx.quadraticCurveTo(cx + nx * 3.5, cy + ny * 3.5, pd.x2 + nx * 3.5, pd.y2 + ny * 3.5); ctx.stroke();
-      ctx.strokeStyle = 'rgba(146,64,14,0.5)'; ctx.lineWidth = 1.5; ctx.setLineDash([2, 6]);
+      ctx.strokeStyle = 'rgba(146,64,14,0.5)'; ctx.lineWidth = 1.5; ctx.setLineDash(D_PAD);
       ctx.beginPath(); ctx.moveTo(pd.x1 - nx * 3, pd.y1 - ny * 3); ctx.quadraticCurveTo(cx - nx * 3, cy - ny * 3, pd.x2 - nx * 3, pd.y2 - ny * 3); ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.setLineDash(NO_DASH);
     }
   }
 
@@ -1667,9 +1668,9 @@
     for (const w of lv.walls) {
       if (Math.max(w.x1, w.x2) < vl || Math.min(w.x1, w.x2) > vr) continue;
       const ex = w.x2 - w.x1, ey = w.y2 - w.y1, l = Math.hypot(ex, ey), ux = ex / l, uy = ey / l;
-      ctx.strokeStyle = C.wallBack; ctx.lineWidth = 2; ctx.setLineDash([4, 5]);
+      ctx.strokeStyle = C.wallBack; ctx.lineWidth = 2; ctx.setLineDash(D_WALL);
       ctx.beginPath(); ctx.moveTo(w.x1 - w.nx * 5, w.y1 - w.ny * 5); ctx.lineTo(w.x2 - w.nx * 5, w.y2 - w.ny * 5); ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.setLineDash(NO_DASH);
       if (w.hit > 0) { ctx.globalAlpha = w.hit * 0.6; ctx.strokeStyle = C.wall; ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); ctx.globalAlpha = 1; }
       ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2);
       ctx.strokeStyle = OUT; ctx.lineWidth = 8.5; ctx.stroke();
@@ -1759,13 +1760,13 @@
   }
 
   function DrawRails(ctx, C, lv, vl, vr) {
-    ctx.strokeStyle = C.rail; ctx.lineWidth = 3; ctx.setLineDash([2, 7]); ctx.lineCap = 'round';
+    ctx.strokeStyle = C.rail; ctx.lineWidth = 3; ctx.setLineDash(D_RAIL); ctx.lineCap = 'round';
     ctx.beginPath();
     for (const h of lv.hooks) if (h.sp && h.bx > vl && h.bx < vr) { ctx.moveTo(h.bx - h.ax, h.by - h.ay); ctx.lineTo(h.bx + h.ax, h.by + h.ay); }
     for (const s of lv.spins) if (s.sp && s.bx > vl - 400 && s.bx < vr + 400) { ctx.moveTo(s.bx - s.ax, s.by - s.ay); ctx.lineTo(s.bx + s.ax, s.by + s.ay); }
     const G = lv.goal;
     if (G.sp) { ctx.moveTo(G.bx - G.ax, G.by - G.ay); ctx.lineTo(G.bx + G.ax, G.by + G.ay); }
-    ctx.stroke(); ctx.setLineDash([]);
+    ctx.stroke(); ctx.setLineDash(NO_DASH);
   }
 
   function Ribbon(ctx, wd) {
@@ -1790,7 +1791,7 @@
     DrawWalls(ctx, C, lv, vl, vr, now);
     DrawChecks(ctx, lv, vl, vr, now);
     DrawRails(ctx, C, lv, vl, vr);
-    DrawGoal(ctx, C, lv, vl, vr, now);
+    DrawGoal(ctx, lv, vl, vr, now);
     DrawTurrets(ctx, lv, vl, vr, now);
     DrawSpins(ctx, lv, vl, vr);
     DrawBoosts(ctx, lv, vl, vr, now);
@@ -1812,9 +1813,9 @@
     const t = p.hook || GS.target;
     if (t) {
       ctx.strokeStyle = p.hook ? ACCENT : C.man; ctx.lineWidth = 2.5;
-      if (!p.hook) { ctx.setLineDash([6, 5]); ctx.lineDashOffset = -now * 24; }
+      if (!p.hook) { ctx.setLineDash(D_AIM); ctx.lineDashOffset = -now * 24; }
       ctx.beginPath(); ctx.arc(t.x, t.y, 19.5 + (p.hook ? 0 : Math.sin(now * 8) * 1.5), 0, TAU); ctx.stroke();
-      ctx.setLineDash([]); ctx.lineDashOffset = 0;
+      ctx.setLineDash(NO_DASH); ctx.lineDashOffset = 0;
     }
     if (GS.trN > 3) {
       ctx.fillStyle = C.trail; Ribbon(ctx, 9);
@@ -2530,7 +2531,7 @@
   function SelAll() {
     const out = [{ t: 's' }, { t: 'f' }];
     for (const t of ALL_T) ED.d[t].forEach((e, i) => out.push({ t, i }));
-    ED.tool = 'sel'; SetTool('sel');
+    SetTool('sel');
     Select(out);
   }
   function SetTool(t) {
@@ -3461,6 +3462,7 @@
     DetachKeys();
     _tobs?.disconnect();
     document.removeEventListener('visibilitychange', OnVisibilityChange);
+    _bgc = null;
   }
 
   function ToggleGradeHook(grades) {
@@ -3650,10 +3652,9 @@
 #gf-hk-help{z-index:30;justify-content:safe center;}
 .gf-hk-hp{gap:9px;max-width:640px;padding:18px 20px;}
 .gf-hk-hs{align-self:stretch;margin-top:4px;font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:${ACCENT};text-align:left;}
-.gf-hk-ctl{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-self:stretch;}
+.gf-hk-ctl,.gf-hk-hg{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-self:stretch;}
 .gf-hk-ctl span{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;border-radius:10px;background:rgba(128,128,128,0.08);font-size:11.5px;font-weight:700;color:var(--hk-txt);text-align:left;}
 .gf-hk-ctl b{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:20px;height:20px;border-radius:50%;background:${ACCENT};color:#fff;font-size:11px;}
-.gf-hk-hg{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-self:stretch;}
 .gf-hk-he{display:flex;align-items:center;gap:9px;padding:5px 9px 5px 5px;border:1px solid var(--hk-brd2);border-radius:10px;background:rgba(128,128,128,0.06);text-align:left;}
 .gf-hk-he canvas{width:64px;height:48px;flex-shrink:0;border-radius:7px;background:rgba(128,128,128,0.08);}
 .gf-hk-he>div{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;min-width:0;}

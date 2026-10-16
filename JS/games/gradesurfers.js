@@ -2275,6 +2275,8 @@
     HeadTop(ch, st, hx, hy, k);
     ctx.restore();
   }
+  const AFRO = [-8, -12, -2, -16, -12, -5, 4, -11];
+  const MOHAWK = [-6.5, -21, -2.5, -14, -1.5, -26, 1.5, -15, 3.5, -24, 5, -13, 7, -18];
   function HeadTop(ch, st, hx, hy, k) {
     if (k === 'robot') {
       for (let s = -1; s <= 1; s += 2) { Blob(hx + s * 12.6, hy + 1, 3.2, 4.6, ch.skinC); Oval(hx + s * 13.3, hy + 1, 1.3, 1.3, ch.shoeA); }
@@ -2332,7 +2334,7 @@
       ctx.save(); P(); ctx.clip();
       ctx.fillStyle = ch.hairC[1]; ctx.beginPath(); ctx.arc(hx + 10, hy + 2, 14, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = ch.hairC[2];
-      for (const [x, y] of [[-8, -12], [-2, -16], [-12, -5], [4, -11]]) { ctx.beginPath(); ctx.arc(hx + x, hy + y, 2.2, 0, Math.PI * 2); ctx.fill(); }
+      for (let i = 0; i < 8; i += 2) { ctx.beginPath(); ctx.arc(hx + AFRO[i], hy + AFRO[i + 1], 2.2, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
       Ink(() => RR(ctx, hx - 16.5, hy + 2, 33, 5.6, 2.6), ch.hatC[0]);
       ctx.fillStyle = ch.hatC[2]; ctx.fillRect(hx - 13, hy + 3, 10, 1.4);
@@ -2348,8 +2350,7 @@
       ctx.beginPath(); ctx.arc(hx, hy, 12.4, 0, Math.PI * 2); Line(OW * 1.1, OUTL);
       Ink(() => {
         ctx.beginPath(); ctx.moveTo(hx - 4, hy - 9);
-        const sp = [[-6.5, -21], [-2.5, -14], [-1.5, -26], [1.5, -15], [3.5, -24], [5, -13], [7, -18]];
-        for (const [x, y] of sp) ctx.lineTo(hx + x, hy + y + Math.sin(st.ph * 2 + x) * 0.6);
+        for (let i = 0; i < 14; i += 2) ctx.lineTo(hx + MOHAWK[i], hy + MOHAWK[i + 1] + Math.sin(st.ph * 2 + MOHAWK[i]) * 0.6);
         ctx.lineTo(hx + 4, hy - 9); ctx.closePath();
       }, ch.hairC[0]);
       ctx.fillStyle = ch.hairC[2]; ctx.beginPath(); ctx.moveTo(hx - 1, hy - 10); ctx.lineTo(hx - 1.5, hy - 24); ctx.lineTo(hx + 0.5, hy - 11); ctx.fill();
@@ -2484,13 +2485,14 @@
     ctx.save(); ctx.clip();
     ctx.fillStyle = C.coatC[1]; ctx.beginPath(); ctx.ellipse(24 + t, top + 30, 15, 40, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = C.coatC[2]; ctx.beginPath(); ctx.ellipse(-13 + t, top + 3.5, 7, 2.8, -0.2, 0, Math.PI * 2); ctx.fill();
-    for (const y of [top + 24, top + 33]) {
+    for (let k = 0; k < 2; k++) {
+      const y = k ? top + 33 : top + 24;
       ctx.fillStyle = '#f5c518'; ctx.fillRect(-30, y, 60, 5);
       ctx.fillStyle = '#e8ecf1'; ctx.fillRect(-30, y + 1.6, 60, 1.8);
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(10 + t, y, 20, 5);
     }
     ctx.fillStyle = '#121a33'; ctx.fillRect(-30, bot - 7, 60, 6);
-    ctx.fillStyle = '#2d3a63'; for (const x of [-14, 0, 14]) ctx.fillRect(x - 1.5 + t * 0.3, bot - 8, 3, 8);
+    ctx.fillStyle = '#2d3a63'; for (let x = -14; x <= 14; x += 14) ctx.fillRect(x - 1.5 + t * 0.3, bot - 8, 3, 8);
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(t * 0.6 - 0.6, top + 2, 1.2, bot - top - 9);
     ctx.restore();
     if (B.back >= 0) Arm(C, B, false);
@@ -2611,27 +2613,15 @@
     ctx.globalAlpha = 1;
   }
 
-  function DrawInspector() {
-    const p = GS, z = p.dist + p.insZ;
-    if (p.insZ < -9.5 || !Proj(p.insX, p.insY, z)) return;
+  function DrawChaser(dog) {
+    const p = GS;
+    if (p.insZ < -9.5 || !(dog ? Proj(p.insX + 1.4, p.dogY, p.dist + p.insZ + 1.6) : Proj(p.insX, p.insY, p.dist + p.insZ))) return;
     const sc = PK * 0.017;
-    ctx.globalAlpha = 0.3; ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.ellipse(PX, PY, 0.6 * PK, 0.16 * PK, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = dog ? 0.28 : 0.3; ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(PX, PY, (dog ? 0.32 : 0.6) * PK, (dog ? 0.1 : 0.16) * PK, 0, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
     ctx.save(); ctx.translate(PX, PY); ctx.scale(sc, sc);
-    Inspector(StateOf(p), p.status === 'start');
-    ctx.restore();
-  }
-
-  function DrawDog() {
-    const p = GS, z = p.dist + p.insZ + 1.6;
-    if (p.insZ < -9.5 || !Proj(p.insX + 1.4, p.dogY, z)) return;
-    const sc = PK * 0.017;
-    ctx.globalAlpha = 0.28; ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.ellipse(PX, PY, 0.32 * PK, 0.1 * PK, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.save(); ctx.translate(PX, PY); ctx.scale(sc, sc);
-    Dog(StateOf(p));
+    if (dog) Dog(StateOf(p)); else Inspector(StateOf(p), p.status === 'start');
     ctx.restore();
   }
 
@@ -2647,8 +2637,8 @@
       case 3: DrawCoin(e.o); break;
       case 4: DrawItem(e.o); break;
       case 5: DrawRunner(); break;
-      case 6: DrawInspector(); break;
-      case 7: DrawDog(); break;
+      case 6: DrawChaser(false); break;
+      case 7: DrawChaser(true); break;
       case 9: DrawBridge(e.k); break;
       default: DrawCat(e.k);
     }
@@ -3395,6 +3385,7 @@
     if (GS?.status === 'playing') { GS.status = 'paused'; ShowScreen('gf-ss-pause'); }
     if (SAVE) SaveData();
     StopLoop();
+    SPR = null;
     DetachKeys();
     _tobs?.disconnect();
     document.removeEventListener('visibilitychange', OnVisibilityChange);
@@ -3448,7 +3439,7 @@
 #gf-ss{position:fixed;inset:0;z-index:2147483640;display:flex;align-items:center;justify-content:center;background:none;font-family:"IBM Plex Mono",monospace;}
 #gf-ss-modal{position:relative;display:flex;flex-direction:column;background:var(--ss-modal);border:1px solid var(--ss-brd);border-radius:12px;box-shadow:var(--ss-sh);overflow:hidden;max-height:calc(100vh - 32px);max-width:calc(100vw - 32px);}
 #gf-ss-hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--ss-hdr);border-bottom:1px solid var(--ss-brd);flex-shrink:0;gap:8px;user-select:none;}
-.gf-ss-hl{display:flex;align-items:center;gap:8px;} .gf-ss-hr{display:flex;align-items:center;gap:8px;}
+.gf-ss-hl,.gf-ss-hr{display:flex;align-items:center;gap:8px;}
 #gf-ss-logo{width:24px;height:24px;background:#f59e0b;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#111;letter-spacing:-1px;flex-shrink:0;}
 #gf-ss-title{font-size:13px;font-weight:700;color:var(--ss-txt);letter-spacing:-0.3px;}
 #gf-ss-best-hdr{min-width:72px;padding:4px 8px;border:1px solid var(--ss-brd2);border-radius:7px;background:rgba(128,128,128,0.08);font-size:12px;font-weight:800;color:var(--ss-txt);display:grid;grid-template-columns:1fr auto;gap:7px;align-items:center;line-height:1;}

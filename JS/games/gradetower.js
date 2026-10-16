@@ -292,7 +292,6 @@
   }
   function Commit() { StorageSet(LS_SAVE, _save); StorageSet(LS_STARS, _save.stars); StorageSet(LS_WAVES, _save.waves); }
   function Stars() { return Save().stars; }
-  function BestWaves() { return Save().waves; }
   function Unlocked(i) { return i === 0 || (Stars()[MAPS[i - 1].id] || 0) > 0 || !!Save().open[MAPS[i].id]; }
 
   function NormalizeGrades(raw) {
@@ -329,7 +328,7 @@
   }
 
   let GS = null, _grades = [], _raf = null, _kh = null, _tobs = null, _last = 0;
-  let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _mapSel = 0;
+  let _root = null, _view = null, _cv = null, _ctx = null, _k = 1, _dark = false, _mapSel = 0, _tools = [];
   let _bg = null, _grid = null, _S = null, _ico = null, _eid = 0;
 
   function Rng(s) {
@@ -604,8 +603,9 @@
     else Barrel(g, 0, 0, lv === 2 ? 1.1 : 1, '#4b5563', lv ? '#d9a441' : null);
   }
 
+  const AIRCO_W = [24, 27, 30, 30, 30], PLASMA_R = [8.5, 9.5, 10.5, 11, 11];
   function Airco(g, lv) {
-    const W = [24, 27, 30, 30, 30][lv];
+    const W = AIRCO_W[lv];
     const body = lv === 3 ? '#9cc8fb' : '#eef2f7', lid = lv === 4 ? '#3b82f6' : Lt(body, 0.4);
     RR(g, -W / 2, -12, W, 20, 3); Fl(g, Dk(body, 0.13));
     for (let i = 0; i < 3; i++) Ln(g, -W / 2 + 3, 1.6 + i * 2, W / 2 - 3, 1.6 + i * 2, Dk(body, 0.32), 0.9);
@@ -659,7 +659,7 @@
   }
 
   function Plasma(g, lv) {
-    const r = [8.5, 9.5, 10.5, 11, 11][lv], cy = -10;
+    const r = PLASMA_R[lv], cy = -10;
     const tint = lv === 3 ? '#60a5fa' : lv === 4 ? '#f43f5e' : '#8b5cf6';
     RR(g, -7, -3, 14, 11, 3); Fl(g, '#475569');
     Ell(g, 0, -3, 7, 2.6); Fl(g, '#64748b', 1.1);
@@ -1902,7 +1902,7 @@
   }
   const BOOK_COL = ['#dc2626', '#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#0d9488', '#be185d', '#f8fafc', '#1e3a8a'];
 
-  function Decal(g, t, x, y, pal) {
+  function Decal(g, t, x, y) {
     if (t === 'hop') {
       g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 1.6;
       g.font = `800 8px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(255,255,255,0.9)';
@@ -2092,7 +2092,7 @@
 
   function Floor(g, M, pal, R) {
     if (pal.kind === 3) {
-      for (let y = 0, r = 0; y < CV_H; y += 10, r++) {
+      for (let y = 0; y < CV_H; y += 10) {
         let x = -R() * 60;
         while (x < CV_W) {
           const w = 50 + R() * 60, c = [pal.grass, pal.g2, pal.g3][(R() * 3) | 0];
@@ -2199,7 +2199,7 @@
       g.save(); g.translate(R() * CV_W, R() * CV_H); g.rotate(R() * TAU);
       Ell(g, 0, 0, 3, 1.6); g.fillStyle = ['#ea8a2b', '#f2b13f', '#c2571f'][i % 3]; g.fill(); g.restore();
     }
-    for (const [t, x, y] of M.decals) Decal(g, t, x * CELL + CELL / 2, y * CELL + CELL / 2, pal);
+    for (const [t, x, y] of M.decals) Decal(g, t, x * CELL + CELL / 2, y * CELL + CELL / 2);
     DrawPaths(g, M, pal, R, k);
     const [ex, ey] = M.exit;
     const props = M.props.slice();
@@ -3153,8 +3153,7 @@
       Rot(sp.top, t.x - c * r, t.y - 4 - s * r, t.ang);
       Reset();
     } else if (id === 'airco') {
-      const W = [24, 27, 30, 30, 30][t.lv];
-      Rot(sp.fan, t.x - W / 4 + 1, t.y - 7.5, t.an * 16);
+      Rot(sp.fan, t.x - AIRCO_W[t.lv] / 4 + 1, t.y - 7.5, t.an * 16);
       Reset();
     } else if (id === 'chem') {
       const big = t.lv === 3, r = t.lv >= 2 ? 8.5 : 7.5, by = big ? t.y - 10 : t.y - 6 - r * 0.15;
@@ -3166,7 +3165,7 @@
       }
       ctx.globalAlpha = 1;
     } else if (id === 'plasma') {
-      const r = [8.5, 9.5, 10.5, 11, 11][t.lv], cx = t.x, cy = t.y - 11, sd = (t.an * 11) | 0;
+      const r = PLASMA_R[t.lv], cx = t.x, cy = t.y - 11, sd = (t.an * 11) | 0;
       ctx.globalCompositeOperation = 'lighter';
       ctx.strokeStyle = t.lv === 4 ? 'rgba(254,205,211,0.9)' : t.lv === 3 ? 'rgba(191,219,254,0.9)' : 'rgba(233,213,255,0.9)';
       ctx.lineWidth = 1.1;
@@ -3387,14 +3386,15 @@
     ctx.globalAlpha = 1;
   }
 
+  const RING_DASH = [7, 6], NO_DASH = [];
   function RangeRing(x, y, r, ok) {
     const ctx = _ctx;
     ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
     ctx.fillStyle = ok ? 'rgba(255,255,255,0.13)' : 'rgba(248,113,113,0.16)'; ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,16,34,0.22)'; ctx.stroke();
-    ctx.setLineDash([7, 6]); ctx.lineDashOffset = -_now * 14;
+    ctx.setLineDash(RING_DASH); ctx.lineDashOffset = -_now * 14;
     ctx.lineWidth = 1.6; ctx.strokeStyle = ok ? 'rgba(255,255,255,0.92)' : 'rgba(254,202,202,0.95)'; ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.setLineDash(NO_DASH);
   }
 
   function DrawRanges() {
@@ -3707,12 +3707,12 @@
   const TG_KINDS = { dart: 1, beam: 1, shell: 1, flask: 1, bolt: 1, snipe: 1 };
   function RefreshAfford() {
     if (!_root || !GS) return;
-    _root.querySelectorAll('.gf-tw-tool').forEach(b => { const i = +b.dataset.tower; b.classList.toggle('gf-tw-off', GS.money < TOWERS[i].lv[0].cost); b.classList.toggle('gf-tw-lock', !Allowed(i)); });
+    _tools.forEach(b => { const i = +b.dataset.tower; b.classList.toggle('gf-tw-off', GS.money < TOWERS[i].lv[0].cost); b.classList.toggle('gf-tw-lock', !Allowed(i)); });
     _root.querySelectorAll('.gf-tw-up').forEach(b => b.classList.toggle('gf-tw-off', GS.money < +b.dataset.cost));
   }
   function SyncShop() {
     if (!_root || !GS) return;
-    _root.querySelectorAll('.gf-tw-tool').forEach(b => b.classList.toggle('gf-tw-tool-on', +b.dataset.tower === GS.place));
+    _tools.forEach(b => b.classList.toggle('gf-tw-tool-on', +b.dataset.tower === GS.place));
   }
 
   function RenderPreview() {
@@ -4204,6 +4204,7 @@
 </div>`;
     document.body.appendChild(root);
     _root = root;
+    _tools = root.querySelectorAll('.gf-tw-tool');
     _view = document.getElementById('gf-tw-view');
     _cv = document.getElementById('gf-tw-canvas');
     _ctx = _cv.getContext('2d');
