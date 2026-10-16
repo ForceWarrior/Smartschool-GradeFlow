@@ -16,6 +16,8 @@
 
 ### Changed
 - Arcade games only load when you open them, which keeps every SmartSchool page lighter.
+- Every SmartSchool page loads less code: game text only loads with the arcade, menu previews are smaller, and background work pauses in hidden tabs.
+- The grades panel no longer needs a separate drag library and renders faster with less memory.
 - Planner items now come from SmartSchool's planner API instead of scanning the page.
 - Attendance only refreshes when needed instead of on every page change.
 - Grades SmartSchool marks as not counting are left out of the average by default, marked with a clear badge, and can be included one by one or all at once in the settings.
@@ -29,6 +31,8 @@
 - Native date and number fields in the panel follow dark and custom themes.
 - Project evaluations now use their goals: scores count as points and ratings like Goed use the evaluation's scale instead of a colour guess.
 - Custom themes also recolour inset shadows, gradients, pseudo-elements, and layered styles, which left parts of the planner white.
+- Custom themes no longer flash white when you open a new page.
+- The subject column in the grades panel no longer gets wider every time it redraws.
 - Custom themes no longer apply SmartSchool's print styles on screen, which made the Ga naar menu see-through.
 - Custom themes recolour the planner and results sidebar and the frames around older pages like the news.
 - Grade.io viruses no longer make big cells lose mass.
