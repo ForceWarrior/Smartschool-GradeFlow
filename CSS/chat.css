@@ -107,26 +107,9 @@ html[data-gf-theme-source="smpp"][data-gf-external-glass="1"] #gf-chat-root .gf-
   border-radius: 10px;
   background: var(--gfc-msg-peer-bg, rgba(0,0,0,0.04));
 }
-.gf-chat-invite-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
 .gf-chat-btn-xs {
   padding: 2px 8px;
   font-size: 11px;
-}
-
-.gf-chat-warn {
-  background: rgba(255, 193, 7, 0.15);
-  border: 1px solid rgba(255, 193, 7, 0.55);
-  color: var(--gfc-text, #1a1a1a);
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  line-height: 1.35;
-  margin: 4px 0;
 }
 
 .gf-chat-title {
@@ -226,25 +209,6 @@ html[data-gf-theme-source="smpp"][data-gf-external-glass="1"] #gf-chat-root .gf-
 .gf-chat-w { width: 100%; }
 .gf-chat-flex1 { flex: 1; }
 
-.gf-chat-codebox {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--gfc-bg-alt);
-  border: 1px solid var(--gfc-border);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-.gf-chat-code {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 14px;
-  color: var(--gfc-accent);
-  flex: 1;
-  word-break: break-all;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
 .gf-chat-blob, .gf-chat-input {
   width: 100%;
   background: var(--gfc-bg-alt);
@@ -333,36 +297,16 @@ html[data-gf-theme-source="smpp"][data-gf-external-glass="1"] #gf-chat-root .gf-
   background: #16a34a;
   flex-shrink: 0;
 }
-.gf-chat-peer-dot.gf-chat-pending { background: #f59e0b; }
 .gf-chat-peer-name { flex: 1; color: var(--gfc-text); font-weight: 500; }
 
-.gf-chat-invite-card {
-  background: var(--gfc-bg-alt);
-  border: 1px dashed var(--gfc-border);
-  border-radius: 8px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 .gf-chat-invite-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: var(--gfc-text-mute);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.gf-chat-scroll {
-  overflow-y: auto;
-  scrollbar-width: thin;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-right: 2px;
-  flex: 1;
-  min-height: 0;
 }

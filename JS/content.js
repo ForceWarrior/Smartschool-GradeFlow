@@ -158,10 +158,6 @@ function _GfBridged() {
   return /^(smpp|custom)$/.test(document.documentElement.getAttribute('data-gf-theme-source') || '');
 }
 
-function _GfCssVar(name) {
-  try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (_) { return ''; }
-}
-
 function _GfParseColor(value) {
   const raw = String(value || '').trim();
   const hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
@@ -181,24 +177,27 @@ function _GfIsDarkColor(value) {
 }
 
 function _GfReadSmartschoolPlusPlusTheme() {
-  const accent = _GfCssVar('--color-accent');
-  const text = _GfCssVar('--color-text');
-  const bg = _GfCssVar('--color-base00');
+  let style;
+  try { style = getComputedStyle(document.documentElement); } catch (_) { return null; }
+  const cssVar = name => style.getPropertyValue(name).trim();
+  const accent = cssVar('--color-accent');
+  const text = cssVar('--color-text');
+  const bg = cssVar('--color-base00');
   if (!accent || !text || !bg) return null;
-  const surface = _GfCssVar('--color-base01') || bg;
-  const surface2 = _GfCssVar('--color-base02') || surface;
-  const surface3 = _GfCssVar('--color-base03') || surface2;
+  const surface = cssVar('--color-base01') || bg;
+  const surface2 = cssVar('--color-base02') || surface;
+  const surface3 = cssVar('--color-base03') || surface2;
   return {
     source: 'smpp',
     accent,
     text,
-    muted: _GfCssVar('--color-base03') || text,
+    muted: cssVar('--color-base03') || text,
     bg,
     surface,
     surface2,
     surface3,
     border: surface3,
-    overlay: _GfCssVar('--darken-background') || 'rgba(0,0,0,.2)',
+    overlay: cssVar('--darken-background') || 'rgba(0,0,0,.2)',
     isDark: _GfIsDarkColor(bg),
     glass: document.documentElement.classList.contains('glass') || document.body?.classList.contains('glass'),
   };
@@ -247,6 +246,7 @@ const GF_HOST_THEME_BASE_VARS = {
 const GF_HOST_THEME_PREFIXES = ['gs', 'g2', 'gm', 'sw', 'bo', 'po', 'fl', 'rn', 'tw', 'io', 'cr', 'ss', 'hk'];
 const GF_GAME_HOST_IDS = ['gf-tetris', 'gf-snake', 'gf-2048', 'gf-sweep', 'gf-memory', 'gf-shooter', 'gf-bo', 'gf-po', 'gf-fl', 'gf-rn', 'gf-tw', 'gf-io', 'gf-cr', 'gf-ss', 'gf-hk'];
 const GF_GAME_HOST_SELECTOR = GF_GAME_HOST_IDS.map(id => '#' + id).join(',');
+const GF_OVERLAY_HOST_IDS = [...GF_GAME_HOST_IDS, 'gf-arcade'];
 const GF_HOST_THEME_PARTS = {
   modal: '--gf-ext-surface', hdr: '--gf-ext-surface-2', hud: '--gf-ext-surface-2', bar: '--gf-ext-surface-2', body: '--gf-ext-bg',
   scr: '--gf-ext-overlay', brd: '--gf-ext-accent', brd2: '--gf-ext-border', 'btn-brd': '--gf-ext-border', btn: '--gf-ext-surface-2',
@@ -432,18 +432,15 @@ function _GfIsGradeFlowSurface(element) {
 }
 
 function _GfIsMediaContainer(element) {
-  try { return _GfElementMatches(element, GF_DARK_MEDIA_CONTAINER_SELECTOR); }
-  catch (_) { return false; }
+  return _GfElementMatches(element, GF_DARK_MEDIA_CONTAINER_SELECTOR);
 }
 
 function _GfIsNeverDarkMedia(element) {
-  try { return _GfElementMatches(element, GF_DARK_MEDIA_NEVER_SELECTOR); }
-  catch (_) { return false; }
+  return _GfElementMatches(element, GF_DARK_MEDIA_NEVER_SELECTOR);
 }
 
 function _GfIsTextIconElement(element) {
-  try { return _GfElementMatches(element, GF_DARK_TEXT_ICON_SELECTOR); }
-  catch (_) { return false; }
+  return _GfElementMatches(element, GF_DARK_TEXT_ICON_SELECTOR);
 }
 
 function _GfSetDarkMediaInlineFilter(element, value) {
@@ -474,11 +471,10 @@ function _GfClosestProtectedMediaAncestor(element) {
 
 function _GfLooksLikeBackgroundMedia(element) {
   if (!element) return false;
-  if (_GfIsNeverDarkMedia(element) || _GfIsMediaContainer(element)) return false;
   let backgroundImage = '';
   try { backgroundImage = getComputedStyle(element).backgroundImage || ''; }
   catch (_) { return false; }
-  if (!backgroundImage || backgroundImage === 'none' || !backgroundImage.includes('url(')) return false;
+  if (!backgroundImage.includes('url(') || _GfIsNeverDarkMedia(element) || _GfIsMediaContainer(element)) return false;
   const visibleText = (element.textContent || '').trim();
   if (visibleText.length > 1) return _GfIsTextIconElement(element);
   const nameText = `${element.id || ''} ${element.className || ''} ${element.getAttribute('aria-label') || ''}`;
@@ -541,8 +537,19 @@ function _GfClearDarkMediaProtection() {
 }
 
 const _gfDarkMediaPending = new Set();
-
 const _gfDarkMediaSolo = new Set();
+let _gfDarkMediaScanSig = '';
+
+function _GfDarkMediaScanSignature() {
+  const parts = [innerWidth, innerHeight];
+  for (const attr of document.documentElement.attributes) parts.push(attr.name + '=' + attr.value);
+  for (const sheet of document.styleSheets) {
+    let count = sheet.href;
+    try { count = sheet.cssRules.length; } catch (_) {}
+    parts.push(count);
+  }
+  return parts.join('|');
+}
 
 function _GfScheduleDarkMediaProtection(root = document, delay = 80) {
   if (root) _gfDarkMediaPending.add(root);
@@ -561,7 +568,11 @@ function _GfScheduleDarkMediaProtection(root = document, delay = 80) {
 
 function _GfStartDarkMediaWatcher() {
   if (!_GfDarkMediaIsActive()) return;
-  _GfProtectDarkMedia(document);
+  const scanSig = _GfDarkMediaScanSignature();
+  if (!_gfDarkMediaObserver || scanSig !== _gfDarkMediaScanSig) {
+    _GfProtectDarkMedia(document);
+    _gfDarkMediaScanSig = _GfDarkMediaScanSignature();
+  }
   if (_gfDarkMediaObserver || !window.MutationObserver) return;
   const observeRoot = document.body || document.documentElement;
   _gfDarkMediaObserver = new MutationObserver(mutations => {
@@ -572,10 +583,12 @@ function _GfStartDarkMediaWatcher() {
         const now = node.getAttribute?.('class') || '';
         if (node.nodeType !== 1 || _GfIsGradeFlowSurface(node)) continue;
         if (String(mutation.oldValue || '').replace(GF_DARK_MEDIA_CLASS, '').trim() === now.replace(GF_DARK_MEDIA_CLASS, '').trim()) continue;
+        _gfDarkMediaScanSig = '';
         _gfDarkMediaSolo.add(node);
         any = true;
         continue;
       }
+      if (mutation.addedNodes.length || mutation.removedNodes.length) _gfDarkMediaScanSig = '';
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== 1 || _GfIsGradeFlowSurface(node)) continue;
         _gfDarkMediaPending.add(node);
@@ -598,6 +611,7 @@ function _GfStopDarkMediaWatcher() {
   _gfDarkMediaPending.clear();
   _gfDarkMediaSolo.clear();
   _gfDarkMediaTimer = 0;
+  _gfDarkMediaScanSig = '';
   if (_gfDarkMediaObserver) {
     _gfDarkMediaObserver.disconnect();
     _gfDarkMediaObserver = null;
@@ -605,25 +619,33 @@ function _GfStopDarkMediaWatcher() {
   _GfClearDarkMediaProtection();
 }
 
+function _GfDropDarkTheme() {
+  document.documentElement.removeAttribute('data-gf-theme');
+  document.getElementById('gf-dark-flash-shield')?.remove();
+  GF_THEME_SHEETS.forEach(({ id }) => document.getElementById(id)?.remove());
+  _GfStopDarkMediaWatcher();
+  _GfStopNavWatcher();
+  _gfSheetRevealed = false;
+  if (document.body) {
+    document.body.style.opacity = '';
+    document.body.style.transition = '';
+  }
+}
+
+function _GfSyncThemeSurfaces() {
+  _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
+  _GfRefreshThemedHosts();
+  _GfPostThemeToPanel();
+}
+
 function _GfUseExternalTheme(vars) {
   _gfExternalThemeVars = vars;
   _gfExternalThemeSignature = _GfExternalThemeSignature(vars);
   _gfEffectiveTheme = 'smpp';
   localStorage.setItem('gf-smpp-active-cache', '1');
-  document.documentElement.removeAttribute('data-gf-theme');
-  document.getElementById('gf-dark-flash-shield')?.remove();
-  GF_THEME_SHEETS.forEach(({ id }) => document.getElementById(id)?.remove());
+  _GfDropDarkTheme();
   _GfSetExternalThemeVars(vars);
-  if (document.body) {
-    document.body.style.opacity = '';
-    document.body.style.transition = '';
-  }
-  _GfStopDarkMediaWatcher();
-  _GfStopNavWatcher();
-  _gfSheetRevealed = false;
-  _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
-  _GfRefreshThemedHosts();
-  _GfPostThemeToPanel();
+  _GfSyncThemeSurfaces();
 }
 
 function _GfSchedulePageThemeApply(delay = 80) {
@@ -653,7 +675,8 @@ function _GfSyncSmartschoolPlusPlusTheme(force = false) {
 
 function _GfStartSmartschoolPlusPlusWatcher() {
   if (_gfExternalThemePoll) return;
-  const watch = () => _GfSyncSmartschoolPlusPlusTheme(false);
+  const watch = () => { if (!document.hidden) _GfSyncSmartschoolPlusPlusTheme(false); };
+  document.addEventListener('visibilitychange', watch);
   _gfExternalThemePoll = setInterval(watch, 600);
   setTimeout(() => { clearInterval(_gfExternalThemePoll); _gfExternalThemePoll = setInterval(watch, 2500); }, 10000);
   _gfExternalThemeObserver = new MutationObserver(() => _GfSchedulePageThemeApply(120));
@@ -700,24 +723,13 @@ function _GfUseCustomTheme(palette) {
   _gfEffectiveTheme = 'custom';
   localStorage.removeItem('gf-smpp-active-cache');
   localStorage.setItem('gf-theme-palette-cache', JSON.stringify(p));
-  document.documentElement.removeAttribute('data-gf-theme');
-  document.getElementById('gf-dark-flash-shield')?.remove();
-  GF_THEME_SHEETS.forEach(({ id }) => document.getElementById(id)?.remove());
-  _GfStopDarkMediaWatcher();
-  _GfStopNavWatcher();
-  _gfSheetRevealed = false;
-  if (document.body) {
-    document.body.style.opacity = '';
-    document.body.style.transition = '';
-  }
+  _GfDropDarkTheme();
   _GfSetExternalThemeVars(vars);
   if (p.site) {
     GfThemeEngine.start(p);
     setTimeout(() => _GfGetPanelIframe()?.contentWindow?.postMessage({ type: 'gf-theme-status', blocked: GfThemeEngine.blocked() }, '*'), 2500);
   } else GfThemeEngine.stop();
-  _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
-  _GfRefreshThemedHosts();
-  _GfPostThemeToPanel();
+  _GfSyncThemeSurfaces();
 }
 
 function ApplyPageTheme(theme) {
@@ -747,9 +759,7 @@ function ApplyPageTheme(theme) {
       GF_THEME_SHEETS.forEach(({ id }) => document.getElementById(id)?.remove());
       _GfClearExternalThemeVars();
       _GfStopDarkMediaWatcher();
-      _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
-      _GfRefreshThemedHosts();
-      _GfPostThemeToPanel();
+      _GfSyncThemeSurfaces();
     }
     return;
   }
@@ -766,21 +776,8 @@ function ApplyPageTheme(theme) {
     _GfEnsureThemeSheets(() => { _GfRevealPage(); });
     _GfStartDarkMediaWatcher();
     _GfStartNavWatcher();
-  } else {
-    document.documentElement.removeAttribute('data-gf-theme');
-    document.getElementById('gf-dark-flash-shield')?.remove();
-    GF_THEME_SHEETS.forEach(({ id }) => document.getElementById(id)?.remove());
-    _GfStopDarkMediaWatcher();
-    if (document.body) {
-      document.body.style.opacity = '';
-      document.body.style.transition = '';
-    }
-    _GfStopNavWatcher();
-    _gfSheetRevealed = false;
-  }
-  _GfApplyHomeSummaryTheme(document.getElementById('gf-home-summary'));
-  _GfRefreshThemedHosts();
-  _GfPostThemeToPanel();
+  } else _GfDropDarkTheme();
+  _GfSyncThemeSurfaces();
 }
 
 function _GfRevealPage() {
@@ -826,81 +823,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-let gradeflowWeightMode = 'points';
-let gradeflowManualHours = LoadManualHours();
-let gradeflowFormula = LoadFormula();
-
-function LoadFormula() {
-  try {
-    const r = localStorage.getItem('gradeflow-formula-v1');
-    const p = r ? JSON.parse(r) : [];
-    return Array.isArray(p) ? p : [];
-  } catch (_) { return []; }
-}
-function HasFormula() {
-  return (gradeflowFormula || []).some(g => (parseFloat(g.totalWeight) || 0) > 0 && (g.parts || []).some(p => p.period && (parseFloat(p.weight) || 0) > 0));
-}
-
-function FormulaSubjectPct(subject, store) {
-  if (!store || !HasFormula()) return null;
-  let ws = 0, tw = 0;
-  for (const group of gradeflowFormula) {
-    const gw = parseFloat(group.totalWeight) || 0;
-    if (!gw) continue;
-    let gws = 0, gtw = 0;
-    for (const part of (group.parts || [])) {
-      const pw = parseFloat(part.weight) || 0;
-      if (!pw || !part.period) continue;
-      const scores = store[part.period]?.[subject]?.scores || [];
-      if (!scores.length) continue;
-      gws += CalcPercent(scores) * pw;
-      gtw += pw;
-    }
-    if (!gtw) continue;
-    ws += (gws / gtw) * gw;
-    tw += gw;
-  }
-  return tw > 0 ? ws / tw : null;
-}
-
-function FormulaOverallPct(store) {
-  if (!store) return 0;
-  const allData = BuildAllPeriodData(store);
-  const subjects = Object.keys(allData);
-  if (!subjects.length) return 0;
-
-  if (HasManualHours()) {
-    let w = 0, th = 0;
-    for (const s of subjects) {
-      const sp = FormulaSubjectPct(s, store);
-      if (sp == null) continue;
-      const h = GetHoursForSubject(s);
-      if (!h || isNaN(h)) continue;
-      w += sp * h;
-      th += h;
-    }
-    if (th > 0) return w / th;
-  }
-
-  let sum = 0, count = 0;
-  for (const s of subjects) {
-    const sp = FormulaSubjectPct(s, store);
-    if (sp == null) continue;
-    sum += sp;
-    count++;
-  }
-  return count > 0 ? sum / count : 0;
-}
-
-const gradeflowCache = {
-  gradesStore: null,
-  periods: [],
-  activePeriod: 'Alle',
-  loadPromise: null,
-  domSyncStarted: false,
-  domSyncObserver: null,
-  apiSucceeded: false
-};
+const gradeflowCache = { gradesStore: null };
 
 const _GF_PLANNER_KEY = 'gradeflow-planner-v2';
 const _GF_ATTENDANCE_KEY = 'gradeflow-attendance-v2';
@@ -909,64 +832,6 @@ if (!localStorage.getItem('gf-v13-cleanup')) {
   localStorage.setItem('gf-v13-cleanup', '1');
 }
 
-function LoadManualHours() {
-  try {
-    const r = localStorage.getItem('gradeflow-manual-hours-v1');
-    const p = r ? JSON.parse(r) : {};
-    return (p && typeof p === 'object') ? p : {};
-  } catch (_) { return {}; }
-}
-function SaveManualHours(map) {
-  gradeflowManualHours = { ...(map || {}) };
-  try { localStorage.setItem('gradeflow-manual-hours-v1', JSON.stringify(gradeflowManualHours)); } catch (_) {}
-}
-function HasManualHours() { return !!(gradeflowManualHours && Object.keys(gradeflowManualHours).length); }
-function NormalizeSubjectName(name) { return String(name || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
-function GetHoursForSubject(subject) {
-  const m = gradeflowManualHours || {};
-  if (subject in m) return m[subject];
-  const t = NormalizeSubjectName(subject);
-  for (const [n, v] of Object.entries(m)) {
-    if (NormalizeSubjectName(n) === t) return v;
-  }
-  return null;
-}
-function WeightedPctWithHoursMap(data, hoursMap) {
-  let w = 0, th = 0;
-  for (const [subject, { scores }] of Object.entries(data || {})) {
-    const sp = CalcPercent(scores);
-    let hours = null;
-    if (subject in hoursMap) hours = hoursMap[subject];
-    else {
-      const t = NormalizeSubjectName(subject);
-      for (const [n, v] of Object.entries(hoursMap)) {
-        if (NormalizeSubjectName(n) === t) { hours = v; break; }
-      }
-    }
-    if (!hours || isNaN(hours)) continue;
-    w += sp * hours;
-    th += hours;
-  }
-  return th > 0 ? w / th : 0;
-}
-
-function ParseLocalDateToTime(value) {
-  if (!value) return 0;
-  const m = String(value).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) {
-    const [, dd, mm, yyyy] = m;
-    return new Date(Number(yyyy), Number(mm) - 1, Number(dd)).getTime();
-  }
-  const d = new Date(value);
-  return isNaN(d) ? 0 : d.getTime();
-}
-function SortScoresChronologically(scores) {
-  return [...scores].sort((a, b) => {
-    const da = ParseLocalDateToTime(a.date), db = ParseLocalDateToTime(b.date);
-    if (da !== db) return da - db;
-    return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
-  });
-}
 function FormatShortDate(value) {
   if (!value) return '';
   const d = new Date(value);
@@ -1319,19 +1184,6 @@ function _GfRefreshPlannerItems(force = false) {
   return _gfPlannerRefreshPromise;
 }
 
-function CreateStore() { return {}; }
-function CloneStore(store) {
-  const out = CreateStore();
-  for (const [p, subjects] of Object.entries(store || {})) {
-    if (p.startsWith('_')) { out[p] = subjects; continue; }
-    out[p] = {};
-    for (const [s, payload] of Object.entries(subjects || {})) {
-      out[p][s] = { scores: (payload?.scores || []).map(x => ({ ...x })) };
-      if (payload?.extra?.length) out[p][s].extra = payload.extra.map(x => ({ ...x }));
-    }
-  }
-  return out;
-}
 function StoreGrade(store, { subject, period, title, date, scored, max, nc, extra }) {
   if (!subject) return false;
   period = period || 'Onbekend';
@@ -1351,45 +1203,10 @@ function StoreGrade(store, { subject, period, title, date, scored, max, nc, extr
   slot.scores.push(nc ? { title, date, scored, max, nc: true } : { title, date, scored, max });
   return true;
 }
-function RemoveGrade(store, { subject, period, title, date, scored, max }) {
-  if (!store?.[period]?.[subject]?.scores) return false;
-  const scores = store[period][subject].scores;
-  const idx = scores.findIndex(x => x.scored === scored && x.max === max && x.title === (title || '') && x.date === (date || ''));
-  if (idx === -1) return false;
-  scores.splice(idx, 1);
-  if (!scores.length) delete store[period][subject];
-  if (!Object.keys(store[period]).length) delete store[period];
-  return true;
-}
 function StoreSize(store) {
   return Object.entries(store).filter(([k]) => !k.startsWith('_')).flatMap(([,p]) => Object.values(p)).reduce((n, s) => n + s.scores.length + (s.extra?.length || 0), 0);
 }
-function CalcPercent(scores) {
-  const s = scores.reduce((a, e) => a + e.scored, 0),
-        m = scores.reduce((a, e) => a + e.max, 0);
-  return m > 0 ? (s / m) * 100 : 0;
-}
 
-function SortPeriods(periods) {
-  const pr = p => {
-    const x = String(p || '').toLowerCase();
-    if (x === 'alle') return 0;
-    if (x.includes('semester 1')) return 10;
-    if (x.includes('kerst')) return 15;
-    if (x.includes('semester 2')) return 20;
-    if (x.includes('trimester 1')) return 10;
-    if (x.includes('trimester 2')) return 20;
-    if (x.includes('trimester 3')) return 30;
-    if (x.includes('eindexamen')) return 40;
-    if (x.includes('examen')) return 35;
-    return 100;
-  };
-  return [...periods].sort((a, b) => {
-    const pa = pr(a), pb = pr(b);
-    if (pa !== pb) return pa - pb;
-    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-  });
-}
 function BuildAllPeriodData(store) {
   const merged = {};
   for (const [key, subjects] of Object.entries(store || {})) {
@@ -1405,7 +1222,6 @@ function BuildAllPeriodData(store) {
   }
   return merged;
 }
-function ComputePeriodsFromStore(store) { return ['Alle', ...SortPeriods(Object.keys(store || {}).filter(p => p !== 'Alle' && !p.startsWith('_')))]; }
 
 function _GfNum(v) {
   return parseFloat(String(v).replace(',', '.'));
@@ -1590,8 +1406,8 @@ function ScrapeDomCourseIcons() {
   return iconMap;
 }
 
-async function FetchAllApiGrades(onProgress) {
-  const store = CreateStore(),
+async function FetchAllApiGrades() {
+  const store = {},
         urls = ['/results/api/v1/evaluations?itemsOnPage=1000', '/results/api/v1/evaluations?itemsOnPage=500'];
   let results = null;
 
@@ -1617,7 +1433,6 @@ async function FetchAllApiGrades(onProgress) {
         courseIcons[entry.subject] = { value: entry.graphic.value, type: entry.graphic.type };
       }
     }
-    if (onProgress) onProgress(StoreSize(store));
   }
 
   await _GfEnrichExtras(store);
@@ -1652,76 +1467,10 @@ async function FetchAllApiGrades(onProgress) {
   return store;
 }
 
-function ExtractGradeFromLi(li) {
-  const st = li.querySelector('.evaluation-list-item__graphic > span:last-child')?.textContent.trim() ?? '';
-  const [s, m] = st.replace(',', '.').split('/').map(parseFloat);
-  const tokens = li.querySelectorAll('.evaluation-list-item__container__tokens__token');
-  const entry = {
-    subject: tokens[0]?.textContent.trim() ?? null,
-    period: tokens[1]?.textContent.trim() ?? 'Onbekend',
-    title: li.querySelector('.evaluation-list-item__container__title')?.textContent.trim() ?? '',
-    date: li.querySelector('.evaluation-list-item__container__subtitle')?.textContent.trim() ?? '',
-    scored: s,
-    max: m
-  };
-  if (!entry.subject || isNaN(entry.scored) || isNaN(entry.max) || entry.max <= 0) return null;
-  return entry;
-}
-function ScrapeItemInto(store, li) { const e = ExtractGradeFromLi(li); return e ? StoreGrade(store, e) : false; }
-function RemoveItemFromStore(store, li) { const e = ExtractGradeFromLi(li); return e ? RemoveGrade(store, e) : false; }
 
-function StartDomIncrementalSync() {
-  if (gradeflowCache.domSyncStarted || gradeflowCache.apiSucceeded) return;
-  const listRoot = document.querySelector('ol.evaluations__filterlistview,ol#evaluations-filterlistview,.listview__rows');
-  if (!listRoot) return;
-
-  const observer = new MutationObserver(mutations => {
-    if (!gradeflowCache.gradesStore) return;
-    let changed = false;
-
-    for (const m of mutations) {
-      m.addedNodes.forEach(node => {
-        if (node.nodeType !== 1) return;
-        if (node.matches?.('li.evaluation__filterlistview__evaluation-container')) {
-          if (ScrapeItemInto(gradeflowCache.gradesStore, node)) changed = true;
-        }
-        node.querySelectorAll?.('li.evaluation__filterlistview__evaluation-container').forEach(li => {
-          if (ScrapeItemInto(gradeflowCache.gradesStore, li)) changed = true;
-        });
-      });
-
-      m.removedNodes.forEach(node => {
-        if (node.nodeType !== 1) return;
-        if (node.matches?.('li.evaluation__filterlistview__evaluation-container')) {
-          if (RemoveItemFromStore(gradeflowCache.gradesStore, node)) changed = true;
-        }
-        node.querySelectorAll?.('li.evaluation__filterlistview__evaluation-container').forEach(li => {
-          if (RemoveItemFromStore(gradeflowCache.gradesStore, li)) changed = true;
-        });
-      });
-    }
-
-    if (changed) {
-      gradeflowCache.periods = ComputePeriodsFromStore(gradeflowCache.gradesStore);
-      if (!gradeflowCache.periods.includes(gradeflowCache.activePeriod)) gradeflowCache.activePeriod = 'Alle';
-    }
-  });
-
-  observer.observe(listRoot, { childList: true, subtree: true });
-  gradeflowCache.domSyncObserver = observer;
-  gradeflowCache.domSyncStarted = true;
-}
-
-async function GetAllGrades(onProgress) {
-  try {
-    const s = await FetchAllApiGrades(onProgress);
-    if (StoreSize(s) > 0) {
-      gradeflowCache.apiSucceeded = true;
-      return s;
-    }
-  } catch (err) {
-    throw err;
-  }
+async function GetAllGrades() {
+  const s = await FetchAllApiGrades();
+  if (StoreSize(s) > 0) return s;
   throw new Error('Error while loading grades.');
 }
 
@@ -1903,11 +1652,8 @@ function _GfLoadGradesInBackground() {
 
   _gfGradeLoadPromise = GetAllGrades()
     .then(store => {
-      gradeflowCache.gradesStore = CloneStore(store);
-      gradeflowCache.periods = ComputePeriodsFromStore(gradeflowCache.gradesStore);
-      gradeflowCache.activePeriod = 'Alle';
+      gradeflowCache.gradesStore = store;
       _gfLastFetchTime = Date.now();
-      StartDomIncrementalSync();
       _GfRefreshPlannerItems();
       _GfRefreshAttendanceItems();
 
@@ -2070,21 +1816,21 @@ try {
         _gfPersPfp = msg.dataUrl;
         _GfApplyPfp(msg.dataUrl);
       } else if (msg.type === 'gf-reinject-badge') {
-        _GfRevertMsgCounter();
+        _gfMsgCounter.revert();
         if (_gfPersSettings?.fakeMsgCounter) {
-          _GfApplyMsgCounter(_gfPersSettings.msgCounterValue ?? 0);
+          _gfMsgCounter.apply(_gfPersSettings.msgCounterValue ?? 0);
         }
       }
     });
   }
 } catch (_) {}
 
-let _gfInspectAt = [0, 0];
-document.addEventListener('mousemove', e => { _gfInspectAt = [e.clientX, e.clientY]; }, { passive: true, capture: true });
+let _gfInspectX = 0, _gfInspectY = 0;
+document.addEventListener('mousemove', e => { _gfInspectX = e.clientX; _gfInspectY = e.clientY; }, { passive: true, capture: true });
 document.addEventListener('keydown', e => {
   if (!(e.ctrlKey && e.altKey && e.shiftKey && e.code === 'KeyD')) return;
   e.preventDefault();
-  const el = document.elementFromPoint(_gfInspectAt[0], _gfInspectAt[1]);
+  const el = document.elementFromPoint(_gfInspectX, _gfInspectY);
   if (!el) return;
   const text = JSON.stringify({ gf: '1.3.0', ...GfThemeEngine.inspect(el) });
   const done = ok => {
@@ -2119,7 +1865,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
     const panelOpen = document.getElementById('gradeflow-panel-host')?.style.display !== 'none';
-    const gameOpen = [...GF_GAME_HOST_IDS, 'gf-arcade'].some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
+    const gameOpen = GF_OVERLAY_HOST_IDS.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
     if (panelOpen || gameOpen) { e.preventDefault(); e.stopPropagation(); }
   }
 }, true);
@@ -2145,7 +1891,7 @@ document.addEventListener('click', e => {
   if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) return;
   if (e.target.closest('#gradeflow-tab-wrapper, #gradeflow-tab')) return;
   if (e.target.closest('header, nav, [class*="topbar"], [class*="top-bar"], [role="banner"], [class*="topnav"], [class*="TopBar"], [class*="sidebar"], [role="toolbar"]')) return;
-  if ([...GF_GAME_HOST_IDS, 'gf-arcade'].some(id => document.getElementById(id)?.contains(e.target))) return;
+  if (GF_OVERLAY_HOST_IDS.some(id => document.getElementById(id)?.contains(e.target))) return;
   const activeGame = GF_GAME_HOST_IDS.some(id => {
     const el = document.getElementById(id);
     return el && el.style.display !== 'none';
@@ -2665,10 +2411,10 @@ let _gfPersReady    = false;
 
 let _gfDetectedRealName = (typeof window !== 'undefined' && window._gfDetectedRealName) || null;
 
-function _GfNameScanRoot() {
-  return document.querySelector(
-    '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
-  ) || document.body;
+const _GF_TOPBAR_SELECTOR = '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]';
+
+function _GfTopbarRoot() {
+  return document.querySelector(_GF_TOPBAR_SELECTOR) || document.body;
 }
 
 function _GfApplyName(name) {
@@ -2680,7 +2426,7 @@ function _GfApplyName(name) {
     count++;
   });
 
-  const root = _GfNameScanRoot();
+  const root = _GfTopbarRoot();
   if (!root) return;
 
   const realName = _gfDetectedRealName;
@@ -2748,12 +2494,6 @@ let _gfPfpLastUrl = '';
 let _gfPfpBgUrlCache = '';
 let _gfBgScanDone = false;
 
-function _GfPfpScanRoot() {
-  return document.querySelector(
-    '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
-  ) || document.body;
-}
-
 function _GfRememberDetectedAvatar(src) {
   if (!src || src.startsWith('data:')) return;
   _gfDetectedAvatarSrc = src;
@@ -2762,7 +2502,7 @@ function _GfRememberDetectedAvatar(src) {
 
 function _GfDetectOriginalAvatar() {
   if (_gfDetectedAvatarSrc) return _gfDetectedAvatarSrc;
-  const root = _GfPfpScanRoot();
+  const root = _GfTopbarRoot();
   const img = root?.querySelector('img[src*="userpicture"], img[src*="Userimage"], img[src*="UserImage"]');
   const src = img?.dataset?.gfOrigSrc || img?.src || '';
   if (src) _GfRememberDetectedAvatar(src);
@@ -2785,7 +2525,7 @@ function _GfApplyPfp(dataUrl) {
     else if (el.style.backgroundImage !== bgUrl) el.style.backgroundImage = bgUrl;
   });
 
-  const root = _GfPfpScanRoot();
+  const root = _GfTopbarRoot();
   if (root) {
     const avatarUrl = _gfDetectedAvatarSrc;
     const detectedId = avatarUrl ? _GfExtractSmscUserId(avatarUrl) : null;
@@ -2858,375 +2598,127 @@ function _GfRevertPfp() {
   try { localStorage.removeItem('gf-pfp-cache'); } catch (_) {}
 }
 
-function _GfIsInTopnav(el) {
-  let cur = el.parentElement;
-  while (cur && cur !== document.body) {
-    const cls = cur.className || '';
-    if (/dropdown|flyout|favourites-container/i.test(cls)) return false;
-    if (cur.tagName === 'HEADER') return true;
-    if (cur.getAttribute('role') === 'banner') return true;
-    if (/topnav|topbar|top-bar/i.test(cls)) return true;
-    cur = cur.parentElement;
-  }
-  return false;
-}
+const _GF_BADGE_SKIP = '#gradeflow-panel-host, #gf-arcade';
+const _GF_BADGE_CSS =
+  'display:inline-flex !important;align-items:center;justify-content:center;' +
+  'min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e53935;color:#fff;' +
+  'font-size:11px;font-weight:700;margin-left:4px;line-height:1;vertical-align:middle;';
 
-let _gfMsgLinks     = [];
-let _gfMsgObserver  = null;
-let _gfMsgCount     = 0;
-let _gfMsgEnabled   = false;
+function _GfBadgeCounter(cfg) {
+  let links = [], observer = null, watcher = null, count = 0, enabled = false;
 
-function _GfFindAllBerichtenLinks() {
-  const skip = '#gradeflow-panel-host, #gf-arcade';
-  const seen = new Set();
-  const results = [];
-
-  for (const badge of document.querySelectorAll('.js-badge-msg')) {
-    const a = badge.closest('a');
-    if (a && !a.closest(skip) && !seen.has(a)) { seen.add(a); results.push(a); }
-  }
-
-  for (const a of document.querySelectorAll('a[data-id="messages"]')) {
-    if (!a.closest(skip) && !seen.has(a)) { seen.add(a); results.push(a); }
-  }
-
-  return results;
-}
-
-function _GfAssertBadgeOn(link) {
-  if (!link || !_gfMsgEnabled || _gfMsgCount <= 0) return;
-
-  const existing = link.querySelector('[data-gf-orig-counter]');
-  if (existing) {
-    if (existing.textContent !== String(_gfMsgCount)) existing.textContent = String(_gfMsgCount);
-    if (existing.getAttribute('data-value') !== String(_gfMsgCount)) existing.setAttribute('data-value', String(_gfMsgCount));
-    existing.removeAttribute('hidden');
-    existing.style.removeProperty('display');
-    return;
-  }
-
-  const smsc = link.querySelector('.js-badge-msg, .topnav__badge, [class*="badge"]');
-  if (smsc) {
-    smsc.dataset.gfOrigCounter = smsc.textContent.trim();
-    smsc.dataset.gfOrigDisplay = smsc.style.display || '';
-    smsc.textContent = String(_gfMsgCount);
-    smsc.setAttribute('data-value', String(_gfMsgCount));
-    smsc.removeAttribute('hidden');
-    smsc.style.removeProperty('display');
-    smsc.style.visibility = '';
-    return;
-  }
-
-  const badge = document.createElement('span');
-  badge.className = 'js-badge-msg topnav__badge';
-  badge.setAttribute('role', 'status');
-  badge.setAttribute('aria-label', _gfMsgCount + ' Ongelezen meldingen');
-  badge.setAttribute('aria-live', 'polite');
-  badge.setAttribute('aria-relevant', 'additions');
-  badge.setAttribute('data-value', String(_gfMsgCount));
-  badge.dataset.gfOrigCounter = '';
-  badge.dataset.gfOrigDisplay = '';
-  badge.dataset.gfCreated     = '1';
-  badge.textContent = String(_gfMsgCount);
-  badge.style.cssText =
-    'display:inline-flex !important;align-items:center;justify-content:center;' +
-    'min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e53935;color:#fff;' +
-    'font-size:11px;font-weight:700;margin-left:4px;line-height:1;vertical-align:middle;';
-  link.appendChild(badge);
-}
-
-function _GfAssertBadge() {
-  _gfMsgLinks.forEach(_GfAssertBadgeOn);
-}
-
-function _GfWatchMsgLinks() {
-  if (_gfMsgObserver) { _gfMsgObserver.disconnect(); _gfMsgObserver = null; }
-  if (!_gfMsgLinks.length) return;
-  _gfMsgObserver = new MutationObserver(() => {
-    if (!_gfMsgEnabled || _gfMsgCount <= 0) return;
-    setTimeout(_GfAssertBadge, 0);
-  });
-  for (const link of _gfMsgLinks) {
-    _gfMsgObserver.observe(link, { childList: true, subtree: true, characterData: true });
-  }
-}
-
-let _gfMsgLinkWatcher = null;
-function _GfStartMsgLinkWatcher() {
-  if (_gfMsgLinkWatcher) return;
-  const tryLock = () => {
-    const found = _GfFindAllBerichtenLinks();
-    if (!found.length) return;
-    const same = found.length === _gfMsgLinks.length && found.every((l, i) => l === _gfMsgLinks[i]);
-    if (same) return;
-    _gfMsgLinks = found;
-    _GfWatchMsgLinks();
-    _GfAssertBadge();
-  };
-  tryLock();
-  _gfMsgLinkWatcher = new MutationObserver(tryLock);
-  _gfMsgLinkWatcher.observe(document.documentElement, { childList: true, subtree: true });
-}
-
-function _GfApplyMsgCounter(count) {
-  _gfMsgCount   = count;
-  _gfMsgEnabled = true;
-  _GfStartMsgLinkWatcher();
-  _GfAssertBadge();
-}
-
-function _GfRevertMsgCounter() {
-  _gfMsgEnabled = false;
-  _gfMsgCount   = 0;
-  if (_gfMsgObserver) { _gfMsgObserver.disconnect(); _gfMsgObserver = null; }
-  document.querySelectorAll('[data-gf-orig-counter]').forEach(el => {
-    if (el.dataset.gfCreated === '1') {
-      el.remove();
-    } else {
-      el.textContent = el.dataset.gfOrigCounter;
-      el.style.display = el.dataset.gfOrigDisplay || '';
-      if (el.dataset.gfOrigCounter === '' || el.dataset.gfOrigCounter === '0') el.setAttribute('hidden', '');
-      delete el.dataset.gfOrigCounter;
-      delete el.dataset.gfOrigDisplay;
+  function FindLinks() {
+    const seen = new Set();
+    const results = [];
+    for (const badge of document.querySelectorAll(`.${cfg.badge}`)) {
+      const el = badge.closest(cfg.closest);
+      if (el && !el.closest(_GF_BADGE_SKIP) && !seen.has(el)) { seen.add(el); results.push(el); }
     }
-  });
-}
-
-let _gfNotifLinks    = [];
-let _gfNotifObserver = null;
-let _gfNotifCount    = 0;
-let _gfNotifEnabled  = false;
-
-function _GfFindNotifLinks() {
-  const skip = '#gradeflow-panel-host, #gf-arcade';
-  const seen = new Set();
-  const results = [];
-
-  for (const badge of document.querySelectorAll('.js-badge-notifs')) {
-    const btn = badge.closest('button, a');
-    if (btn && !btn.closest(skip) && !seen.has(btn)) { seen.add(btn); results.push(btn); }
-  }
-
-  for (const btn of document.querySelectorAll('button.js-btn-notifs, button[title="Meldingen"]')) {
-    if (!btn.closest(skip) && !seen.has(btn)) { seen.add(btn); results.push(btn); }
-  }
-
-  return results;
-}
-
-function _GfAssertNotifBadgeOn(link) {
-  if (!link || !_gfNotifEnabled || _gfNotifCount <= 0) return;
-  const existing = link.querySelector('[data-gf-notif-badge]');
-  if (existing) {
-    if (existing.textContent !== String(_gfNotifCount)) existing.textContent = String(_gfNotifCount);
-    if (existing.getAttribute('data-value') !== String(_gfNotifCount)) existing.setAttribute('data-value', String(_gfNotifCount));
-    existing.removeAttribute('hidden');
-    existing.style.removeProperty('display');
-    return;
-  }
-  const smsc = link.querySelector('.js-badge-notifs, .topnav__badge, [class*="badge"]');
-  if (smsc) {
-    smsc.dataset.gfNotifBadge = '1';
-    smsc.dataset.gfNotifOrig  = smsc.textContent.trim();
-    smsc.dataset.gfNotifDisp  = smsc.style.display || '';
-    smsc.textContent = String(_gfNotifCount);
-    smsc.setAttribute('data-value', String(_gfNotifCount));
-    smsc.removeAttribute('hidden');
-    smsc.style.removeProperty('display');
-    smsc.style.visibility = '';
-    return;
-  }
-  const badge = document.createElement('span');
-  badge.className = 'js-badge-notifs topnav__badge';
-  badge.setAttribute('role', 'status');
-  badge.setAttribute('aria-label', _gfNotifCount + ' Meldingen');
-  badge.setAttribute('data-value', String(_gfNotifCount));
-  badge.dataset.gfNotifBadge = '1';
-  badge.dataset.gfNotifOrig  = '';
-  badge.dataset.gfNotifDisp  = '';
-  badge.dataset.gfNotifCreated = '1';
-  badge.textContent = String(_gfNotifCount);
-  badge.style.cssText =
-    'display:inline-flex !important;align-items:center;justify-content:center;' +
-    'min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e53935;color:#fff;' +
-    'font-size:11px;font-weight:700;margin-left:4px;line-height:1;vertical-align:middle;';
-  link.appendChild(badge);
-}
-
-function _GfAssertNotifBadge() { _gfNotifLinks.forEach(_GfAssertNotifBadgeOn); }
-
-function _GfWatchNotifLinks() {
-  if (_gfNotifObserver) { _gfNotifObserver.disconnect(); _gfNotifObserver = null; }
-  if (!_gfNotifLinks.length) return;
-  _gfNotifObserver = new MutationObserver(() => {
-    if (!_gfNotifEnabled || _gfNotifCount <= 0) return;
-    setTimeout(_GfAssertNotifBadge, 0);
-  });
-  for (const link of _gfNotifLinks) {
-    _gfNotifObserver.observe(link, { childList: true, subtree: true, characterData: true });
-  }
-}
-
-let _gfNotifLinkWatcher = null;
-function _GfStartNotifLinkWatcher() {
-  if (_gfNotifLinkWatcher) return;
-  const tryLock = () => {
-    const found = _GfFindNotifLinks();
-    if (!found.length) return;
-    const same = found.length === _gfNotifLinks.length && found.every((l, i) => l === _gfNotifLinks[i]);
-    if (same) return;
-    _gfNotifLinks = found;
-    _GfWatchNotifLinks();
-    _GfAssertNotifBadge();
-  };
-  tryLock();
-  _gfNotifLinkWatcher = new MutationObserver(tryLock);
-  _gfNotifLinkWatcher.observe(document.documentElement, { childList: true, subtree: true });
-}
-
-function _GfApplyNotifCounter(count) {
-  _gfNotifCount   = count;
-  _gfNotifEnabled = true;
-  _GfStartNotifLinkWatcher();
-  _GfAssertNotifBadge();
-}
-
-function _GfRevertNotifCounter() {
-  _gfNotifEnabled = false;
-  _gfNotifCount   = 0;
-  if (_gfNotifObserver) { _gfNotifObserver.disconnect(); _gfNotifObserver = null; }
-  document.querySelectorAll('[data-gf-notif-badge]').forEach(el => {
-    if (el.dataset.gfNotifCreated === '1') {
-      el.remove();
-    } else {
-      el.textContent = el.dataset.gfNotifOrig;
-      el.style.display = el.dataset.gfNotifDisp || '';
-      if (el.dataset.gfNotifOrig === '' || el.dataset.gfNotifOrig === '0') el.setAttribute('hidden', '');
-      delete el.dataset.gfNotifBadge;
-      delete el.dataset.gfNotifOrig;
-      delete el.dataset.gfNotifDisp;
-      delete el.dataset.gfNotifCreated;
+    for (const el of document.querySelectorAll(cfg.extra)) {
+      if (!el.closest(_GF_BADGE_SKIP) && !seen.has(el)) { seen.add(el); results.push(el); }
     }
-  });
-}
-
-let _gfNewsLinks    = [];
-let _gfNewsObserver = null;
-let _gfNewsCount    = 0;
-let _gfNewsEnabled  = false;
-
-function _GfFindNewsLinks() {
-  const skip = '#gradeflow-panel-host, #gf-arcade';
-  const seen = new Set();
-  const results = [];
-
-  for (const badge of document.querySelectorAll('.js-badge-news')) {
-    const el = badge.closest('a, button');
-    if (el && !el.closest(skip) && !seen.has(el)) { seen.add(el); results.push(el); }
+    return results;
   }
 
-  for (const a of document.querySelectorAll('a[data-id="news"]')) {
-    if (!a.closest(skip) && !seen.has(a)) { seen.add(a); results.push(a); }
-  }
-
-  return results;
-}
-
-function _GfAssertNewsBadgeOn(link) {
-  if (!link || !_gfNewsEnabled || _gfNewsCount <= 0) return;
-  const existing = link.querySelector('[data-gf-news-badge]');
-  if (existing) {
-    if (existing.textContent !== String(_gfNewsCount)) existing.textContent = String(_gfNewsCount);
-    if (existing.getAttribute('data-value') !== String(_gfNewsCount)) existing.setAttribute('data-value', String(_gfNewsCount));
-    existing.removeAttribute('hidden');
-    existing.style.removeProperty('display');
-    return;
-  }
-  const smsc = link.querySelector('.js-badge-news, .topnav__badge, [class*="badge"]');
-  if (smsc) {
-    smsc.dataset.gfNewsBadge = '1';
-    smsc.dataset.gfNewsOrig  = smsc.textContent.trim();
-    smsc.dataset.gfNewsDisp  = smsc.style.display || '';
-    smsc.textContent = String(_gfNewsCount);
-    smsc.setAttribute('data-value', String(_gfNewsCount));
-    smsc.removeAttribute('hidden');
-    smsc.style.removeProperty('display');
-    smsc.style.visibility = '';
-    return;
-  }
-  const badge = document.createElement('span');
-  badge.className = 'js-badge-news topnav__badge';
-  badge.setAttribute('role', 'status');
-  badge.setAttribute('aria-label', _gfNewsCount + ' Nieuwsberichten');
-  badge.setAttribute('data-value', String(_gfNewsCount));
-  badge.dataset.gfNewsBadge   = '1';
-  badge.dataset.gfNewsOrig    = '';
-  badge.dataset.gfNewsDisp    = '';
-  badge.dataset.gfNewsCreated = '1';
-  badge.textContent = String(_gfNewsCount);
-  badge.style.cssText =
-    'display:inline-flex !important;align-items:center;justify-content:center;' +
-    'min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e53935;color:#fff;' +
-    'font-size:11px;font-weight:700;margin-left:4px;line-height:1;vertical-align:middle;';
-  link.appendChild(badge);
-}
-
-function _GfAssertNewsBadge() { _gfNewsLinks.forEach(_GfAssertNewsBadgeOn); }
-
-function _GfWatchNewsLinks() {
-  if (_gfNewsObserver) { _gfNewsObserver.disconnect(); _gfNewsObserver = null; }
-  if (!_gfNewsLinks.length) return;
-  _gfNewsObserver = new MutationObserver(() => {
-    if (!_gfNewsEnabled || _gfNewsCount <= 0) return;
-    setTimeout(_GfAssertNewsBadge, 0);
-  });
-  for (const link of _gfNewsLinks) {
-    _gfNewsObserver.observe(link, { childList: true, subtree: true, characterData: true });
-  }
-}
-
-let _gfNewsLinkWatcher = null;
-function _GfStartNewsLinkWatcher() {
-  if (_gfNewsLinkWatcher) return;
-  const tryLock = () => {
-    const found = _GfFindNewsLinks();
-    if (!found.length) return;
-    const same = found.length === _gfNewsLinks.length && found.every((l, i) => l === _gfNewsLinks[i]);
-    if (same) return;
-    _gfNewsLinks = found;
-    _GfWatchNewsLinks();
-    _GfAssertNewsBadge();
-  };
-  tryLock();
-  _gfNewsLinkWatcher = new MutationObserver(tryLock);
-  _gfNewsLinkWatcher.observe(document.documentElement, { childList: true, subtree: true });
-}
-
-function _GfApplyNewsCounter(count) {
-  _gfNewsCount   = count;
-  _gfNewsEnabled = true;
-  _GfStartNewsLinkWatcher();
-  _GfAssertNewsBadge();
-}
-
-function _GfRevertNewsCounter() {
-  _gfNewsEnabled = false;
-  _gfNewsCount   = 0;
-  if (_gfNewsObserver) { _gfNewsObserver.disconnect(); _gfNewsObserver = null; }
-  document.querySelectorAll('[data-gf-news-badge]').forEach(el => {
-    if (el.dataset.gfNewsCreated === '1') {
-      el.remove();
-    } else {
-      el.textContent = el.dataset.gfNewsOrig;
-      el.style.display = el.dataset.gfNewsDisp || '';
-      if (el.dataset.gfNewsOrig === '' || el.dataset.gfNewsOrig === '0') el.setAttribute('hidden', '');
-      delete el.dataset.gfNewsBadge;
-      delete el.dataset.gfNewsOrig;
-      delete el.dataset.gfNewsDisp;
-      delete el.dataset.gfNewsCreated;
+  function AssertOn(link) {
+    if (!link || !enabled || count <= 0) return;
+    const value = String(count);
+    const existing = link.querySelector(`[${cfg.markAttr}]`);
+    if (existing) {
+      if (existing.textContent !== value) existing.textContent = value;
+      if (existing.getAttribute('data-value') !== value) existing.setAttribute('data-value', value);
+      existing.removeAttribute('hidden');
+      existing.style.removeProperty('display');
+      return;
     }
-  });
+    const smsc = link.querySelector(`.${cfg.badge}, .topnav__badge, [class*="badge"]`);
+    if (smsc) {
+      smsc.dataset[cfg.mark] = '1';
+      smsc.dataset[cfg.orig] = smsc.textContent.trim();
+      smsc.dataset[cfg.disp] = smsc.style.display || '';
+      smsc.textContent = value;
+      smsc.setAttribute('data-value', value);
+      smsc.removeAttribute('hidden');
+      smsc.style.removeProperty('display');
+      smsc.style.visibility = '';
+      return;
+    }
+    const badge = document.createElement('span');
+    badge.className = `${cfg.badge} topnav__badge`;
+    badge.setAttribute('role', 'status');
+    badge.setAttribute('aria-label', count + cfg.label);
+    if (cfg.live) {
+      badge.setAttribute('aria-live', 'polite');
+      badge.setAttribute('aria-relevant', 'additions');
+    }
+    badge.setAttribute('data-value', value);
+    badge.dataset[cfg.mark] = '1';
+    badge.dataset[cfg.orig] = '';
+    badge.dataset[cfg.disp] = '';
+    badge.dataset[cfg.created] = '1';
+    badge.textContent = value;
+    badge.style.cssText = _GF_BADGE_CSS;
+    link.appendChild(badge);
+  }
+
+  function AssertAll() { links.forEach(AssertOn); }
+
+  function WatchLinks() {
+    if (observer) { observer.disconnect(); observer = null; }
+    if (!links.length) return;
+    observer = new MutationObserver(() => {
+      if (!enabled || count <= 0) return;
+      setTimeout(AssertAll, 0);
+    });
+    for (const link of links) observer.observe(link, { childList: true, subtree: true, characterData: true });
+  }
+
+  function StartWatcher() {
+    if (watcher) return;
+    const tryLock = () => {
+      const found = FindLinks();
+      if (!found.length) return;
+      if (found.length === links.length && found.every((l, i) => l === links[i])) return;
+      links = found;
+      WatchLinks();
+      AssertAll();
+    };
+    tryLock();
+    watcher = new MutationObserver(tryLock);
+    watcher.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  return {
+    apply(next) {
+      count = next;
+      enabled = true;
+      StartWatcher();
+      AssertAll();
+    },
+    revert() {
+      enabled = false;
+      count = 0;
+      if (observer) { observer.disconnect(); observer = null; }
+      document.querySelectorAll(`[${cfg.markAttr}]`).forEach(el => {
+        if (el.dataset[cfg.created] === '1') {
+          el.remove();
+          return;
+        }
+        el.textContent = el.dataset[cfg.orig];
+        el.style.display = el.dataset[cfg.disp] || '';
+        if (el.dataset[cfg.orig] === '' || el.dataset[cfg.orig] === '0') el.setAttribute('hidden', '');
+        delete el.dataset[cfg.mark];
+        delete el.dataset[cfg.orig];
+        delete el.dataset[cfg.disp];
+        delete el.dataset[cfg.created];
+      });
+    },
+  };
 }
+
+const _gfMsgCounter = _GfBadgeCounter({ badge: 'js-badge-msg', closest: 'a', extra: 'a[data-id="messages"]', markAttr: 'data-gf-orig-counter', mark: 'gfOrigCounter', orig: 'gfOrigCounter', disp: 'gfOrigDisplay', created: 'gfCreated', label: ' Ongelezen meldingen', live: true });
+const _gfNotifCounter = _GfBadgeCounter({ badge: 'js-badge-notifs', closest: 'button, a', extra: 'button.js-btn-notifs, button[title="Meldingen"]', markAttr: 'data-gf-notif-badge', mark: 'gfNotifBadge', orig: 'gfNotifOrig', disp: 'gfNotifDisp', created: 'gfNotifCreated', label: ' Meldingen' });
+const _gfNewsCounter = _GfBadgeCounter({ badge: 'js-badge-news', closest: 'a, button', extra: 'a[data-id="news"]', markAttr: 'data-gf-news-badge', mark: 'gfNewsBadge', orig: 'gfNewsOrig', disp: 'gfNewsDisp', created: 'gfNewsCreated', label: ' Nieuwsberichten' });
 
 function _GfApplyPersonalization(s) {
   _gfPersSettings = s;
@@ -3241,18 +2733,18 @@ function _GfApplyPersonalization(s) {
   } catch (_) {}
 
   try {
-    if (s.fakeMsgCounter) _GfApplyMsgCounter(s.msgCounterValue ?? 0);
-    else _GfRevertMsgCounter();
+    if (s.fakeMsgCounter) _gfMsgCounter.apply(s.msgCounterValue ?? 0);
+    else _gfMsgCounter.revert();
   } catch (_) {}
 
   try {
-    if (s.fakeNotifCounter) _GfApplyNotifCounter(s.notifCounterValue ?? 0);
-    else _GfRevertNotifCounter();
+    if (s.fakeNotifCounter) _gfNotifCounter.apply(s.notifCounterValue ?? 0);
+    else _gfNotifCounter.revert();
   } catch (_) {}
 
   try {
-    if (s.fakeNewsCounter) _GfApplyNewsCounter(s.newsCounterValue ?? 0);
-    else _GfRevertNewsCounter();
+    if (s.fakeNewsCounter) _gfNewsCounter.apply(s.newsCounterValue ?? 0);
+    else _gfNewsCounter.revert();
   } catch (_) {}
 
   if (s.pfpChanger) {
@@ -3338,11 +2830,12 @@ function _GfApplyPersonalization(s) {
   }
 
   function _GfStartKeepAlive() {
-    const ric = window.requestIdleCallback || function (cb) { return setTimeout(() => cb({ didTimeout: true, timeRemaining: () => 0 }), _GF_SLOW_INTERVAL); };
+    const ric = window.requestIdleCallback || (cb => setTimeout(cb, 0));
+    const next = () => setTimeout(() => ric(tick, { timeout: _GF_SLOW_INTERVAL }), _GF_SLOW_INTERVAL);
     function tick() {
       if (!_gfPersReady || !_gfPersSettings) return;
       if (_GfAnyActive()) _GfRunPersonalization();
-      ric(tick, { timeout: _GF_SLOW_INTERVAL });
+      next();
     }
     ric(tick, { timeout: _GF_SLOW_INTERVAL });
   }
@@ -3378,10 +2871,7 @@ function _GfApplyPersonalization(s) {
 
   function StartObserving() {
     if (!document.body) return;
-    const root = document.querySelector(
-      '.smsc-top-bar, .smsc-top, #smsc-top, .smsc-header, header, nav, [role="banner"]'
-    ) || document.body;
-    _gfPersObserver.observe(root, {
+    _gfPersObserver.observe(_GfTopbarRoot(), {
       childList: true, subtree: true, characterData: true,
     });
   }

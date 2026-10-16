@@ -37,7 +37,8 @@
   const DYN_SKIP = new Set(['head', 'script', 'style', 'link', 'meta', 'title', 'template', 'noscript', 'svg', 'img', 'video', 'canvas', 'iframe', 'picture', 'object', 'embed', 'br', 'wbr', 'source', 'track', 'math']);
   const GF_ID = /^(gf-|gradeflow-panel-host$)/;
   const GF_HOSTS = '[id^="gf-"],#gradeflow-panel-host,svg,math';
-  const SIDES = ['top', 'right', 'bottom', 'left'];
+  const SIDES = ['top', 'right', 'bottom', 'left'].map(side => [side, `border-${side}-style`, `border-${side}-width`, `border-${side}-color`]);
+  const HOVER_EVENTS = ['mouseover', 'mouseout', 'focusin', 'focusout'];
 
   function Clamp(v, a = 0, b = 1) { return v < a ? a : v > b ? b : v; }
 
@@ -496,8 +497,9 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
       keys.push(key);
       if (e.css.length < 500000) used.push([HashKey(key), e.css.length]);
     }
-    st.base.textContent = BaseCss();
-    st.style.textContent = css;
+    const base = BaseCss();
+    if (st.base.textContent !== base) st.base.textContent = base;
+    if (st.style.textContent !== css) st.style.textContent = css;
     if (st.base.parentNode !== head) head.prepend(st.base);
     if (st.style.parentNode !== head || head.lastElementChild !== st.style) head.appendChild(st.style);
     if (doc === document) {
@@ -540,7 +542,7 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
       for (let i = 0; el && el.nodeType === 1 && i < 3; i++, el = el.parentElement) d.solo.add(el);
       if (!d.raf) d.raf = doc.defaultView.requestAnimationFrame(() => DynFlush(doc));
     };
-    for (const t of ['mouseover', 'mouseout', 'focusin', 'focusout']) doc.addEventListener(t, d.hover, true);
+    for (const t of HOVER_EVENTS) doc.addEventListener(t, d.hover, true);
     DynQueue(doc, null, true);
   }
 
@@ -617,9 +619,9 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
       const bg = Remap(cs.backgroundColor, 'bg');
       if (bg) body += `background-color:${bg}!important;`;
       const sides = [];
-      for (const side of SIDES) {
-        if (cs[`border-${side}-style`] === 'none' || !parseFloat(cs[`border-${side}-width`]) || cs[`border-${side}-color`] === cs.color) continue;
-        const m = Remap(cs[`border-${side}-color`], 'border');
+      for (const [side, style, width, color] of SIDES) {
+        if (cs[style] === 'none' || !parseFloat(cs[width]) || cs[color] === cs.color) continue;
+        const m = Remap(cs[color], 'border');
         if (m) sides.push([side, m]);
       }
       if (sides.length === 4 && sides.every(x => x[1] === sides[0][1])) body += `border-color:${sides[0][1]}!important;`;
@@ -686,7 +688,7 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
     const d = st.dyn;
     if (!d) return;
     if (d.raf) doc.defaultView?.cancelAnimationFrame(d.raf);
-    if (d.hover) for (const t of ['mouseover', 'mouseout', 'focusin', 'focusout']) doc.removeEventListener(t, d.hover, true);
+    if (d.hover) for (const t of HOVER_EVENTS) doc.removeEventListener(t, d.hover, true);
     d.style.remove();
     doc.querySelectorAll(`[${DYN_ATTR}],[${DYN_HOLD}]`).forEach(el => { el.removeAttribute(DYN_ATTR); el.removeAttribute(DYN_HOLD); });
     st.dyn = null;
@@ -835,9 +837,7 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
       if (document.readyState === 'complete') loaded();
       else addEventListener('load', loaded, { once: true });
       clearInterval(pollTimer);
-      pollTimer = setInterval(() => {
-        for (const doc of docs) { if (doc.defaultView && Scan(doc)) Render(doc); }
-      }, 3000);
+      pollTimer = setInterval(Poll, 3000);
     };
     if (document.head && document.body) go();
     else {
@@ -845,6 +845,13 @@ img[src*="images/frame_"]{object-position:-9999px 0;background:${v('surface2')}}
       document.addEventListener('DOMContentLoaded', go, { once: true });
     }
   }
+
+  function Poll() {
+    if (!active || document.hidden) return;
+    for (const doc of docs) { if (doc.defaultView && Scan(doc)) Render(doc); }
+  }
+
+  document.addEventListener('visibilitychange', Poll);
 
   function Unshield() {
     clearTimeout(shieldTimer);

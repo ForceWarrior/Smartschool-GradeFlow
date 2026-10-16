@@ -54,14 +54,6 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     return out;
   }
 
-  function ctEqual(a, b) {
-    if (!(a instanceof Uint8Array) || !(b instanceof Uint8Array)) return false;
-    if (a.length !== b.length) return false;
-    let diff = 0;
-    for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-    return diff === 0;
-  }
-
 function wipe(buf) {
     if (buf && buf.byteLength) {
       try { crypto.getRandomValues(new Uint8Array(buf.buffer || buf)); } catch (_) {}
@@ -158,7 +150,7 @@ async function hmacVerify(hmacKey, data, tag) {
     enc, dec,
     bytesToB64, b64ToBytes,
     bytesToBase32, base32ToBytes,
-    ctEqual, wipe,
+    wipe,
     generateRoomCodeBytes, formatRoomCode, parseRoomCode,
     generateNonce,
     deriveRoomKey, deriveHmacKey, deriveBits,
