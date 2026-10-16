@@ -3239,6 +3239,7 @@ function UpdateDynamicCellSize() {
   const wrapW = wrap.clientWidth;
   if (!wrapW) return;
 
+  wrap.style.removeProperty('--gf-subj-w');
   let maxSubjW = 120;
   for (const cell of wrap.querySelectorAll('.gf-subject-cell')) {
     if (cell.scrollWidth > maxSubjW) maxSubjW = cell.scrollWidth;
