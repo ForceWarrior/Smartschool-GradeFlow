@@ -4,8 +4,9 @@
   if (window.self !== window.top) return;
 
   const GF_UPDATE = {
-    id: 'v2.0.0',
-    version: '2.0.0',
+    id: 'v2.0.1',
+    version: '2.0.1',
+    base: '2.0.0',
     image: '',
     features: [
       { icon: '🎨', titleKey: 'update_feat_v20_theme', descKey: 'update_feat_v20_theme_desc' },
@@ -15,6 +16,7 @@
       { icon: '⌨️', titleKey: 'update_feat_v20_keys', descKey: 'update_feat_v20_keys_desc' },
       { icon: '🩹', titleKey: 'update_feat_v20_fixes', descKey: 'update_feat_v20_fixes_desc' },
     ],
+    patch: ['update_patch_keys', 'update_patch_chat'],
   };
 
   const STORAGE_KEY = 'gf-update-dismissed';
@@ -215,12 +217,13 @@
           <button class="gf-upd-close" id="gf-upd-close" aria-label="${T('update_close')}">✕</button>
           <div class="gf-upd-version-tag">✦ ${T('update_version_prefix')} ${ver}</div>
           <h2 class="gf-upd-title">GradeFlow<br>${T('update_title')}</h2>
-          <p class="gf-upd-subtitle">${T('update_subtitle').replace('{v}', ver)}</p>
+          <p class="gf-upd-subtitle">${T('update_subtitle').replace('{v}', GF_UPDATE.base || ver)}</p>
         </div>
         <div class="gf-upd-body">
           ${imgUrl ? `<div class="gf-upd-img-slot"><img src="${imgUrl}" alt="v${ver} preview" loading="lazy"></div>` : ''}
           <div class="gf-upd-section-label">${T('update_whats_new')}</div>
           <div class="gf-upd-features">${featuresHtml}</div>
+          ${GF_UPDATE.patch?.length ? `<div class="gf-upd-patch"><div class="gf-upd-section-label">${T('update_patch_title').replace('{v}', ver)}</div><ul>${GF_UPDATE.patch.map(k => `<li>${T(k)}</li>`).join('')}</ul></div>` : ''}
           <div class="gf-upd-divider"></div>
           <div class="gf-upd-footer">
             <button class="gf-upd-btn-primary" id="gf-upd-dismiss">${T('update_close')}</button>
@@ -291,6 +294,10 @@ html[data-gf-theme="dark"] #gf-update-overlay[data-theme-source="smpp"]{filter:n
 .gf-upd-footer{display:flex;justify-content:flex-end;gap:10px;}
 .gf-upd-btn-primary{padding:9px 22px;background:var(--upd-acc);color:var(--upd-on-acc);border:1px solid var(--upd-acc-2);border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:background .15s,transform .1s,border-color .15s;}
 .gf-upd-btn-primary:hover{background:var(--upd-acc-2);border-color:var(--upd-acc-2);transform:translateY(-1px);}
+.gf-upd-patch{padding:12px 14px;border-radius:9px;background:var(--upd-surf);border:1px dashed var(--upd-brd);margin-bottom:18px;}
+.gf-upd-patch .gf-upd-section-label{margin-bottom:6px;}
+.gf-upd-patch ul{margin:0;padding-left:18px;}
+.gf-upd-patch li{font-size:11px;color:var(--upd-txt2);line-height:1.6;}
 @media(max-width:560px){.gf-upd-features{grid-template-columns:1fr;}}
 `;
   }

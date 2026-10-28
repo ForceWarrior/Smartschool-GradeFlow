@@ -1835,7 +1835,7 @@ document.addEventListener('keydown', e => {
   e.preventDefault();
   const el = document.elementFromPoint(_gfInspectX, _gfInspectY);
   if (!el) return;
-  const text = JSON.stringify({ gf: '2.0.0', ...GfThemeEngine.inspect(el) });
+  const text = JSON.stringify({ gf: '2.0.1', ...GfThemeEngine.inspect(el) });
   const done = ok => {
     const t = document.createElement('div');
     t.id = 'gf-inspect-toast';
