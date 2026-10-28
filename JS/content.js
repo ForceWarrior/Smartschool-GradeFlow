@@ -1855,7 +1855,13 @@ document.addEventListener('keydown', e => {
   });
 }, true);
 
-document.addEventListener('keydown', (e) => {
+window.addEventListener('message', (e) => {
+  if (e.data?.type !== 'gf-frame-key' || e.source === window || !/^https:\/\/([a-z0-9-]+\.)*smartschool\.be$/.test(e.origin)) return;
+  if (e.data.action === 'arcade') _GfLaunchArcade();
+  else if (e.data.action === 'panel') OpenPanel(true);
+});
+
+window.addEventListener('keydown', (e) => {
   if (GfKeys.match(e, 'panel')) {
     e.preventDefault();
     e.stopPropagation();
@@ -1864,8 +1870,11 @@ document.addEventListener('keydown', (e) => {
   if (GfKeys.match(e, 'arcade')) {
     e.preventDefault();
     e.stopPropagation();
-    _GfLaunchArcade();
+    if (!e.repeat) _GfLaunchArcade();
   }
+}, true);
+
+document.addEventListener('keydown', (e) => {
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
     const panelOpen = document.getElementById('gradeflow-panel-host')?.style.display !== 'none';
     const gameOpen = GF_OVERLAY_HOST_IDS.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
