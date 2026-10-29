@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.2] - 2026-10-29
+
+### Fixed
+- After logging in, SmartSchool could send you to a raw planner API page full of code. GradeFlow called SmartSchool's API on the login page with your saved user id, so SmartSchool remembered that address as the page to open after login. GradeFlow now only calls SmartSchool's API once the page shows you are signed in.
+
 ## [2.0.1] - 2026-10-28
 
 ### Fixed
