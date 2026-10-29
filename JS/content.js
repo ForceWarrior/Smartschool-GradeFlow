@@ -1095,6 +1095,7 @@ function _GfStoreAttendanceItems(items) {
 function _GfRefreshAttendanceItems(force = false) {
   if (_gfAttendanceRefreshPromise) return _gfAttendanceRefreshPromise;
   _gfAttendanceRefreshPromise = (async () => {
+    if (!_GfSignedIn()) return null;
     if (_GfIsAttendancePage()) {
       const domItems = _GfExtractAttendanceItemsFromDom();
       if (domItems.length) { _GfStoreAttendanceItems(domItems); return domItems; }
@@ -1115,6 +1116,13 @@ function _GfRefreshAttendanceItems(force = false) {
 
 const _GF_PLANNER_TYPES = 'planned-assignments,planned-to-dos';
 let _gfPlannerRefreshPromise = null;
+
+function _GfSignedIn() {
+  if (/\/(login|account|authentication)/i.test(location.pathname)) return false;
+  if (document.querySelector('#smscTopContainer, .smsc-topnav, [plannerurl]')) return true;
+  for (const script of document.scripts) if (/authenticatedUser/.test(script.textContent)) return true;
+  return false;
+}
 
 function _GfPlannerUserId() {
   const url = document.querySelector('#datePickerMenu')?.getAttribute('plannerurl') || document.querySelector('[plannerurl]')?.getAttribute('plannerurl') || '';
@@ -1156,6 +1164,7 @@ function _GfStorePlannerItems(items) {
 function _GfRefreshPlannerItems(force = false) {
   if (_gfPlannerRefreshPromise) return _gfPlannerRefreshPromise;
   _gfPlannerRefreshPromise = (async () => {
+    if (!_GfSignedIn()) return null;
     const userId = _GfPlannerUserId();
     if (!userId) return null;
     try { localStorage.setItem('gf-planner-user', userId); } catch (_) {}
@@ -1469,6 +1478,7 @@ async function FetchAllApiGrades() {
 
 
 async function GetAllGrades() {
+  if (!_GfSignedIn()) throw new Error('Not signed in.');
   const s = await FetchAllApiGrades();
   if (StoreSize(s) > 0) return s;
   throw new Error('Error while loading grades.');
@@ -1835,7 +1845,7 @@ document.addEventListener('keydown', e => {
   e.preventDefault();
   const el = document.elementFromPoint(_gfInspectX, _gfInspectY);
   if (!el) return;
-  const text = JSON.stringify({ gf: '2.0.0', ...GfThemeEngine.inspect(el) });
+  const text = JSON.stringify({ gf: '2.0.2', ...GfThemeEngine.inspect(el) });
   const done = ok => {
     const t = document.createElement('div');
     t.id = 'gf-inspect-toast';
@@ -1855,7 +1865,13 @@ document.addEventListener('keydown', e => {
   });
 }, true);
 
-document.addEventListener('keydown', (e) => {
+window.addEventListener('message', (e) => {
+  if (e.data?.type !== 'gf-frame-key' || e.source === window || !/^https:\/\/([a-z0-9-]+\.)*smartschool\.be$/.test(e.origin)) return;
+  if (e.data.action === 'arcade') _GfLaunchArcade();
+  else if (e.data.action === 'panel') OpenPanel(true);
+});
+
+window.addEventListener('keydown', (e) => {
   if (GfKeys.match(e, 'panel')) {
     e.preventDefault();
     e.stopPropagation();
@@ -1864,8 +1880,11 @@ document.addEventListener('keydown', (e) => {
   if (GfKeys.match(e, 'arcade')) {
     e.preventDefault();
     e.stopPropagation();
-    _GfLaunchArcade();
+    if (!e.repeat) _GfLaunchArcade();
   }
+}, true);
+
+document.addEventListener('keydown', (e) => {
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
     const panelOpen = document.getElementById('gradeflow-panel-host')?.style.display !== 'none';
     const gameOpen = GF_OVERLAY_HOST_IDS.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });

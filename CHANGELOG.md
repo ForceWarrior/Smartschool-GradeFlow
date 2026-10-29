@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.2] - 2026-10-29
+
+### Fixed
+- After logging in, SmartSchool could send you to a raw planner API page full of code. GradeFlow called SmartSchool's API on the login page with your saved user id, so SmartSchool remembered that address as the page to open after login. GradeFlow now only calls SmartSchool's API once the page shows you are signed in.
+
+## [2.0.1] - 2026-10-28
+
+### Fixed
+- Panel and arcade shortcuts (F6, F8 or your own keys) did nothing after clicking inside a SmartSchool frame, and SmartSchool could swallow custom keys before GradeFlow saw them.
+- Holding the arcade key no longer opens and closes the menu over and over.
+- Showing and hiding the chat could close it again right away when pressed inside a frame, or lag behind quick presses.
+
 ## [2.0.0] - 2026-10-16
 
 ### Added

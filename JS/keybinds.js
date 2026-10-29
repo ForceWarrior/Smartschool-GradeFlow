@@ -117,6 +117,18 @@
     return false;
   }
 
+  if (W.self !== W.top && !/^chrome-extension:/.test(location.protocol)) {
+    W.addEventListener('keydown', e => {
+      for (const action of ['panel', 'arcade']) {
+        if (!Match(e, action)) continue;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!e.repeat) try { W.top.postMessage({ type: 'gf-frame-key', action }, '*'); } catch (_) {}
+        return;
+      }
+    }, true);
+  }
+
   if (W.self === W.top && !/^chrome-extension:/.test(location.protocol)) {
     W.addEventListener('keydown', e => {
       if (!e.isTrusted || (IsDefault('pause') && IsDefault('restart')) || IsEditable(e.composedPath()[0] || e.target) || !GameOpen()) return;
